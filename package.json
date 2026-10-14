@@ -11,6 +11,7 @@
       "esbuild"
     ],
     "overrides": {
+      "@fastify/busboy": ">=3.2.2",
       "@grpc/grpc-js": ">=1.14.5",
       "@opentelemetry/core": ">=2.8.0",
       "axios": ">=1.20.0",
@@ -29,8 +30,10 @@
       "nodemailer": ">=10.0.13",
       "postcss": ">=8.5.23",
       "protobufjs": ">=7.6.5",
+      "proxy-addr": ">=2.0.8 <3",
       "qs": ">=6.16.0",
-      "sharp": ">=0.35.0",
+      "sharp": ">=0.35.5",
+      "source-map-js": ">=1.2.2",
       "uuid": ">=11.1.1"
     }
   },
