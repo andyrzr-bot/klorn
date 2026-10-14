@@ -7,17 +7,28 @@ import AuthGuard from "../../components/auth-guard";
 import { ONBOARDING_ACTIVE_KEY } from "../../components/google-connect-redirect";
 import { startGoogleConnect } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
+import { homePath } from "../../lib/home";
 import { useT } from "../../lib/i18n";
 import { ReviewStep } from "./review-step";
+import { OnboardingV2 } from "./v2/flow";
 
 export default function OnboardingPage() {
   return (
     <AuthGuard>
       <Suspense>
-        <OnboardingFlow />
+        <OnboardingGate />
       </Suspense>
     </AuthGuard>
   );
+}
+
+/**
+ * ONBOARDING_V2 (productization plan P8): the multi-provider first run when
+ * the server says so, otherwise the flow below, untouched.
+ */
+function OnboardingGate() {
+  const { user } = useAuth();
+  return user?.onboardingV2 === true ? <OnboardingV2 /> : <OnboardingFlow />;
 }
 
 type Step = 1 | 2 | 3 | 4;
@@ -39,7 +50,7 @@ function deriveStep(
 }
 
 function OnboardingFlow() {
-  const { googleConnected, hasMailSource, initSync } = useAuth();
+  const { user, googleConnected, hasMailSource, initSync } = useAuth();
   const router = useRouter();
   const [manualStep, setManualStep] = useState<Step | null>(null);
   const [connecting, setConnecting] = useState(false);
@@ -55,7 +66,7 @@ function OnboardingFlow() {
   }, [step, initSync.status]);
 
   const handleDone = () => {
-    router.replace("/inbox");
+    router.replace(homePath(user));
   };
 
   const handleConnectClick = async () => {
@@ -154,7 +165,7 @@ function WelcomeStep({
         <p className="text-center text-xs leading-5 text-ink-dim">
           {t("onboarding.welcome.preferNaver")}{" "}
           <Link
-            href="/settings"
+            href="/settings/accounts"
             className="font-medium text-accent-deep underline decoration-sky-200 underline-offset-2 hover:text-accent-deep"
           >
             {t("onboarding.welcome.connectViaImap")}

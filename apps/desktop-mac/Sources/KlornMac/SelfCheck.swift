@@ -40,17 +40,20 @@ private func makeDeps(
 
 private let base = "http://localhost:3001"
 
-/// Block the calling thread while the async checks run (used from the CLI entry).
+/// Wait on the calling (main) thread while the async checks run (used from the CLI
+/// entry). The main run loop keeps turning meanwhile, so checks that drive
+/// main-actor code (the device-calendar bridge) can run; a semaphore here would
+/// deadlock them.
 func runSelfChecksBlocking() -> Bool {
-    let sem = DispatchSemaphore(value: 0)
-    let out = locked(false)
+    let out: OSAllocatedUnfairLock<Bool?> = locked(nil)
     Task {
         let ok = await runSelfChecks()
         out.withLock { $0 = ok }
-        sem.signal()
     }
-    sem.wait()
-    return out.withLock { $0 }
+    while out.withLock({ $0 }) == nil {
+        RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05))
+    }
+    return out.withLock { $0 } ?? false
 }
 
 func runSelfChecks() async -> Bool {
@@ -439,8 +442,7 @@ func runSelfChecks() async -> Bool {
     // "finish this on the web" round trip the app exists to remove, so the rule
     // is checked against the sources rather than trusted to review.
     let sourceDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
-    let swiftFiles = (try? FileManager.default.contentsOfDirectory(at: sourceDir, includingPropertiesForKeys: nil))?
-        .filter { $0.pathExtension == "swift" } ?? []
+    let swiftFiles = swiftSources(under: sourceDir)
     check("sources are readable", !swiftFiles.isEmpty)
     let allowedWebBaseUsers: Set<String> = ["AuthFlow.swift", "Config.swift", "SelfCheck.swift"]
     let offenders = swiftFiles.filter { url in
@@ -1834,6 +1836,27 @@ func runSelfChecks() async -> Bool {
           Set(Tier.allCases.map(\.emptyTitle)).count == Tier.allCases.count
           && Tier.allCases.allSatisfy { !$0.emptyTitle.hasPrefix("tier.") })
 
+    print("Device calendars (C6):")
+    for (name, ok) in await deviceCalendarSelfChecks(sourceDir: sourceDir) { check(name, ok) }
+
+    print("Token store:")
+    for (name, ok) in tokenStoreSelfChecks(sourceDir: sourceDir) { check("token store — \(name)", ok) }
+
+    print("Main window navigation and Today (M4b):")
+    for (name, ok) in await navSelfChecks(sourceDir: sourceDir) { check(name, ok) }
+
+    print("Compose window and sheets (M5):")
+    for (name, ok) in await windowSelfChecks(sourceDir: sourceDir) { check(name, ok) }
+
+    print("States and first launch (M6):")
+    for (name, ok) in await stateSelfChecks(sourceDir: sourceDir) { check(name, ok) }
+
+    print("Session scope:")
+    for (name, ok) in await sessionSelfChecks(sourceDir: sourceDir) { check(name, ok) }
+
+    // Design tokens and the one-badge row rule in the main window (M7).
+    for (name, ok) in tokenSelfChecks(sourceDir: sourceDir) { check(name, ok) }
+
     print("Localization:")
     // A key present in one language and missing in another ships a raw key
     // ("prefs.done") to whoever runs the other language — the kind of bug that
@@ -1859,6 +1882,7 @@ func runSelfChecks() async -> Bool {
         L("bar.push", 3), L("bar.more", 2), L("commitments.a11y", 4),
         L("aiUsage.a11y", 7, 20), L("bar.menuBar.push", 9),
         L("engagement.repliedTimes", 5), L("waiting.days", 3), L("waiting.hint", 2),
+        L("deviceCalendars.count", 3),
     ].allSatisfy { $0.contains(where: \.isNumber) })
     check("string formats render", [
         L("today.a11y", "x"), L("briefing.a11y", "x"), L("commitments.markDone.a11y", "x"),
@@ -1970,8 +1994,12 @@ func runSelfChecks() async -> Bool {
     let proseLiteral = try! NSRegularExpression(
         pattern: #""[A-Z][a-z]+(?: [A-Za-z,'’]+){1,}\.?""#)
     var proseOffenders: [String] = []
-    let proseExempt: Set<String> = ["SelfCheck.swift", "PreviewRender.swift"]
-    for url in swiftFiles where !proseExempt.contains(url.lastPathComponent) {
+    // The preview harness files hold fixture DATA (demo mail), not UI copy.
+    let proseExempt: Set<String> = ["SelfCheck.swift"]
+    for url in swiftFiles
+    where !proseExempt.contains(url.lastPathComponent)
+        && !url.lastPathComponent.hasPrefix("PreviewRender")
+    {
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
         for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -2160,12 +2188,12 @@ func runSelfChecks() async -> Bool {
         $0.contains("maxHeight: .infinity, alignment: .top")
     }
     check("root content pins to the top (overflow clips at the bottom)",
-          rootTopPinned.contains("TopBar.swift"))
+          rootTopPinned.contains("TopBarRoot.swift"))
     let sidebarScrolls = lineOffenders {
         $0.contains("minHeight: geo.size.height, alignment: .top")
     }
     check("sidebar scrolls instead of clipping when the window is short",
-          sidebarScrolls.contains("TopBar.swift"))
+          sidebarScrolls.contains("Sidebar.swift"))
 
     // Mail HTML is authored against a white page; the reading surface must
     // pin one regardless of app theme (dark mode ghost-text recording,
@@ -2220,14 +2248,14 @@ func runSelfChecks() async -> Bool {
     // Source pins: the overlay path is gone and the scene is real.
     check("Preferences is no longer an in-window overlay",
           lineOffenders { $0.contains("showPreferences") }.isEmpty
-          && !lineOffenders { $0.contains("PreferencesView(") }.contains("TopBar.swift"))
+          && lineOffenders { $0.contains("PreferencesView(") } == ["SettingsWindow.swift"])
     check("the Settings scene hosts SettingsRoot",
           lineOffenders { $0.contains("SettingsRoot().environment") }.contains("KlornApp.swift")
           && lineOffenders { $0.contains("Settings { EmptyView() }") }.isEmpty)
 
     print("App menus (M1):")
     let signedInFull = MenuState(
-        signedIn: true, fullViewOpen: true, barIsKey: true, modalOpen: false, targetTier: .queue,
+        signedIn: true, fullViewOpen: true, mailSurfaceIsKey: true, modalOpen: false, targetTier: .queue,
         emailLoaded: true, readerReplying: false, teamModeAvailable: false,
         listHasSearchField: true)
     var everyCommand: [MenuCommand] = [.compose, .find, .reply, .dismiss]
@@ -2266,7 +2294,7 @@ func runSelfChecks() async -> Bool {
     check("Find that would switch modes waits for the reply to close",
           !MenuRules.isEnabled(.find, in: composingElsewhere))
     var settingsKey = signedInFull
-    settingsKey.barIsKey = false
+    settingsKey.mailSurfaceIsKey = false
     check("message commands are off while another window (Settings) is key",
           [MenuCommand.reply, .dismiss, .moveTo(.push)]
               .allSatisfy { !MenuRules.isEnabled($0, in: settingsKey) }
@@ -2330,6 +2358,319 @@ func runSelfChecks() async -> Bool {
           ListMode.waitingOn.isMailFamily && ListMode.mailbox(.sent).isMailFamily
           && !ListMode.proposals.isMailFamily && !ListMode.calendar.isMailFamily)
 
+    print("Main window (M2):")
+    check("macMainWindow defaults OFF and reads only a stored Bool",
+          !AppSettings.resolveMacMainWindow(nil)
+          && AppSettings.resolveMacMainWindow(true)
+          && !AppSettings.resolveMacMainWindow(false)
+          && !AppSettings.resolveMacMainWindow("YES"))
+    check("flag on: only the full state routes to the main window",
+          TopBarController.routesToMainWindow(.full, macMainWindow: true)
+          && !TopBarController.routesToMainWindow(.expanded, macMainWindow: true)
+          && !TopBarController.routesToMainWindow(.collapsed, macMainWindow: true))
+    check("flag off: nothing routes to the main window",
+          [BarState.collapsed, .expanded, .full]
+              .allSatisfy { !TopBarController.routesToMainWindow($0, macMainWindow: false) })
+    check("an open main window makes the app regular (Dock + Cmd+Tab)",
+          TopBarController.activationPolicy(for: .collapsed, mainWindowOpen: true) == .regular)
+    check("closing the main window returns the resting app to ambient",
+          TopBarController.activationPolicy(for: .collapsed, mainWindowOpen: false) == .accessory)
+    check("closing the main window while Settings is open stays regular",
+          TopBarController.activationPolicy(
+              for: .collapsed, settingsOpen: true, mainWindowOpen: false) == .regular
+          && TopBarController.activationPolicy(
+              for: .collapsed, settingsOpen: false, mainWindowOpen: true) == .regular)
+    check("main window closed: policy is exactly the pre-M2 rule",
+          [BarState.collapsed, .expanded, .full].allSatisfy { state in
+              [false, true].allSatisfy { dock in
+                  [false, true].allSatisfy { settings in
+                      TopBarController.activationPolicy(
+                          for: state, showInDock: dock, settingsOpen: settings, mainWindowOpen: false)
+                          == TopBarController.activationPolicy(
+                              for: state, showInDock: dock, settingsOpen: settings)
+                  }
+              }
+          })
+    check("mail surface is key: bar only in its full state, main window only while open",
+          MenuRules.mailSurfaceIsKey(
+              barPanelIsKey: true, barFullOpen: true, mainWindowIsKey: false, mainWindowOpen: false)
+          && MenuRules.mailSurfaceIsKey(
+              barPanelIsKey: false, barFullOpen: false, mainWindowIsKey: true, mainWindowOpen: true)
+          && !MenuRules.mailSurfaceIsKey(
+              barPanelIsKey: true, barFullOpen: false, mainWindowIsKey: false, mainWindowOpen: false)
+          && !MenuRules.mailSurfaceIsKey(
+              barPanelIsKey: false, barFullOpen: false, mainWindowIsKey: true, mainWindowOpen: false)
+          && !MenuRules.mailSurfaceIsKey(
+              barPanelIsKey: false, barFullOpen: true, mainWindowIsKey: false, mainWindowOpen: true))
+    var mainKey = signedInFull
+    mainKey.mailSurfaceIsKey = MenuRules.mailSurfaceIsKey(
+        barPanelIsKey: false, barFullOpen: false, mainWindowIsKey: true, mainWindowOpen: true)
+    check("message commands work against a key main window",
+          MenuRules.isEnabled(.reply, in: mainKey) && MenuRules.isEnabled(.dismiss, in: mainKey)
+          && MenuRules.isEnabled(.moveTo(.push), in: mainKey))
+    check("flag off: an open request never creates the main window",
+          !MainWindowRules.mayOpen(macMainWindow: false) && MainWindowRules.mayOpen(macMainWindow: true))
+    check("beta toggle: hidden until Option, visible while on",
+          !MainWindowRules.showsBetaToggle(optionHeld: false, macMainWindow: false)
+          && MainWindowRules.showsBetaToggle(optionHeld: true, macMainWindow: false)
+          && MainWindowRules.showsBetaToggle(optionHeld: false, macMainWindow: true))
+    let titleBarHeight: CGFloat = 28
+    check("main window floor holds the full view and fits the smallest display",
+          MainWindowRules.minSize == TopBarMetrics.fullMin
+          && MainWindowRules.minSize.height + titleBarHeight <= SettingsMetrics.smallestVisibleHeight
+          && MainWindowRules.defaultSize.width >= MainWindowRules.minSize.width
+          && MainWindowRules.defaultSize.height >= MainWindowRules.minSize.height
+          && MainWindowRules.defaultSize.width <= 1280
+          && MainWindowRules.defaultSize.height + titleBarHeight <= SettingsMetrics.smallestVisibleHeight)
+    check("main-window strings are localized",
+          ["prefs.mainWindow", "prefs.mainWindow.detail"].allSatisfy { L($0) != $0 })
+    let mainWindowSource = swiftFiles.first { $0.lastPathComponent == "MainWindow.swift" }
+        .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
+    // The window part of the file, up to the Settings toggle (whose key
+    // monitor legitimately uses view lifecycle).
+    let windowPart = mainWindowSource.components(separatedBy: "struct MainWindowBetaToggle").first ?? ""
+    let openBody = windowPart.components(separatedBy: "func open() {").dropFirst().first?
+        .components(separatedBy: "func close()").first ?? ""
+    check("no SwiftUI Window scene: nothing is instantiated at launch",
+          lineOffenders { $0.contains("Window(\"") || $0.contains("WindowGroup") }.isEmpty)
+    check("the main window is created lazily, only past the flag guard in open()",
+          windowPart.components(separatedBy: "NSWindow(").count == 2
+          && windowPart.components(separatedBy: "makeWindow()").count == 3  // decl + one call
+          && openBody.contains("makeWindow()")
+          && (openBody.range(of: "mayOpen(")?.lowerBound ?? openBody.endIndex)
+              < (openBody.range(of: "makeWindow()")?.lowerBound ?? openBody.startIndex))
+    check("the main window is reused and remembers its frame",
+          windowPart.contains("isReleasedWhenClosed = false")
+          && windowPart.contains("setFrameAutosaveName(MainWindowRules.frameAutosaveName)")
+          && windowPart.contains("usable: MainWindowRules.minSize, titlebarInset: titlebar)")
+          && windowPart.contains("sizingOptions = []"))
+    check("main window state comes from NSWindow callbacks, never onAppear/onDisappear",
+          windowPart.contains("func windowWillClose(")
+          && windowPart.contains("func windowDidBecomeKey(")
+          && !windowPart.contains("onAppear") && !windowPart.contains("onDisappear")
+          && lineOffenders {
+              ($0.contains("onAppear") || $0.contains("onDisappear")) && $0.contains("mainWindowOpen")
+          }.isEmpty)
+    check("the main window hosts the five-item shell (M4b), not the bar's FullView",
+          windowPart.contains("MainShell(actions: actions)")
+          && !windowPart.contains("FullView(actions: actions)"))
+    let appSource = swiftFiles.first { $0.lastPathComponent == "KlornApp.swift" }
+        .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
+    check("closing the main window never quits the app",
+          appSource.contains("func applicationShouldTerminateAfterLastWindowClosed")
+          && appSource.contains("-> Bool {\n        false\n    }"))
+    check("BarState.full still exists until M8",
+          lineOffenders { $0.contains("enum BarState { case collapsed, expanded, full }") }
+              .contains("TopBarRoot.swift"))
+
+    print("Mail list keyboard (M3):")
+    // Every combination of the inputs the decision reads, for every key.
+    var keyStates: [ListKeyState] = []
+    let bools = [false, true]
+    for bits in 0..<(1 << 10) {
+        func bit(_ n: Int) -> Bool { bools[(bits >> n) & 1] }
+        for targetTier in [Tier?.none, .queue] {
+            for responder in MailKeyResponder.allCases {
+                for zone in [MailKeyZone.list, .reader] {
+                    keyStates.append(ListKeyState(
+                        menu: MenuState(
+                            signedIn: bit(0), fullViewOpen: bit(1), mailSurfaceIsKey: bit(2),
+                            modalOpen: bit(3), targetTier: targetTier, emailLoaded: bit(4),
+                            readerReplying: bit(5), teamModeAvailable: false,
+                            listHasSearchField: bit(6)),
+                        responder: responder, composingText: bit(7), zone: zone,
+                        showsRows: bit(8), itemCount: bit(9) ? 3 : 0))
+                }
+            }
+        }
+    }
+    func fires(_ key: ListKey, _ s: ListKeyState, isRepeat: Bool = false) -> ListKeyAction? {
+        ListKeyRules.action(for: key, isRepeat: isRepeat, in: s)
+    }
+    func noKeyFires(_ s: ListKeyState) -> Bool {
+        ListKey.allCases.allSatisfy { fires($0, s) == nil && fires($0, s, isRepeat: true) == nil }
+    }
+    check("no key fires while a text field or editor has focus",
+          keyStates.filter { $0.responder == .text }.allSatisfy(noKeyFires))
+    check("no key fires while a focused control owns the keyboard (Return, arrows, Esc included)",
+          keyStates.filter { $0.responder == .control }.allSatisfy(noKeyFires))
+    check("no key fires while an input method is composing, Esc included",
+          keyStates.filter(\.composingText).allSatisfy(noKeyFires))
+    check("no key fires under a modal, signed out, or off the key mail surface",
+          keyStates.filter {
+              $0.menu.modalOpen || !$0.menu.signedIn || !$0.menu.mailSurfaceIsKey
+                  || !$0.menu.fullViewOpen || !$0.menu.listHasSearchField
+          }.allSatisfy(noKeyFires))
+    check("in the reading pane only Esc is taken, and it returns to the list",
+          keyStates.filter(\.readerFocused).allSatisfy { s in
+              ListKey.allCases.allSatisfy { key in
+                  let action = fires(key, s)
+                  return action == nil || (key == .escape && action == .backToList)
+              }
+          })
+    check("Esc in the list is left to the system",
+          keyStates.filter { !$0.readerFocused }.allSatisfy { fires(.escape, $0) == nil })
+    func responder(
+        windowOrNil: Bool = false, text: Bool = false, web: Bool = false, containsList: Bool = false
+    ) -> MailKeyResponder {
+        MailKeyResponder.classify(MailKeyResponder.Facts(
+            isWindowOrNil: windowOrNil, isText: text, inWebView: web, containsList: containsList))
+    }
+    check("focus counts as the list only on the window, nothing, or a container of the list",
+          responder(windowOrNil: true) == .list && responder(containsList: true) == .list
+          && responder() == .control)
+    check("a text field or the message web view is never mistaken for the list",
+          responder(text: true) == .text && responder(text: true, containsList: true) == .text
+          && responder(web: true) == .web && responder(web: true, containsList: true) == .web
+          && responder(windowOrNil: true, text: true) == .text)
+    check("the opening focus is released only from the search field's default focus",
+          ListKeyRules.releasesOpeningFocus(
+              responder: .text, fieldIsSearch: true, searchRequested: false, modalOpen: false)
+          && !ListKeyRules.releasesOpeningFocus(
+              responder: .text, fieldIsSearch: true, searchRequested: true, modalOpen: false)
+          && !ListKeyRules.releasesOpeningFocus(
+              responder: .text, fieldIsSearch: true, searchRequested: false, modalOpen: true)
+          && !ListKeyRules.releasesOpeningFocus(
+              responder: .text, fieldIsSearch: false, searchRequested: false, modalOpen: false)
+          && MailKeyResponder.allCases.filter { $0 != .text }.allSatisfy {
+              !ListKeyRules.releasesOpeningFocus(
+                  responder: $0, fieldIsSearch: true, searchRequested: false, modalOpen: false)
+          })
+    check("e and r fire only where the Message menu enables Dismiss and Reply",
+          keyStates.allSatisfy { s in
+              (fires(.e, s) == nil || MenuRules.isEnabled(.dismiss, in: s.menu))
+                  && (fires(.r, s) == nil || MenuRules.isEnabled(.reply, in: s.menu))
+                  && (fires(.slash, s) == nil || MenuRules.isEnabled(.find, in: s.menu))
+          })
+    check("selection never moves while an inline reply is open, or with no rows",
+          keyStates.filter { $0.menu.readerReplying || !$0.showsRows || $0.itemCount == 0 }
+              .allSatisfy { s in [ListKey.up, .down, .j, .k].allSatisfy { fires($0, s) == nil } })
+    check("a held key repeats moves only: never open, dismiss, reply or search",
+          keyStates.allSatisfy { s in
+              ListKey.allCases.allSatisfy { key in
+                  switch fires(key, s, isRepeat: true) {
+                  case nil, .move, .backToList: true
+                  default: false
+                  }
+              }
+          })
+    let listReady = ListKeyState(
+        menu: signedInFull, responder: .list, composingText: false, zone: .list,
+        showsRows: true, itemCount: 3)
+    check("in the list every key maps to its action",
+          fires(.j, listReady) == .move(1) && fires(.down, listReady) == .move(1)
+          && fires(.k, listReady) == .move(-1) && fires(.up, listReady) == .move(-1)
+          && fires(.returnKey, listReady) == .openReader && fires(.o, listReady) == .openReader
+          && fires(.e, listReady) == .dismiss && fires(.r, listReady) == .reply
+          && fires(.slash, listReady) == .focusSearch)
+    var noTarget = listReady
+    noTarget.menu.targetTier = nil
+    check("with nothing selected only moves and search are live",
+          fires(.j, noTarget) == .move(1) && fires(.slash, noTarget) == .focusSearch
+          && fires(.returnKey, noTarget) == nil && fires(.e, noTarget) == nil
+          && fires(.r, noTarget) == nil)
+    func resolve(
+        _ characters: String?, _ keyCode: Int, shift: Bool = false, chord: Bool = false
+    ) -> ListKey? {
+        ListKeyRules.key(
+            characters: characters, keyCode: UInt16(keyCode), shift: shift,
+            commandControlOrOption: chord)
+    }
+    check("keys resolve by character, arrows and Return/Esc by key code",
+          resolve("j", kVK_ANSI_J) == .j && resolve("k", kVK_ANSI_K) == .k
+          && resolve("o", kVK_ANSI_O) == .o && resolve("e", kVK_ANSI_E) == .e
+          && resolve("r", kVK_ANSI_R) == .r && resolve("/", kVK_ANSI_Slash) == .slash
+          && resolve("\u{F700}", kVK_UpArrow) == .up && resolve("\u{F701}", kVK_DownArrow) == .down
+          && resolve("\r", kVK_Return) == .returnKey
+          && resolve("\u{3}", kVK_ANSI_KeypadEnter) == .returnKey
+          && resolve("\u{1B}", kVK_Escape) == .escape)
+    check("a non-Latin input source falls back to the key position",
+          resolve("ㅓ", kVK_ANSI_J) == .j && resolve("ㅏ", kVK_ANSI_K) == .k
+          && resolve("ㄷ", kVK_ANSI_E) == .e && resolve("ㄱ", kVK_ANSI_R) == .r)
+    check("a Latin layout is read by character, not position (Dvorak)",
+          resolve("h", kVK_ANSI_J) == nil && resolve("j", kVK_ANSI_C) == .j)
+    check("⌘/⌃/⌥ chords never resolve: those belong to the menus",
+          ["j", "k", "o", "e", "r", "/", "\r"].allSatisfy { resolve($0, kVK_ANSI_J, chord: true) == nil }
+          && resolve(nil, kVK_UpArrow, chord: true) == nil)
+    check("Shift resolves nothing but a layout's shifted slash",
+          resolve("J", kVK_ANSI_J, shift: true) == nil && resolve("?", kVK_ANSI_Slash, shift: true) == nil
+          && resolve(nil, kVK_DownArrow, shift: true) == nil
+          && resolve("ㅓ", kVK_ANSI_J, shift: true) == nil
+          && resolve("/", kVK_ANSI_7, shift: true) == .slash)
+    check("the reading pane's bare 1/2/3 quick replies are not list keys",
+          ["1", "2", "3", "4", "5"].allSatisfy { resolve($0, kVK_ANSI_1) == nil }
+          && lineOffenders {
+              $0.contains(".keyboardShortcut(KeyEquivalent(Character(\"\\(index + 1)\")), modifiers: [])")
+          }.contains("ReadingPane.swift"))
+    let rowIds = ["a", "b", "c"]
+    check("moves step one row, clamp at the edges and start at the top",
+          ListKeyRules.movedSelection(ids: rowIds, selected: "a", delta: 1) == "b"
+          && ListKeyRules.movedSelection(ids: rowIds, selected: "b", delta: -1) == "a"
+          && ListKeyRules.movedSelection(ids: rowIds, selected: "c", delta: 1) == nil
+          && ListKeyRules.movedSelection(ids: rowIds, selected: "a", delta: -1) == nil
+          && ListKeyRules.movedSelection(ids: rowIds, selected: nil, delta: 1) == "a"
+          && ListKeyRules.movedSelection(ids: rowIds, selected: nil, delta: -1) == "a"
+          && ListKeyRules.movedSelection(ids: rowIds, selected: "gone", delta: 1) == "a"
+          && ListKeyRules.movedSelection(ids: [], selected: nil, delta: 1) == nil)
+    check("after a dismiss the next row is selected, else the previous, else none",
+          ListKeyRules.selectionAfterRemoval(ids: rowIds, removed: "a", present: ["b", "c"]) == "b"
+          && ListKeyRules.selectionAfterRemoval(ids: rowIds, removed: "c", present: ["a", "b"]) == "b"
+          && ListKeyRules.selectionAfterRemoval(ids: ["a"], removed: "a", present: []) == nil
+          && ListKeyRules.selectionAfterRemoval(ids: rowIds, removed: "gone", present: ["a"]) == nil)
+    check("the auto-advance target must still exist: nearest surviving row, never a ghost",
+          ListKeyRules.selectionAfterRemoval(ids: rowIds, removed: "a", present: ["c"]) == "c"
+          && ListKeyRules.selectionAfterRemoval(ids: rowIds, removed: "b", present: ["a"]) == "a"
+          && ListKeyRules.selectionAfterRemoval(ids: rowIds, removed: "b", present: []) == nil
+          // A failed dismiss leaves the row in place; it is never its own successor.
+          && ListKeyRules.selectionAfterRemoval(ids: ["a"], removed: "a", present: ["a"]) == nil
+          && ListKeyRules.selectionAfterRemoval(
+              ids: ["a", "b", "c", "d", "e"], removed: "c", present: ["a", "b", "e"]) == "e")
+    func source(named name: String) -> String {
+        swiftFiles.first { $0.lastPathComponent == name }
+            .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
+    }
+    let fullViewSource = source(named: "FullView.swift")
+    // FullList's own source: the struct is the only declaration in its file.
+    let fullListFile = source(named: "FullList.swift")
+    let fullListSource = fullListFile.components(separatedBy: "struct FullList: View").dropFirst().first ?? ""
+    check("FullList.swift holds FullList and nothing else",
+          fullListFile.components(separatedBy: "\nstruct ").count == 2
+          && !fullListFile.contains("\nprivate struct ") && !fullListFile.contains("\nextension "))
+    check("list keys run the click and menu paths, never their own",
+          fullListSource.contains("ListKeyRules.action(for:")
+          && fullListSource.contains("actions.onSelect(") && fullListSource.contains("actions.onDismiss(")
+          && fullListSource.contains("model.requestReply()")
+          && fullListSource.contains("model.searchFocusPending = true")
+          && !fullListSource.contains("model.select(") && !fullListSource.contains("model.dismiss("))
+    check("the mail list keeps ScrollView + LazyVStack (no List migration in M3)",
+          lineOffenders { $0.contains("List(selection:") }.isEmpty
+          && fullListSource.contains("ScrollViewReader") && fullListSource.contains("LazyVStack(")
+          && fullListSource.contains("proxy.scrollTo("))
+    check("the key zone is per window: owned by FullView, not the shared model",
+          lineOffenders { $0.contains("mailKeyZone") }.isEmpty
+          && fullViewSource.contains("@State private var keyZone: MailKeyZone")
+          && fullListSource.contains("@Binding var keyZone: MailKeyZone"))
+    let listKeysSource = swiftFiles.first { $0.lastPathComponent == "ListKeys.swift" }
+        .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
+    check("the key monitor is removed with its view",
+          listKeysSource.contains("deinit {") && listKeysSource.contains("dismantleNSView")
+          && listKeysSource.components(separatedBy: "NSEvent.removeMonitor(").count >= 3)
+    let readmeText = (try? String(
+        contentsOf: sourceDir.deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("README.md"), encoding: .utf8)) ?? ""
+    check("the README documents every list key",
+          ["`↑` / `↓`", "`j` / `k`", "`Return` / `o`", "`Esc`", "`e`", "`r`", "`/`"]
+              .allSatisfy { readmeText.contains($0) }
+          && readmeText.contains("form field inside an email"))
+
     print(failures == 0 ? "\nALL CHECKS PASSED" : "\n\(failures) CHECK(S) FAILED")
     return failures == 0
+}
+
+/// Every Swift source of the target, feature subfolders included. The source
+/// pins read files by name, so a flat listing would silently skip Pill/,
+/// Shell/, Mail/, Calendar/, Assistant/ and Shared/.
+func swiftSources(under dir: URL) -> [URL] {
+    let walker = FileManager.default.enumerator(at: dir, includingPropertiesForKeys: nil)
+    return (walker?.compactMap { $0 as? URL } ?? []).filter { $0.pathExtension == "swift" }
 }

@@ -68,6 +68,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private var statusItem: StatusItemController?
     private var hotKey: HotKey?
     private var settingsOpener: SettingsOpener?
+    private var mainWindow: MainWindowController?
+    private var composeWindow: ComposeWindowController?
+    private var onboarding: OnboardingWindowController?
 
     /// OAuth deep-link relay: the browser bounces `klorn://oauth-callback?code=…`
     /// back to us; the code goes to the RelayInbox where the sign-in loop
@@ -159,8 +162,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         // Preferences buttons, and anything else outside SwiftUI's own ⌘,.
         let opener = SettingsOpener()
         bar.onOpenSettings = { [weak opener] in opener?.open() }
-        model.onSettingsWindowChanged = { [weak bar] in bar?.refreshActivationPolicy() }
+        model.onWindowPresenceChanged = { [weak bar] in bar?.refreshActivationPolicy() }
         settingsOpener = opener
+        // Main window (M2, behind `macMainWindow`): the bar routes every
+        // "open the full view" to it while the flag is on.
+        let mainWindow = MainWindowController(model: model)
+        mainWindow.actionsProvider = { [weak bar] in bar?.mainWindowActions() }
+        self.mainWindow = mainWindow
+        bar.onOpenMainWindow = { [weak mainWindow] in mainWindow?.open() }
+        bar.onCloseMainWindow = { [weak mainWindow] in mainWindow?.close() }
+        // Compose window (M5, same flag): the model's composer state drives it.
+        let composeWindow = ComposeWindowController(model: model)
+        model.onComposePresentationChanged = { [weak composeWindow] in composeWindow?.sync() }
+        // Switching the main window off puts an open compose window away
+        // (draft kept), so it can never sit beside the overlay composer.
+        model.settings.onMacMainWindowChanged = { [weak composeWindow] in composeWindow?.sync() }
+        self.composeWindow = composeWindow
         // Menu-bar anchor while the pill is hidden (one-anchor rule): appears
         // when the pill's ✕ / Preferences hides the bar, disappears when the
         // bar comes back. Without it a hidden-pill accessory app is invisible
@@ -185,14 +202,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             meetingCard?.present(event) ?? false
         }
         self.meetingCard = meetingCard
+        // Sign-out (or another account signing in): the cards and banners
+        // still show the account that left, and the cards can act. Take
+        // them down with the session.
+        model.onSessionEnded = { [weak card, weak meetingCard] in
+            card?.reset()
+            meetingCard?.reset()
+            PushNotifier.clearAll()
+        }
         bar.show()
         topBar = bar
         pushCard = card
         // First run after install: open the real app window once. The resting
         // pill at the top edge is easy to miss right after a download — people
         // reported not realizing the app had launched (2026-08-05).
-        if model.settings.consumeFirstLaunch() {
-            bar.openFull()
+        // With no account yet that window is the onboarding window (M6),
+        // not a logged-out full view; signing in there continues into the
+        // full view, where the existing post-login flow takes over.
+        let onboarding = OnboardingWindowController(model: model) { [weak bar] in bar?.openFull() }
+        self.onboarding = onboarding
+        switch OnboardingRules.launchAction(
+            firstLaunch: model.settings.consumeFirstLaunch(), signedIn: model.phase == .signedIn)
+        {
+        case .onboarding: onboarding.open()
+        case .fullView: bar.openFull()
+        case .none: break
         }
 
         // Global toggle shortcut (default ⌥⌘K, user-configurable in Preferences):
@@ -227,15 +261,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     func perform(_ command: MenuCommand) {
         switch command {
         case .compose:
-            ensureFullView()
+            // With its own window (M5) the composer needs no full view
+            // under it; ⌘N on an open composer brings it forward.
+            if !ComposeWindowRules.usesWindow(macMainWindow: model.settings.macMainWindow) {
+                ensureFullView()
+            }
             model.showCompose = true
         case .find:
             ensureFullView()
             if !model.listMode.hasSearchField { model.go(to: .inbox) }
+            // The search field lives in Mail; the main window may be elsewhere.
+            if model.settings.macMainWindow { model.navigate(to: .mail) }
             model.searchFocusPending = true
         case .go(let mode):
             ensureFullView()
             model.go(to: mode)
+        case .section(let section):
+            ensureFullView()
+            model.navigate(to: section)
         case .reply:
             model.requestReply()
         case .dismiss:
@@ -253,6 +296,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         if !model.isFullViewOpen { topBar?.openFull() }
     }
 
+    /// Closing the main window must never quit Klorn: the bar and the poll
+    /// loop are the app, the window is only a view of it. Explicit so it
+    /// never depends on SwiftUI's scene-derived default.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
     /// Finder/Dock re-open of a running Klorn (LaunchServices sends reopen
     /// instead of spawning a second process): show the app window. Without
     /// this, double-clicking Klorn.app again appears to do nothing — the
@@ -260,14 +310,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     func applicationShouldHandleReopen(
         _ sender: NSApplication, hasVisibleWindows flag: Bool
     ) -> Bool {
-        topBar?.openFull()
+        switch OnboardingRules.reopenTarget(onboardingOpen: model.onboardingWindowOpen) {
+        case .onboarding: onboarding?.open()
+        case .fullView: topBar?.openFull()
+        }
         return false
     }
 }
 
 /// The custom top bar (an AppKit NSPanel) is the main UI. SwiftUI owns the
 /// Settings window (M0) and the app menus (M1); both surface only while the
-/// app is `.regular`, i.e. while one of its windows is summoned.
+/// app is `.regular`, i.e. while one of its windows is summoned. The M2 main
+/// window is AppKit (`MainWindowController`), not a scene.
 struct KlornApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 

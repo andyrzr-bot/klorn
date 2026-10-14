@@ -2621,9 +2621,242 @@ needs FA-9 and the admin guidance from F0.
     Unlink removes the rows and their attention items.
 - Exit: flags OFF, no user-visible change. Nothing is flipped.
 **C5 — mobile device bridge** (*outline*). Blocked on FA-8. Upload policy per
-P4.
-**C6 — desktop device bridge** (*outline*). EventKit in KlornMac. Upload
+P4. Uploads through C6's `/api/device-calendar` API (below), unchanged: a mobile
+client sends the same per-calendar snapshot with its own device-scoped key.
+**C6 — desktop device bridge.** Depends on: C2. EventKit in KlornMac. Upload
 policy per P4.
+- Landed 2026-10-02 (branch `feat/device-calendar-mac`, PR not yet opened).
+  Migration `20261007010000_linked_calendar_display_name` (the latest, after main's
+  `20261006010000_proactive_draft`): two nullable columns on `LinkedCalendarAccount`,
+  `displayName` TEXT and `deviceSnapshotAt` TIMESTAMP(3), no backfill
+  (`CalendarProvider.DEVICE` came with C1, so no enum change).
+  - Flag `DEVICE_CALENDAR_ENABLED` (OFF, lenient parse, read per request, in
+    `.env.example`). Off: the three routes answer Fastify's default 404
+    (`darkRouteGate`, byte-identical to an unregistered route, tested), no snapshot
+    is stored, and every reader hides DEVICE rows already stored (registered in
+    `CALENDAR_PROVIDER_ENABLED` as `deviceCalendarEnabled`; the flag-off `where` of
+    every reader now carries `provider: { notIn: [..., "DEVICE"] }`). The prefix is
+    `/api/device-calendar`, not `/api/calendar/device-sources`: main's
+    `GET /api/calendar/:id` would answer that path with a 401, so a dark sub-route
+    there would not look unregistered. Independent of `LINKED_CALENDAR_SYNC_ENABLED`;
+    the dispatcher still answers DEVICE unsupported (the server fetches nothing).
+  - API (C5 reuses it). `GET /sources` -> `{ sources: [{ key, title, uploadedAt }] }`.
+    `PUT /sources/:key/window` with `{ windowStart, windowEnd, snapshotAt,
+    calendarTitle, events: [{ externalId, title, start, end, allDay, location?,
+    meetingLink?, status? }] }` -> `{ created, updated, removed, skipped, valveRefused }`
+    (plus `stale: true`, all counts 0, for a snapshot older than the last applied);
+    400 names the refused part and never echoes a value, 409 is a new calendar over
+    the source cap (`code: "device_source_cap"`) or a snapshot over a row cap
+    (`code: "device_row_cap"`, its own words), 413 a body over 2 MiB. `DELETE /sources/:key` -> `{ success: true }` or 404.
+  - Opt-in (P4). A source is a `LinkedCalendarAccount` with provider DEVICE, `email`
+    `device:<key>` (so the existing (userId, provider, email) unique is its upsert
+    key and no address can collide under the legacy (userId, email) one) and
+    `displayName` the calendar's title. The key is computed on the Mac: sha256 of the
+    device id and the EventKit calendar identifier; the server accepts exactly 64
+    lowercase hex characters, so a raw identifier is refused. The first PUT creates
+    the source (at most 50 per user, new ones only); DELETE removes the source, its
+    rows and their attention items through `unlinkCalendarAccount(..., "DEVICE")`.
+    No other path creates a DEVICE row.
+  - Boundary (`pim/device-calendar/device-snapshot.ts`, named constants). Window at
+    most 62 days, starting no earlier than now - 9 days (the Mac's 7 plus two: see
+    round 3) and ending no later than now + 93; times must carry Z or an offset;
+    `snapshotAt` no later than now + 1 day and no earlier than now - 9 days. An event longer than 31 days (`DEVICE_EVENT_MAX_SPAN_DAYS`) is dropped and
+    counted, so no row ends far past a window (a year-9999 end cannot be stored). At most 500 events; title and location 500
+    code points, external id 512, calendar title 200, meeting link 2048, then
+    `safeMeetingLink`. An all-day event is two dates (`YYYY-MM-DD`, end exclusive)
+    stored at UTC midnight, as C4 and C7 store them; a timed one two instants stored
+    as UTC. Cancelled events, events outside the window and a repeated external id
+    are dropped and counted (`skipped`); a malformed time refuses the snapshot. NUL
+    (which Postgres text cannot hold, so one invitation would fail every upload) is
+    stripped from every string. No description field exists; unknown fields are
+    dropped by the schema.
+  - Reconcile (`device-ingest.ts`), one interactive transaction. The source upsert
+    takes the source row's lock, so two snapshots of one calendar never interleave.
+    Rows are matched by external id wherever they lie (an event moved into the
+    window updates its row), created in one `createMany` (`createLinkedEventRows`,
+    identity from `linkedEventSource`), updated only when a field changed. Rows of
+    THAT source inside the window (the snapshot's overlap rule) that the snapshot
+    lacks are removed and their open or snoozed attention items resolved, through
+    C3's valve (`isOverDeletionValve`: more than half of the window's rows, when over
+    5); a refusal keeps every row, still applies creates and updates, and warns and
+    reports to Sentry once per source per process. Retention: rows of the source that
+    ended more than 9 days ago (`DEVICE_ROW_RETENTION_DAYS`, the oldest a window may
+    reach) are removed in the same transaction, outside the valve, so the server keeps
+    no more of a device calendar than the device still shows.
+  - Auth and limits. `requireAuth` (a live Device row for the bearer token) runs
+    `onRequest`, before the body is read; every query is scoped to the token's user.
+    Rate limits as hooks in a fixed order: 120 per 10 minutes per device session
+    (sha256 of the bearer token) before authentication, 240 per 10 minutes per user
+    after it (without a token the key is the Cloudflare or socket address, never
+    `request.ip`). PUT is Pro-gated (`requireEntitled`, also before the body); GET and
+    DELETE are not, so a downgraded user can always see and remove what was uploaded.
+  - Readers. Every C7 reader keys on `sourceAccountId`, so a DEVICE row is read-only,
+    wrapped as untrusted on LLM paths and title-free in a conflict
+    (`calendar-device-read.test.ts`). `sourceLabel` on a DEVICE row is the calendar's
+    title, never the `device:` key (`calendar-source-label.ts`).
+  - Mac (`DeviceCalendarBridge.swift`, `DeviceCalendarSnapshot.swift`,
+    `DeviceCalendarSection.swift`). Preferences shows a "Device calendars" section
+    only when `GET /sources` answers 200 (re-asked each time Preferences opens; the
+    default 404 hides it; any other failure is asked again every 5 minutes). The master switch "Upload device calendars" is the only
+    place that asks macOS (`requestFullAccessToEvents`, macOS 14); nothing touches
+    EventKit before it. Denied or restricted: a short explanation and a button to
+    System Settings › Privacy & Security › Calendars. Granted: every EventKit calendar
+    with its own switch, all off. A calendar is uploaded when switched on, on
+    `EKEventStoreChanged` (5 s debounce), at launch and every 15 minutes; an unchanged
+    snapshot is skipped for up to 6 hours. One pass at a time. Window: start of today
+    - 7 days to + 31 days; EventKit is asked one day wider on each side and the
+    builder keeps what overlaps the window as the server reads it (east of UTC the
+    all-day day before the local window overlaps it in UTC). Recurrence: EventKit
+    expands occurrences in `predicateForEvents`; a recurring or detached occurrence is
+    keyed by its identity plus `occurrenceDate`, so a moved occurrence keeps its id.
+    External ids are sha256 of `calendarItemExternalIdentifier` (else
+    `calendarItemIdentifier`); notes and attendees never leave the Mac. Declined
+    events are skipped: EventKit exposes `EKParticipant.isCurrentUser` and
+    `participantStatus`. Over 500 events, the earliest are kept and the window ends at
+    the first one left out, so the snapshot stays complete. Switching a calendar off
+    sends DELETE, queued behind any upload in flight so a late PUT cannot recreate it
+    (passes run in tasks of their own, never cancelled mid-request); a removal that
+    fails (offline, or a 404 while `GET /sources` does not answer 200) is kept and
+    retried at every launch and pass, even with uploading off, so the rows cannot come
+    back with the flag. A calendar that leaves the Mac pauses (round 2, below).
+    Signing out ends the opt-in on that Mac (another account must opt in itself) and
+    owes a DELETE per source switched on, sent with the session token read before the
+    Keychain is cleared and kept for that user until it succeeds. Dates use the
+    autoupdating calendar and zone, so a Mac that travels reads all-day dates in its
+    new zone. Device id: the hardware UUID, else a random one kept in the defaults.
+    Info.plist gains `NSCalendarsFullAccessUsageDescription` and
+    `NSCalendarsUsageDescription`, localised in 7 `InfoPlist.strings` copied into the
+    main bundle by `make-app.sh`; `Klorn.entitlements` grants the hardened runtime
+    `com.apple.security.personal-information.calendars`, and the Developer ID signing
+    step in `desktop-release.yml` now passes it (without it a notarized build is
+    refused calendar access). 10 strings in all 7 `.lproj` catalogues (`%d` for the
+    count).
+  - Tests. API: snapshot boundary, ingest against a fake table that applies the
+    `where` keys, sources, routes (dark 404 byte-identical, auth, 400/409/413, unknown
+    fields dropped, both rate limits), DEVICE through the read path, label, migration,
+    and the guards (writers, readers, provider-name branching, kill-switch
+    exemptions). Mutations, each killed: DELETE keeping the rows, removal widened past
+    DEVICE, candidates or deletion not scoped to the source, valve removed, dark gate
+    removed, DEVICE not registered, `safeMeetingLink` bypassed, candidates not scoped
+    to the user (survived the first run; a test was added), cap counting other users,
+    the route ignoring the token's user; after the review, the Pro gate moved after the
+    body, NUL kept, expired rows kept, the limiter keyed on `request.ip`. Mac self-check: window and query range, key
+    and id hashing, all-day in Seoul and Los Angeles, UTC instants, recurrence and a
+    moved occurrence, declined/cancelled/repeated, the 500 cut, clamping, links, the
+    wire's fields, access states, the 404 rule, defaults all off, sign-out reset, the
+    one access call site, the usage strings in 7 languages and the entitlement.
+    Mutations, each killed: switches default on, access asked at launch, all-day end
+    not walked back, occurrence ignored, declined sent, no device id in the key,
+    unsafe link, the 404 rule, the window not cut. Review (code and security, 2026-10-02): no
+    critical finding; fixed: removals owed while uploading is off or at sign-out, a
+    failed probe never retried, a switch-off racing an upload in flight, a returning
+    calendar removed by a stale removal, the zone going stale after travel, a
+    duplicate calendar id trapping, the Pro gate after the body, NUL, the limiter's
+    address, retention. Not fixed: (9) below.
+  - Known limits. (1) Not run on a real Mac against real calendars: the permission
+    prompt (and the entitlement in a notarized build), EventKit's all-day `endDate`
+    and `occurrenceDate` conventions, the stability of
+    `calendarItemExternalIdentifier`, and the System Settings link are unverified.
+    (2) A source whose Mac stops uploading (app deleted, Mac wiped, left offline)
+    keeps its rows until the hourly expiry removes it 14 days after its last snapshot;
+    there is no web control, and until then it counts toward the 50-source cap. (3) The same calendar on two
+    Macs is two sources; their rows collapse at read time only when their hashed ids
+    match. A calendar that is also linked as ICLOUD or GOOGLE shows twice
+    (cross-provider dedupe is C7's open decision). (4) Meeting links come from the
+    event's URL field or a location that is a URL; links inside notes are not
+    extracted. (5) The valve also refuses a real mass deletion (more than half of the
+    window, over 5 rows); those rows stay until they leave the window. (6) Rows store
+    no transparency (C7's limit (2)); a declined invitation is skipped only when
+    EventKit marks the user's participant as the current user. (7) An older
+    snapshot that arrives after a newer one wins until the next upload (the Mac sends
+    one at a time; the 15-minute pass repairs it). (8) Every ingest test mocks Prisma:
+    `createMany` with `skipDuplicates`, the upsert's row lock and the query cost were
+    not run against Postgres, and neither were the row-cap counts nor the expiry
+    query. (9) Review, not fixed: a snapshot changing all 500 events runs 500
+    sequential `updateMany` in one transaction (bounded by the rate limits; a single
+    `UPDATE ... FROM unnest(...)` needs a real-Postgres check first); the 50-source cap
+    is checked outside the transaction, so concurrent first uploads can pass it once;
+    the source key has no per-account salt, so two accounts on one Mac share keys
+    (visible only to an operator); a source the expiry reads as stale and a snapshot
+    refreshes in the same instant is removed and re-created on the Mac's next pass. (10) The Mac change reaches users only with a desktop
+    release; until then nothing uploads, and the section stays hidden while the flag
+    is off.
+  - Before the flip (founder). (a) Apply the migration (additive; nothing to
+    preflight). (b) Ship a desktop release containing C6, signed with
+    `Klorn.entitlements`, and on a real Mac: turning the switch on shows one macOS
+    prompt with the localised text; denying shows the explanation and the button opens
+    the Calendars pane; granting lists the calendars, all off; switching one on puts its
+    events in `/api/calendar` with `readOnly` and the calendar title as `sourceLabel`;
+    an edit or deletion on the Mac reaches the server within the debounce; a recurring
+    series with one moved and one deleted occurrence, and an all-day event read with
+    the Mac set to a zone west and one east of UTC, come out right; switching the
+    calendar off removes its rows, the master switch removes all; a declined
+    invitation is absent. (c) Then turn `DEVICE_CALENDAR_ENABLED` on. LLM paths
+    (`list_events`, conflicts) see the rows only with `UNIFIED_CALENDAR_READ_ENABLED`
+    too (C7's own flip).
+  - Rollback. Flag never on: revert. Ever on: set the flag OFF (rows hidden at once),
+    `DELETE FROM "AttentionItem" WHERE "source" = 'CALENDAR_EVENT' AND "sourceId" IN
+    (SELECT "id" FROM "CalendarEvent" WHERE "provider" = 'DEVICE')`, `DELETE FROM
+    "CalendarEvent" WHERE "provider" = 'DEVICE'`, `DELETE FROM "LinkedCalendarAccount"
+    WHERE "provider" = 'DEVICE'`, then revert. The columns are additive: drop them
+    only after.
+  - Review round 2 (2026-10-02), each test-first. Server: row caps, 1 000 per source
+    (`DEVICE_MAX_ROWS_PER_SOURCE`) and 10 000 per user (`DEVICE_MAX_ROWS_PER_USER`),
+    counted after the writes inside the transaction; over either, the snapshot is
+    refused with 409 and rolled back whole (a flood of 1 ms windows stops at the cap,
+    tested). A stale snapshot (older `snapshotAt` than the source's `deviceSnapshotAt`)
+    is ignored the same way; the source upsert takes the row lock first, so the check
+    sees the newest applied one. Retention and the window are one span: the Mac sends
+    7 days back from local midnight, the server accepts a window and keeps rows 9 days
+    back (7 plus two, round 3), so an event deleted on the Mac lingers at most two
+    days past its window. Hourly, while the flag is on, the scheduler removes every DEVICE source
+    no snapshot refreshed for 14 days (`DEVICE_SOURCE_EXPIRY_DAYS`, 200 per sweep),
+    through the same unlink; a running Mac re-sends an unchanged calendar every 6
+    hours, so a live source never expires. Mac: EventKit reads, the snapshot build
+    and its JSON encoding run on an actor (`DeviceCalendarReader`), off the main
+    thread; the bridge keeps UI state only. Every network job (upload pass, removal,
+    launch reconcile, sign-out removal) runs through one serial queue, so a DELETE is
+    never overtaken by a PUT that recreates the source. A calendar missing from the
+    Mac pauses; only a switch-off deletes, and the server's expiry covers one that
+    never returns. At launch the Mac compares `GET /sources` with the sources IT
+    uploaded for the signed-in user (kept per user in the defaults; another Mac's
+    sources are never touched) and deletes those no longer switched on. Owed removals
+    are kept per user across sign-out until a DELETE succeeds and retried at that
+    user's next sign-in here. An all-day recurring occurrence is keyed by its floating
+    date, so a time-zone change keeps its id; the refresh loop holds the bridge weakly
+    and ends with it; the content digest is encoded with sorted keys (JSONEncoder's
+    key order is not stable, which would have re-sent unchanged calendars). Self-check
+    cases for a 25-hour day (Los Angeles, 2026-11-01) and a 23-hour day (2027-03-14),
+    timed and all-day. The self-check now drives the real bridge against a fake store
+    and a stubbed URLSession (its runner keeps the main run loop turning instead of
+    blocking on a semaphore). `make-app.sh` no longer sets `CFBundleLocalizations` or
+    `CFBundleDevelopmentRegion`: the `.lproj` folders alone carry the usage string
+    (CFBundle lists all 7 localisations from them on the built bundle; the prompt in
+    each language on a real Mac is unverified). Mutations, each killed: row-cap check
+    removed, user cap ignored, span unbounded, stale check removed, snapshot time not
+    recorded, snapshot time unbounded, expiry without unlink, expiry without the
+    provider filter, expiry ungated; on the Mac: absence deleting, sign-out owing
+    nothing, a failed removal dropped, the launch reconcile skipped, the sign-out
+    removal not queued, the reconcile touching another Mac's sources.
+  - Review round 3 (2026-10-03), test-first. (1) An upload that succeeds no longer
+    clears an owed removal (`uploadedSource`): a calendar switched off while its PUT
+    was in flight lost its DELETE until the next launch or the expiry. Only a
+    confirmed DELETE or switching the calendar back on clears one (scenario: a 400 ms
+    PUT, switched off meanwhile, DELETE sent after it). (2) The lag had no margin: at
+    23:59 on a 25-hour fall-back day the Mac's window starts 8 days and 59 minutes
+    back, over a limit of exactly 8 x 24 h, so the last hour of each day answered 400
+    for about 8 days. `DEVICE_WINDOW_MAX_LAG_DAYS` is now the Mac's 7 days plus 2 (the
+    local-midnight day, that hour, a slow clock), and the retention follows it
+    (tested at the fall-back boundary and one millisecond past the limit). (3) The
+    expiry sweep handles each source in its own try/catch (one failure is reported
+    and left for the next sweep); its comment no longer claims an index (none serves
+    the read; the table holds one row per linked calendar). The two 409s carry
+    machine codes and the row cap its own words; the Mac reads the code from the PUT
+    reply and shows `deviceCalendars.error.rows` (7 languages) for it. A `stale: true`
+    reply is not recorded as a send: nothing is remembered, and the next pass reads
+    the calendar again and retries.
+- Exit: flag OFF; no user-visible change on the server, and the Mac section stays
+  hidden until the flag is on. Nothing is flipped.
 **C7 — one calendar read path.** Depends on: C2. `list_events`, briefing and
 conflict checks read rows across providers. Each connector joins as it lands; C7
 does not wait for them.
@@ -2798,11 +3031,424 @@ does not wait for them.
 
 ### Workstream D — drive
 
-**D1 — object storage foundation** (*outline*). Depends on: FA-7. S3-compatible
-client, per-user key prefix, size caps, signed downloads. It may start early:
-E4 needs it before workstream D's turn comes.
-**D2 — drive model and provider seam** (*outline*). A metadata index of files
-across sources.
+**D1 — object storage foundation.** Depends on: FA-7 for the flip, not for the
+merge. Landed 2026-10-03 (branch `feat/object-storage`, PR not yet opened), flag
+OFF. Two independent reviews (code and security) came back the same day; their
+findings are folded into this entry. It started early because E4 needs it before
+workstream D's turn comes.
+- Context: nothing in the repo stored a file. `mail/email-attachments.ts` keeps
+  only extracted text (at most 24,000 characters per attachment) in Postgres.
+  D3, D4 and E4 need bytes somewhere, and L15 and P6 say where: Cloudflare R2,
+  through the S3 API so the vendor stays replaceable.
+- Tasks: a storage interface, one S3-compatible implementation, server-minted
+  keys with a per-user prefix, size and expiry limits, signed downloads, purge on
+  account deletion, a health check, and an in-memory fake with a contract suite.
+  No route, no schema change, no UI.
+- Landed (`packages/api/src/storage/`):
+  - Flag `OBJECT_STORAGE_ENABLED` (`objectStorageEnabled()` in `config.ts`,
+    lenient parse, read per call). Off: `storage/runtime.ts` never loads the S3
+    implementation or `aws4fetch` (a dynamic import, proven by
+    `storage-lazy-load.test.ts`), builds no client, reads the value of no
+    `OBJECT_STORAGE_*` variable and opens no connection, and the purge skips
+    storage (tested with mutations that remove each check). Everything outside
+    `storage/` reaches a store through `runtime.ts` (`getUserStorage()`,
+    `getObjectStore()`, both async and null while off). **D3, D4 and E4 stay on
+    `getUserStorage()`**: the raw store has no notion of who owns a key.
+  - Two layers. `ObjectStore` (`object-store.ts`) is the vendor seam:
+    `putObject(key, body, {contentType, size})`, `getObject(key)` (a stream, or
+    null), `headObject`, `deleteObject`, `deleteByPrefix(prefix, {signal})` (one
+    page per call, answers `{deleted, more}`), `signedDownloadUrl(key,
+    {expiresInSeconds, downloadName})` and `ping()`. `putObject` is for a fresh
+    key only. `UserStorage` (`user-storage.ts`) is what D3,
+    D4 and E4 call: every function takes the `userId`, an upload gets its key
+    minted there, and any other call refuses a key outside that user's prefix
+    before the store is touched (`key-not-owned`). The `userId` must come from
+    the session.
+  - Keys (`keys.ts`): `u/<userId>/<purpose>/<uuid>`. The purpose is an enum
+    (`drive`, `attachment`); the last segment is `randomUUID()`. Nothing a
+    client sends is a path segment: a display file name is metadata for a later
+    step's table, and reaches storage only as a signed query value. The grammar
+    is checked by the store itself on every call, so `..`, `%2F`, a query string
+    or a second bucket cannot ride in on a key. A user prefix always ends with
+    the slash, so user `abc` never covers `abcd`.
+  - Limits (`limits.ts`), each a named constant:
+    - `MAX_OBJECT_BYTES` 25 MiB, the only size the plan has decided (L14). It is
+      checked against the declared size before the upload and counted on the
+      stream during it (`guardBytes`): a stream that passes the cap, or does not
+      match its declared size, is aborted and nothing is stored. The chunk that
+      completes the declared size is held back until the stream has ended, so a
+      stream that delivers its declared size and then more never hands the
+      bucket a complete body. If an upload fails after a request went out, the
+      store also deletes the key (best effort): a bucket can commit an upload
+      whose answer was lost. A caller may pass a lower `maxBytes`; nothing
+      raises the cap. The drive's own number is
+      a flip-time decision (P3) and changes this constant in D3.
+    - Content type: normalised to `type/subtype`, and each caller passes a
+      `contentTypePolicy` (required, no default; `allowContentTypes`,
+      `denyContentTypes`, `allowAnyContentType`). D1 decides no policy.
+    - `MAX_SIGNED_URL_EXPIRY_SECONDS` 300. A longer request is refused, not
+      shortened.
+    - A signed download always carries `response-content-disposition:
+      attachment` with a cleaned name (`download-name.ts`: last path component
+      only, no quote, line break, control or bidi character, NFC, 120
+      characters, an ASCII fallback plus `filename*=UTF-8''…` for Korean names)
+      and `response-content-type: application/octet-stream`. A stored HTML or
+      SVG file therefore downloads; it never renders on the storage origin. An
+      inline preview is a separate decision for D3.
+    - The same two headers are also stored on the object at PUT
+      (`Content-Type: application/octet-stream`, `Content-Disposition:
+      attachment`), so a download is safe even from a vendor that ignores the
+      signed overrides. The caller's content type is kept as signed user
+      metadata (`x-amz-meta-content-type`, already normalised) and is what
+      `headObject` and `getObject` report.
+  - The S3 implementation (`s3-store.ts`): plain REST calls over Node's `fetch`,
+    signed with SigV4. Path-style addressing by default (R2, MinIO, Supabase
+    Storage, including an endpoint with a base path); virtual-hosted style when
+    `OBJECT_STORAGE_FORCE_PATH_STYLE=false` (AWS S3). Uploads are streamed with
+    a `Content-Length` and an unsigned payload, so TLS carries the integrity and
+    the endpoint must be https outside development and tests. Redirects are not
+    followed. Nothing is retried: a streamed body cannot be replayed and the
+    other calls are idempotent. `StorageError.retryable` tells the caller when a
+    second try may pass (no answer, 5xx, 429) and when it will not (4xx,
+    configuration, a limit). Timeouts are named (15 s for head, delete and
+    list; 120 s for one upload or download). A response body is never read
+    without a byte cap (4 MiB for a list, 16 KiB of an error body), and a body
+    that stalls becomes a `StorageError`. Host, bucket and credentials come
+    only from the operator's environment, so the SSRF pinning B4 needed for a
+    user-supplied host does not apply here.
+  - Deletion. `deleteByPrefix` accepts only `u/<userId>/` or
+    `u/<userId>/<purpose>/`, lists one page (at most 1,000 keys) and deletes
+    those keys one by one, eight at a time.
+    - It deletes every key that starts with the prefix, including one this code
+      did not mint (an older grammar, a purpose added and rolled back, a
+      console-made folder). Such keys are counted in one `[STORAGE]` warning,
+      never named. A stray key therefore cannot block a user's deletion.
+    - Each key is percent-encoded and the resulting URL is checked: decoded, its
+      path must be exactly the bucket path plus the key (`s3-address.ts`). A key
+      with a `..` or `.` segment fails that check, because a URL parser would
+      rewrite it onto another object. Such keys are left, and the call throws
+      `delete-incomplete` after deleting the rest.
+    - If the listing names any key outside the prefix, nothing is deleted.
+    - It stops at the first batch with a failed delete and throws
+      `delete-incomplete`. Going on against a failing bucket would cost one
+      15 s timeout per batch, about half an hour for a full page.
+    - `UserStorage.purgeUser` repeats pages until the prefix is empty, within
+      `PURGE_DEADLINE_MS` (45 s) and `PURGE_MAX_PAGES` (1,000). The deadline is
+      an `AbortSignal` handed to every page: at the deadline nothing new is
+      sent and a request in flight is dropped. The error is retryable and the
+      progress is kept.
+  - Purge wiring (`user-deletion.ts`). Both deletion paths now live there:
+    `deleteUserAndAllData` (the account goes: `DELETE /api/auth/account` and the
+    admin route) and `purgeAllUserData` (rows go, the account stays:
+    `DELETE /api/user/me/data`, moved out of `index.ts` unchanged). Each calls
+    `purgeUserObjects(userId)` first and outside the database transaction.
+    **Decision: the purge blocks on storage.** If the bucket is unreachable,
+    misconfigured or keeps an object, the call throws, no row is deleted, and
+    the request answers 500 through the existing error handler (logged and sent
+    to Sentry). The blocked purge is also reported on its own, tagged
+    `scope: storage.purge` with `storageCode` and `retryable`, so an alert can
+    be built on it (runbook below). The reason: the user id is the only handle on the objects. Once
+    the rows are gone, files left behind could never be found, and the request
+    would have answered "deleted" while they still existed. Deleting is
+    idempotent, so the person retries. The price: while the flag is on, a
+    storage outage also blocks account deletion.
+  - Health (`checkObjectStorageAtStartup`, called from `index.ts` after
+    `listen`). On: it validates the variables and lists one key, which needs
+    exactly the permission the purge needs. A bad config is reported by variable
+    NAME, a failing bucket by HTTP status and the vendor's error code
+    (`[STORAGE]` log lines and Sentry, `scope: storage.startup`). **It does not
+    stop the boot**: storage is auxiliary and mail must keep serving. Every
+    storage call then fails closed with `misconfigured` until it is fixed. Off:
+    it only checks whether the endpoint, bucket or key variables are set, and
+    warns by name if they are, because a purge would then skip objects that may
+    exist. No value is logged anywhere: the success line says only that the
+    check passed (an R2 host contains the account id), the vendor's error body
+    is never printed (only its `<Code>`), and the store keeps its credentials in
+    `#private` fields so logging the object prints nothing.
+  - Tests. `MemoryObjectStore` (`memory-store.ts`) implements the same interface
+    for D3, D4 and E4. One contract suite
+    (`__tests__/helpers/object-store-contract.ts`) runs against the fake,
+    against the S3 implementation over real HTTP to a local stand-in
+    (`fake-s3-server.ts`), and against a real bucket when
+    `OBJECT_STORAGE_TEST_*` is set (`storage-s3-real-bucket.test.ts`, skipped
+    by default with the variable names in the skip message). The stand-in
+    verifies every request with an independent SigV4 implementation
+    (`sigv4-reference.ts`) that is itself pinned to three signatures AWS
+    publishes in the S3 documentation.
+- Dependency decision: `aws4fetch` 1.0.20 (MIT, pinned exactly), measured
+  2026-10-03 with a clean `npm install` of each option:
+
+  | | `@aws-sdk/client-s3` + `@aws-sdk/s3-request-presigner` 3.1146.0 | `aws4fetch` 1.0.20 |
+  |---|---|---|
+  | Packages installed | 27 | 1 (no dependencies) |
+  | Size on disk | 18.7 MB, 3,354 files | 84 kB, 10 files (one 11 kB module) |
+  | Last release | 2026-10-02, near-daily | 2024-08-28 |
+  | Streaming upload | yes; multipart needs a third package | yes: it signs, Node's `fetch` streams with `duplex: "half"` |
+  | Presigned GET | yes | yes (`signQuery`) |
+  | `npm audit` | 0 | 0 |
+
+  `aws4fetch` covers the whole interface, so the smaller one wins. What it
+  costs: the six REST calls and two small XML reads are our code (`s3-store.ts`,
+  `s3-xml.ts`), there is no multipart upload (one PUT holds 5 GB on S3, far
+  above the cap), and the library is slow-moving. It sits behind `ObjectStore`,
+  so replacing it touches one file. A hand-written signer was rejected: with no
+  bucket yet it could not be checked against a real vendor.
+  `pnpm audit --prod`: no known vulnerabilities.
+- Environment (`packages/api/.env.example`), all read only while the flag is on:
+  `OBJECT_STORAGE_ENABLED`, `OBJECT_STORAGE_ENDPOINT`, `OBJECT_STORAGE_REGION`
+  (`auto` on R2), `OBJECT_STORAGE_BUCKET`, `OBJECT_STORAGE_ACCESS_KEY_ID`,
+  `OBJECT_STORAGE_SECRET_ACCESS_KEY`, `OBJECT_STORAGE_FORCE_PATH_STYLE`
+  (optional, default true).
+- What FA-7 must provide: a Cloudflare R2 account; one private bucket for
+  production (and, ideally, a second one for the contract run); an R2 API token
+  with **Object Read & Write limited to that bucket**, nothing account-wide; the
+  S3 endpoint `https://<account id>.r2.cloudflarestorage.com`. No CORS rule and
+  no public access: a browser only ever follows a signed URL as a plain
+  download.
+- Not verified, and what closes each gap:
+  - No request has reached a real R2 bucket. Before the flip, run
+    `storage-s3-real-bucket.test.ts` against a test bucket. It covers what the
+    stand-in cannot: that R2 accepts the unsigned-payload streamed PUT, honours
+    `response-content-disposition` and `response-content-type` on a signed URL,
+    canonicalises the `filename*` value the same way, keeps `x-amz-meta-*` and
+    a stored `Content-Disposition`, and lets a bucket-scoped token list.
+  - A HEAD answer has no body, so `headObject` cannot tell a missing object from
+    a missing bucket. `ping` and every GET can.
+- Runbook: an account deletion is blocked by storage (flag on).
+  - What the person sees: "delete my account" or "delete my data" fails with a
+    500. Nothing was deleted from the database, and whatever objects were
+    already removed stay removed. Trying again is safe and carries on.
+  - What to check: Sentry events tagged `scope: storage.purge`, and the
+    `[STORAGE] purge blocked (<code>)` log line. The code says where to look:
+    - `misconfigured`: the line names the wrong `OBJECT_STORAGE_*` variables.
+    - `access-denied`: the token was revoked or lost object read and write on
+      the bucket.
+    - `bucket-not-found`: the bucket or the endpoint is wrong.
+    - `unreachable`, or `upstream` with a 5xx or 429: the vendor is down or
+      throttling (`retryable: true`). Check its status page.
+    - `delete-incomplete`, retryable: the 45 s deadline or a failed batch. A
+      retry continues. Not retryable: the prefix holds a key that cannot be
+      addressed over HTTP (a `..` or `.` segment).
+  - How to unblock: fix the variable or the token and have the person retry;
+    for an outage, retry when the vendor is back; for an unaddressable key,
+    delete `u/<userId>/` in the vendor's console, then retry.
+  - Last resort for a deletion that cannot wait: delete `u/<userId>/` in the
+    vendor's console yourself, turn the flag off, complete the deletion, turn
+    the flag back on. While it is off every other deletion skips storage too,
+    so keep that window short and check the startup warning is gone afterwards.
+- Before the flip:
+  - Do not turn the flag off again once objects exist: the purge would skip
+    them. Startup warns when the flag is off and a bucket is still configured.
+    Kill switches belong to the features built on top (D3, E4).
+- Left to D3, on purpose:
+  - A durable pending-purge record, so a blocked deletion is retried by the
+    system and not by the person. It needs a table, and D1 changes no schema.
+  - The upload race: an upload in flight while the account is being deleted can
+    land after the object purge and orphan an object. D3 needs a check at
+    upload time or a sweep over `u/` prefixes with no user row.
+  - The purge deletes one object per request. D3 revisits this (a batch delete
+    or a background job) once the drive's real volumes are known.
+  - D3 calls `getUserStorage()` and never the raw store.
+**D2 — drive model and provider seam.** Depends on: nothing. A metadata index
+of files across sources: one table, one writer, one read path, a provider seam
+with no connector behind it yet, and two read-only routes.
+- Landed 2026-10-03, flag OFF (branch `feat/drive-model`, PR not yet opened).
+  Flag: `DRIVE_ENABLED`, default OFF, read at request time. While off, both
+  routes answer Fastify's default 404 before authentication (`darkRouteGate`)
+  and every reader hides every row. Nothing writes a row in D2, so with the flag
+  on the list is still empty.
+- Model. Migration `20261009010000_drive_file`, additive only: one enum, one
+  table, `SET LOCAL lock_timeout = '5s'`. Its SQL is pinned by
+  `drive-file-migration.test.ts`, which also requires it to sort after
+  `20261007010000_linked_calendar_display_name` (the latest when it was
+  written), not directly after it.
+  - Enum `DriveProvider`: KLORN (D3, D7), GOOGLE (D5), ONEDRIVE (D6). There is
+    no DEVICE value: D7 imports a device's files into the Klorn drive, so those
+    rows are KLORN, and Postgres cannot remove an enum value once it exists.
+  - Table `DriveFile`, metadata only: `userId`, `provider`, `sourceKey`,
+    `externalId`, `name`, `mimeType`, `isFolder`, `sizeBytes`,
+    `parentExternalId`, `modifiedAt`, `webUrl`, `storageKey`, `etag`,
+    `trashed`, timestamps. No content column, no summary text, and no summary
+    state: D4 keeps that in a table of its own. The test pins the column list.
+  - Identity: unique (userId, provider, sourceKey, externalId). `sourceKey` is
+    `'klorn'` for the user's Klorn drive and the connector's account id for
+    GOOGLE and ONEDRIVE. `provider` and `sourceKey` have no default: the table
+    is new, so no previous release writes it and the compiler makes every
+    writer state both. `externalId` is required (a Klorn file gets the id D3
+    mints), so every row is addressable. The Prisma name of the unique is
+    `driveFileIdentity`, because the generated name is the one `CalendarEvent`
+    already has and the calendar guard greps for it.
+  - `parentExternalId` NULL means "no known parent row". That is the source's
+    root, OR a parent that was never indexed: a file picked through the Google
+    Picker under `drive.file` (P5) reports a parent the user never picked. It
+    does not mean "at the root", so a root listing for an external provider is
+    NOT `parentExternalId IS NULL`. D2 builds no tree API.
+  - `etag`: the source's own version of the file, opaque (a provider etag or
+    version, or a content fingerprint). D4, D5 and D6 compare it to see whether
+    a file changed. Never interpreted, never on the wire.
+  - Read-only is not a column. It follows from the provider: a KLORN file is
+    writable, every external file is read-only (V4). The reader derives it.
+  - Indexes: (userId, modifiedAt, id) for the list and the search, which read
+    one user's rows newest first, keyset-paged on (modifiedAt, id); and
+    (userId, provider, modifiedAt, id) for the same list narrowed to one
+    provider. On a scratch Postgres 16 with sequential scans disabled each plan
+    is an `Index Scan Backward` on its index.
+  - Three CHECK constraints Prisma cannot declare: `webUrl` is NULL or starts
+    with `https://`; `storageKey` is NULL unless the provider is KLORN;
+    `sizeBytes` is NULL or not negative. The drift check does not see them; the
+    migration test pins them.
+  - Row-level security, in the form every per-user table has
+    (`20260806033517_add_user_identity`): ENABLE, never FORCE, a
+    `DriveFile_tenant_isolation` policy on `app.current_user_id` and a
+    `DriveFile_system_bypass` policy on `app.bypass_rls`. The test compares the
+    three statements with that migration's. Inert while the app connects as a
+    role with BYPASSRLS (`../rls-rollout.md`).
+  - `sizeBytes` is BIGINT (a drive file passes 2 GiB). `JSON.stringify` refuses
+    a BigInt, so no route returns a raw row: the read path selects its columns
+    and maps the size to a number.
+  - Rows cascade on user delete (foreign key, verified on Postgres), and
+    `purgeUserData` deletes them explicitly, since it keeps the user row.
+- Decisions.
+  - Accounts: no account table in D2, and no reuse of `LinkedInboxAccount`,
+    `LinkedCalendarAccount` or `UserToken`. Those rows carry a mail or calendar
+    grant; a Drive grant is a different scope on the same identity (P5), and
+    unlinking a drive must not unlink an inbox. Their enums are per service, and
+    `UserToken`'s unique (userId, provider) is what the primary mail path rests
+    on. A `LinkedDriveAccount` table is the right shape, but with no connector
+    it would be a credential store with no writer, no reader and no test, and
+    its columns depend on D5's grant flow, which V2 still blocks. So D5 or D6,
+    whichever lands first, adds `LinkedDriveAccount` together with a nullable
+    `sourceAccountId` foreign key on `DriveFile` (ON DELETE CASCADE), as C2 did
+    for `CalendarEvent`, and the key-rotation sweep in the same PR. `sourceKey`
+    already holds that account's id, so no row is rewritten. This puts D5 and D6
+    on the shared-files row for `schema.prisma` (below).
+  - Parent, not path: Google Drive and Graph both report a parent id and
+    neither reports a stable path; a folder rename would rewrite the path of
+    every descendant; a name may contain `/`; and a path is many
+    attacker-written names joined into one unbounded string. A folder is a row
+    with `isFolder` true.
+  - Search: ILIKE through Prisma's `contains`, inside one user's rows, on the
+    name only. No pg_trgm: it needs an extension created in the migration,
+    whether its index helps a Korean name depends on the database's locale
+    (not measured), and one user's index is small. The text is composed (NFC, as
+    names are stored, so a name typed on a Mac and a search for it meet), capped
+    at 100 characters, and `%`, `_` and `\` are escaped, because Prisma sends
+    `contains` unescaped.
+- One writer: `drive/drive-rows.ts` (`klornDriveSource`, `connectedDriveSource`,
+  `driveRowData`, `upsertDriveFileRow`). The provider names live in
+  `drive/drive-providers.ts`, which imports nothing; a test pins them against
+  the Prisma enum.
+  - It cleans what a source reported before a row exists: the name loses
+    control characters and bidi overrides, is composed and capped at 500
+    characters; the link is kept only if it passes `safeHttpsLink` (https, no
+    credentials, at most 2048 characters) and never for a Klorn-held file; the
+    media type must be well formed; the size a whole non-negative number; the
+    etag a bounded string. A storage key on an external row is refused. A row
+    that cannot be stored is refused with the part at fault, never written
+    half-cleaned.
+  - An update is partial. A field the input leaves out is left as it is in the
+    row; a field it names is written, an explicit null included. A create needs
+    the name and the modified time and starts the rest from defaults. So a
+    rename cannot turn a folder into a file, move it, or bring it back from the
+    trash. The identity is never updated.
+  - `safeHttpsLink` is the rule `safeMeetingLink` always was, under a neutral
+    name in `safe-https-link.ts`; `pim/meeting-link.ts` aliases it, so meeting
+    links behave exactly as before.
+  - Nothing calls the writer yet.
+- Seam: `drive/providers/types.ts`, `dispatch.ts`, `unsupported.ts`, the shape
+  of `pim/calendar-providers`. `DriveProviderActions.connect(source)` answers a
+  `DriveProviderSession`, `null` (not connected) or `{ unsupported: true }`. A
+  session has exactly `list`, `search` and `getMetadata` (V4: no upload or
+  edit; a test fails if a method is added). It does not fetch a file's bytes:
+  D4 adds that method together with a streaming size check, since D4 is its
+  only caller. A reported file carries its `etag`. Every provider is the
+  unsupported stub in D2. A connector plugs in with two entries: its flag in
+  `DRIVE_PROVIDER_ENABLED` and its actions in the dispatcher's table; it is
+  served only while `DRIVE_ENABLED` and its own flag are both on.
+- Kill switch: `drive/drive-scope.ts`. `driveSourceScope()` is the `where`
+  fragment of every list and search, `isDriveRowVisible()` the check on a row
+  fetched by id. A row is visible only while `DRIVE_ENABLED` is on and its
+  provider's flag in `DRIVE_PROVIDER_ENABLED` answers exactly `true`. Unlike
+  the calendar's switch it fails closed: it lists the providers known to be on,
+  so a provider nobody registered is hidden. The registry ships empty.
+- Read path: `drive/drive-read.ts` (`listFiles`, `searchFiles`, `getFile`).
+  Every query names the user, composes the scope inside an `AND` (so a caller's
+  own provider filter cannot replace it), skips trashed rows, orders by
+  (modifiedAt, id) descending, and pages by keyset with a default of 50 and a
+  ceiling of 100 whatever is asked. The cursor is opaque and validated; a
+  forged one can only start elsewhere in the caller's own rows.
+- API, read-only (`routes/drive.ts`, types in `packages/contract/src/drive.ts`):
+  `GET /api/drive/files` (`q`, `provider`, `sourceKey`, `limit`, `cursor`) and
+  `GET /api/drive/files/:id`. Session-authenticated. Each is rate limited twice,
+  at 30 and 60 requests a minute: per client address before authentication, and
+  per user after it (`routes/rate-limit-hook.ts`). An unknown id, another
+  user's, a trashed file and a file of a disabled provider are one 404. No
+  storage key and no etag cross the wire. There is no upload, download or
+  delete route: those are D3.
+- Guards: `drive-file-guard.test.ts`. One writer; reads only in the read module
+  and the export; every list has the scope inside its `AND` and every by-id
+  read the visibility check; every read names the user and selects its
+  columns; an update writes only the changes; no raw SQL names the table. The
+  calendar guard exempts exactly the four drive files that name a `sourceKey`.
+- Untrusted text. A file name is written by whoever shared the file. No module
+  that holds drive rows imports the LLM today, and the guard fails for a new
+  one until it is listed: as not LLM-facing, or as LLM-facing with the pattern
+  that shows the name inside `wrapUntrusted`. D4 adds the first such entry.
+- Export: `GET /api/user/me/export` now carries `driveFiles`, every row the
+  user has (trashed and disabled-provider rows included, as calendar events
+  are), with the etag and without the storage key.
+- What plugs in, and what each step must do.
+  - D3 writes KLORN rows through `upsertDriveFileRow` with D1's object key as
+    `storageKey`, registers KLORN in `DRIVE_PROVIDER_ENABLED`, and adds the
+    upload, download and delete routes. It must delete a file's object before
+    its row, in `purgeUserData` too. Folder browsing in the Klorn drive is D3's:
+    it adds that query and its index.
+  - D4 keeps summary state and text in a table of its own, adds the byte fetch
+    to the seam with a streaming size check, compares `etag` to skip an
+    unchanged file, and is the first module the guard lists as LLM-facing.
+  - D5 and D6 implement `DriveProviderActions`, add `LinkedDriveAccount`, sync
+    metadata through `upsertDriveFileRow`, and register a flag each. Unlinking
+    deletes the account's rows. Two rules: a sync must verify that the
+    `sourceKey` it writes names an account of that user before it writes; and a
+    connector must never fetch a URL the provider supplied (a download link, a
+    thumbnail, a redirect) unless its host is on an allowlist of that
+    provider's own hosts.
+  - D7 writes KLORN rows (a device import lands in the Klorn drive). It needs a
+    trigram or prefix index on the name before the name search runs over many
+    rows.
+  - When the app role drops BYPASSRLS, the drive reads and the writer move to
+    `withTenant` (`db-tenant.ts`); until they do they would see no row.
+- Known limits.
+  - No connector, so no row and no data in the list.
+  - Name search only. A search reads one user's rows; that is bounded by the
+    rate limits and the page ceiling, not by an index.
+  - No tree API: no folder listing, and no root listing for an external source
+    (see `parentExternalId`).
+  - No row cap per source and no bound on the export: a connector sets its own
+    cap, as the device calendar did.
+  - `routes/device-calendar.ts` keeps its private copy of the hook that is now
+    `routes/rate-limit-hook.ts`.
+  - No user-facing noun and no copy in D2, so no vocabulary row. The first step
+    with UI adds it.
+- Verify: tests in eight files (migration, rows, scope, dispatch, read, routes,
+  guard, safe link), plus the `LIKE` cases in `fake-db.test.ts`. The fake
+  database's `startsWith` and `contains` now share one Postgres `LIKE` dialect
+  (backslash escapes) and are case-sensitive unless `mode` is insensitive; no
+  test that uses the fake changed its result.
+  Mutation checks: single-line changes to the drive modules (user scoping, the
+  kill switch, the page ceiling and tie-break, the search escape and cap, the
+  flag-off gate and its order, the writer's link and storage-key rules, the
+  partial update, both rate limits) and to the migration (each row-level
+  security statement, FORCE for ENABLE), each failing at least one test.
+  On a scratch Postgres 16 (not in the suite): `prisma migrate deploy`, the CI
+  drift check ("No difference detected"), each CHECK refusing a row, DEVICE
+  refused by the enum, the upsert's conflict target, a rename leaving a folder
+  a folder, the list order and paging across a five-row tie, the search with
+  `%`, `_`, `\` and a decomposed Korean query, an empty provider list as valid
+  SQL, a 5 GB size as a JSON number, the cascade on user delete, and the
+  policies: with a role that has no BYPASSRLS, no tenant set sees no row, a
+  tenant sees only its own, and the system setting sees all.
+- Rollback: revert the PR. The table and the enum can stay; nothing reads them.
 **D3 — Klorn drive** (*outline*). Depends on: D1, D2. Upload, list, download,
 delete. Upload is inherent here; V4 restricts external connectors, not
 Klorn-owned storage.
@@ -2865,7 +3511,8 @@ time, whatever the graph says. The later step rebases, reruns
 
 | File | Steps |
 |---|---|
-| `packages/api/prisma/schema.prisma` | A1, A2a, A2b, B2, C1, D2, E1, F |
+| `packages/api/prisma/schema.prisma` | A1, A2a, A2b, B2, C1, D2, D5, D6, E1, F |
+| `drive/drive-scope.ts`, `drive/drive-rows.ts`, `drive/providers/dispatch.ts`, `routes/drive.ts` | D3, D5, D6, D7 |
 | `packages/api/src/mcp/tool-gate.ts`, `mcp/write-call.ts`, `mcp/server.ts` | A2a, A2b, A4 |
 | `mail/providers/types.ts`, `dispatch.ts` | A4, B0, B0b, B1, B2, B3, E2 |
 | `mail/imap-connection.ts`, `mail/imap-sync.ts`, `mail/providers/imap.ts` | B1, B2, B3 |
@@ -2873,6 +3520,7 @@ time, whatever the graph says. The later step rebases, reruns
 | `mail/reply-headers.ts` | B0, B3 |
 | `pim/calendar.ts`, `pim/calendar-read.ts`, `routes/calendar.ts` | C3, C4, C5, C6, C7 |
 | `pim/calendar-sync.ts`, `pim/calendar-scope.ts`, `pim/calendar-rows.ts`, `pim/calendar-providers/types.ts`, `dispatch.ts` | C2, C3, C4, C5, C6, C7 |
+| `pim/device-calendar/*`, `routes/device-calendar.ts` | C5, C6 |
 | web locale files | every step with UI copy |
 
 ## Founder actions
@@ -2885,7 +3533,7 @@ time, whatever the graph says. The later step rebases, reruns
 | FA-4 | Add the MX record at Namecheap once L4 is confirmed and the address inventory (E0) is done | E1 |
 | FA-5 | Approve privacy policy and terms changes. Klorn becomes a mail and file host | E3, D3 |
 | FA-6 | Confirm whether hosting mail requires a value-added telecommunications filing in Korea. Unverified | E3 |
-| FA-7 | Create the object storage account | D1 |
+| FA-7 | Create the object storage account: Cloudflare R2, one private bucket, an API token with object read and write on that bucket only, and the S3 endpoint. No CORS rule (details in D1) | D1 flip |
 | FA-8 | Run the Samsung calendar probe on a Galaxy device and record the result here | C5 |
 | FA-9 | Azure app registration (existing action B). That action lists `Mail.*` permissions only; calendar and file permissions must be added for C4 and D6. For C4: add delegated `Calendars.Read` (and `User.Read` if it is not already listed); the calendar link requests exactly `openid email offline_access User.Read Calendars.Read`, reuses the existing redirect URI, and asks for no `Mail.*`. Existing inbox links keep their consent unchanged | B5, C4, D6 |
 
