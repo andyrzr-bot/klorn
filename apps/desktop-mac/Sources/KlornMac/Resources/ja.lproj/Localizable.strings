@@ -35,7 +35,7 @@
 "section.assistant" = "アシスタント";
 "section.search" = "検索";
 
-"today.a11y" = "Klornの今日: %@。ウェブ受信トレイを開いて確認します。";
+"today.a11y" = "Klornの今日: %@。ウェブ版Klornを開いて確認します。";
 "briefing.a11y" = "今日のブリーフィング: %@";
 "aiUsage.a11y" = "本日のAI使用: %2$d 中 %1$d";
 "commitments.a11y" = "約束、未完了 %d件";
@@ -139,10 +139,10 @@
 "push.dismiss.a11y" = "カードを閉じる";
 "push.draftingReplies" = "返信を作成中…";
 "push.proRequired" = "クイック返信にはKlorn Proが必要です。";
-"push.proRequired.detail" = "⏎ を押すか「開く」でウェブ受信トレイで対応できます。";
+"push.proRequired.detail" = "⏎ を押すか「開く」でウェブ版Klornで対応できます。";
 "push.tryAgain" = "再試行";
 "push.open" = "開く";
-"push.open.a11y" = "ウェブ受信トレイで開く";
+"push.open.a11y" = "ウェブ版Klornで開く";
 "push.sent.a11y" = "送信済み";
 "push.sendReply.a11y" = "%1$@ の返信を送信: %2$@";
 
@@ -293,8 +293,8 @@
 "mail.reclassifying" = "再分類中";
 
 /* Proposals — actions awaiting approval */
-"proposals.title" = "提案";
-"proposals.a11y" = "提案、承認待ち %d件";
+"proposals.title" = "承認";
+"proposals.a11y" = "承認、%d件待ち";
 "proposals.approve" = "承認";
 "proposals.decline" = "却下";
 "proposals.empty" = "あなたの対応待ちはありません。";
@@ -302,7 +302,7 @@
 "proposals.row.a11y" = "%1$@。%2$@";
 
 /* Column headers and states the first pass missed */
-"section.inbox" = "受信トレイ";
+"section.inbox" = "メール";
 "section.recentPush" = "最近のPUSH";
 "section.todayShort" = "今日";
 "push.nothingNeedsYou" = "今すぐ対応が必要なものはありません。";
@@ -328,7 +328,7 @@
 
 /* First-run guide */
 "guide.title" = "Klornのメール振り分け方";
-"guide.pipeline" = "Klornは接続されたすべてのメールボックスを読み、各メールを下の%dつのレーンに振り分けます。この受信トレイ列はその結果であり、Gmailの生の受信トレイではありません。";
+"guide.pipeline" = "Klornは接続されたすべてのメールボックスを読み、各メールを下の%dつのレーンに振り分けます。このメール列はその結果であり、Gmailの生の受信トレイではありません。";
 "guide.intro" = "すべてのメールは%dつのレーンのいずれかに入ります。削除も、あなた抜きの返信もしません — レーンはどれだけ大きく届くかだけを決めます。";
 "guide.correcting" = "判定が違ったら、別のレーンに移してください。Klornがその修正から学びます。各メールにはその場所に入った理由も表示されます。";
 "guide.done" = "わかりました";
@@ -701,3 +701,9 @@
 "onboarding.privacy" = "Klornは分類のためにメールを読みます。それ以上に何をしてよいかは、あなたが決めます。";
 "error.unreachable" = "Klornのサーバーに接続できません。";
 "banner.dismiss.a11y" = "メッセージを閉じる";
+"assistant.starter.1" = "今日いちばん大事なメールは？";
+"assistant.starter.2" = "未返信のうち急ぎのものだけ教えて";
+"assistant.starter.3" = "今週のミーティングの準備をまとめて";
+"assistant.message.user.a11y" = "あなた: %@";
+"assistant.message.failure.a11y" = "エラー: %@";
+"assistant.message.reply.a11y" = "Klornの返答: %@";

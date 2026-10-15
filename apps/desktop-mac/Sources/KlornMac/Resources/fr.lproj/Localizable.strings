@@ -35,7 +35,7 @@
 "section.assistant" = "Assistant";
 "section.search" = "Recherche";
 
-"today.a11y" = "Klorn aujourd'hui : %@. Ouvre la boîte web pour vérifier.";
+"today.a11y" = "Klorn aujourd'hui : %@. Ouvre Klorn sur le web pour vérifier.";
 "briefing.a11y" = "Brief du jour : %@";
 "aiUsage.a11y" = "Usage IA aujourd'hui : %1$d sur %2$d";
 "commitments.a11y" = "Engagements, %d en cours";
@@ -139,10 +139,10 @@
 "push.dismiss.a11y" = "Ignorer la carte";
 "push.draftingReplies" = "Rédaction des réponses…";
 "push.proRequired" = "Les réponses rapides nécessitent Klorn Pro.";
-"push.proRequired.detail" = "Appuyez sur ⏎ ou cliquez sur Ouvrir pour traiter dans la boîte web.";
+"push.proRequired.detail" = "Appuyez sur ⏎ ou cliquez sur Ouvrir pour traiter dans Klorn sur le web.";
 "push.tryAgain" = "Réessayer";
 "push.open" = "Ouvrir";
-"push.open.a11y" = "Ouvrir dans la boîte web";
+"push.open.a11y" = "Ouvrir dans Klorn sur le web";
 "push.sent.a11y" = "Envoyé";
 "push.sendReply.a11y" = "Envoyer la réponse %1$@ : %2$@";
 
@@ -293,8 +293,8 @@
 "mail.reclassifying" = "reclassement";
 
 /* Proposals — actions awaiting approval */
-"proposals.title" = "Propositions";
-"proposals.a11y" = "Propositions, %d en attente d'accord";
+"proposals.title" = "Approbations";
+"proposals.a11y" = "Approbations, %d en attente";
 "proposals.approve" = "Approuver";
 "proposals.decline" = "Refuser";
 "proposals.empty" = "Rien qui vous attende.";
@@ -302,7 +302,7 @@
 "proposals.row.a11y" = "%1$@. %2$@";
 
 /* Column headers and states the first pass missed */
-"section.inbox" = "BOÎTE";
+"section.inbox" = "COURRIER";
 "section.recentPush" = "PUSH RÉCENTS";
 "section.todayShort" = "AUJOURD'HUI";
 "push.nothingNeedsYou" = "Rien ne requiert votre attention pour l'instant.";
@@ -328,7 +328,7 @@
 
 /* First-run guide */
 "guide.title" = "Comment Klorn trie votre courrier";
-"guide.pipeline" = "Klorn lit chaque boîte connectée et range chaque message dans l'une des %d files ci-dessous. Cette colonne BOÎTE est ce résultat trié — pas votre boîte Gmail brute.";
+"guide.pipeline" = "Klorn lit chaque boîte connectée et range chaque message dans l'une des %d files ci-dessous. Cette colonne COURRIER est ce résultat trié — pas votre boîte Gmail brute.";
 "guide.intro" = "Chaque message tombe dans l'une des %d files. Rien n'est supprimé et rien n'est répondu sans vous — la file décide seulement de la force avec laquelle il vous atteint.";
 "guide.correcting" = "Une erreur de tri ? Déplacez le message vers une autre file et Klorn apprend de la correction. Chaque message indique aussi pourquoi il a atterri là.";
 "guide.done" = "Compris";
@@ -701,3 +701,9 @@
 "onboarding.privacy" = "Klorn lit votre courrier pour le trier. C'est vous qui décidez de ce qu'il peut faire de plus.";
 "error.unreachable" = "Klorn ne parvient pas à joindre le serveur.";
 "banner.dismiss.a11y" = "Fermer le message";
+"assistant.starter.1" = "Quel est le courrier le plus important aujourd'hui ?";
+"assistant.starter.2" = "Quels messages sans réponse sont urgents ?";
+"assistant.starter.3" = "Que dois-je préparer pour les réunions de cette semaine ?";
+"assistant.message.user.a11y" = "Vous avez dit : %@";
+"assistant.message.failure.a11y" = "Erreur : %@";
+"assistant.message.reply.a11y" = "Klorn a répondu : %@";
