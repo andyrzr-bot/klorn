@@ -68,7 +68,7 @@ export default function BottomTabs() {
         aria-label="Primary navigation"
         className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t border-line bg-surface-panel/92 pb-safe shadow-[0_-16px_44px_rgba(0,0,0,0.35)] backdrop-blur-xl"
       >
-        <ul className={unified ? "grid grid-cols-5" : "grid grid-cols-6"}>
+        <ul className="grid grid-cols-5">
           {tabs.map((tab) => {
             const active = (tab.routes ?? [tab.href]).some((route) => isActive(pathname, route));
             return (
