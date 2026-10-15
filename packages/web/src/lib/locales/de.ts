@@ -1775,6 +1775,47 @@ const de: Record<string, string> = {
   "onboardingV2.finish.addAccount": "Weiteres Konto hinzufügen",
   "onboardingV2.finish.openToday": "Heute öffnen",
   "onboardingV2.finish.openHome": "Klorn öffnen",
+  // Mail → Subscriptions (bulk unsubscribe, BULK_UNSUBSCRIBE_ENABLED)
+  "mailSubscriptions.title": "Abonnements",
+  "mailSubscriptions.description":
+    "Absender, die dir in den letzten {days} Tagen über eine Liste geschrieben haben, eine Zeile pro verbundenem Konto. Nichts wird abbestellt, bevor du es auswählst.",
+  "mailSubscriptions.back": "Zurück zu Mail",
+  "mailSubscriptions.entry": "Abonnements",
+  "mailSubscriptions.loading": "Abonnements werden geladen",
+  "mailSubscriptions.justNow": "gerade eben",
+  "mailSubscriptions.error.title": "Etwas ist schiefgelaufen",
+  "mailSubscriptions.error.load": "Deine Abonnements konnten nicht geladen werden.",
+  "mailSubscriptions.unavailable.title": "Abonnements sind noch nicht verfügbar",
+  "mailSubscriptions.unavailable.body":
+    "Diese Seite ist für dein Konto nicht aktiviert. Deine Mails bleiben unverändert.",
+  "mailSubscriptions.empty.title": "Noch keine Abonnements",
+  "mailSubscriptions.empty.body":
+    "Newsletter und Mailinglisten, die du erhältst, erscheinen hier, eine Zeile pro Absender.",
+  "mailSubscriptions.account.primary": "Hauptkonto",
+  "mailSubscriptions.stats.count": "{count} erhalten",
+  "mailSubscriptions.stats.readRate": "{rate} gelesen",
+  "mailSubscriptions.stats.last": "Zuletzt {when}",
+  "mailSubscriptions.method.oneClick": "Ein Klick",
+  "mailSubscriptions.method.mailto": "Per E-Mail",
+  "mailSubscriptions.method.link": "Seite des Absenders",
+  "mailSubscriptions.action.unsubscribe": "Abbestellen",
+  "mailSubscriptions.action.unsubscribeArchive": "Abbestellen und archivieren",
+  "mailSubscriptions.confirm.title": "Abbestellen und archivieren?",
+  "mailSubscriptions.confirm.message":
+    "Klorn bestellt {sender} für dich ab und archiviert bis zu 100 der neuesten Mails in {account}. Du findest sie weiterhin im Archiv dieses Kontos.",
+  "mailSubscriptions.status.pending": "{sender} wird abbestellt…",
+  "mailSubscriptions.status.done": "{sender} abbestellt.",
+  "mailSubscriptions.status.link": "{sender} braucht noch einen Schritt auf der eigenen Seite.",
+  "mailSubscriptions.status.error": "{sender} konnte nicht abbestellt werden.",
+  "mailSubscriptions.row.error": "Abbestellen fehlgeschlagen. Versuche es erneut.",
+  "mailSubscriptions.row.done": "Abbestellt.",
+  "mailSubscriptions.row.archived": "{count} archiviert.",
+  "mailSubscriptions.row.archivedSome":
+    "{count} archiviert, {failed} konnten nicht archiviert werden.",
+  "mailSubscriptions.row.linkHint":
+    "Dieser Absender verlangt, dass du auf seiner eigenen Seite abschließt.",
+  "mailSubscriptions.row.openLink": "Abmeldeseite öffnen",
+  "mailSubscriptions.row.newTab": "(öffnet in einem neuen Tab)",
 };
 
 export default de;

@@ -1747,6 +1747,45 @@ const es: Record<string, string> = {
   "onboardingV2.finish.addAccount": "Añadir otra cuenta",
   "onboardingV2.finish.openToday": "Abrir Hoy",
   "onboardingV2.finish.openHome": "Abrir Klorn",
+  // Mail → Subscriptions (bulk unsubscribe, BULK_UNSUBSCRIBE_ENABLED)
+  "mailSubscriptions.title": "Suscripciones",
+  "mailSubscriptions.description":
+    "Remitentes que te escribieron a través de una lista en los últimos {days} días, una fila por cuenta conectada. No se cancela ninguna suscripción hasta que tú lo elijas.",
+  "mailSubscriptions.back": "Volver a Correo",
+  "mailSubscriptions.entry": "Suscripciones",
+  "mailSubscriptions.loading": "Cargando suscripciones",
+  "mailSubscriptions.justNow": "ahora mismo",
+  "mailSubscriptions.error.title": "Algo salió mal",
+  "mailSubscriptions.error.load": "No se pudieron cargar tus suscripciones.",
+  "mailSubscriptions.unavailable.title": "Las suscripciones aún no están disponibles",
+  "mailSubscriptions.unavailable.body":
+    "Esta página no está activada para tu cuenta. Tu correo no ha cambiado.",
+  "mailSubscriptions.empty.title": "Aún no hay suscripciones",
+  "mailSubscriptions.empty.body":
+    "Los boletines y listas de correo que recibes aparecerán aquí, una fila por remitente.",
+  "mailSubscriptions.account.primary": "Cuenta principal",
+  "mailSubscriptions.stats.count": "{count} recibidos",
+  "mailSubscriptions.stats.readRate": "{rate} leídos",
+  "mailSubscriptions.stats.last": "Último {when}",
+  "mailSubscriptions.method.oneClick": "Un clic",
+  "mailSubscriptions.method.mailto": "Por correo",
+  "mailSubscriptions.method.link": "Página del remitente",
+  "mailSubscriptions.action.unsubscribe": "Cancelar suscripción",
+  "mailSubscriptions.action.unsubscribeArchive": "Cancelar suscripción y archivar",
+  "mailSubscriptions.confirm.title": "¿Cancelar la suscripción y archivar?",
+  "mailSubscriptions.confirm.message":
+    "Klorn cancelará tu suscripción a {sender} y archivará hasta 100 de sus correos más recientes en {account}. Seguirás encontrándolos en el archivo de esa cuenta.",
+  "mailSubscriptions.status.pending": "Cancelando la suscripción a {sender}…",
+  "mailSubscriptions.status.done": "Suscripción a {sender} cancelada.",
+  "mailSubscriptions.status.link": "{sender} necesita un paso más en su propia página.",
+  "mailSubscriptions.status.error": "No se pudo cancelar la suscripción a {sender}.",
+  "mailSubscriptions.row.error": "No se pudo cancelar la suscripción. Inténtalo de nuevo.",
+  "mailSubscriptions.row.done": "Suscripción cancelada.",
+  "mailSubscriptions.row.archived": "{count} archivados.",
+  "mailSubscriptions.row.archivedSome": "{count} archivados, {failed} no se pudieron archivar.",
+  "mailSubscriptions.row.linkHint": "Este remitente necesita que termines en su propia página.",
+  "mailSubscriptions.row.openLink": "Abrir la página para cancelar",
+  "mailSubscriptions.row.newTab": "(se abre en una pestaña nueva)",
 };
 
 export default es;

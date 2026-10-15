@@ -1713,6 +1713,47 @@ const ja: Record<string, string> = {
   "onboardingV2.finish.addAccount": "アカウントをもう 1 つ追加",
   "onboardingV2.finish.openToday": "「今日」を開く",
   "onboardingV2.finish.openHome": "Klorn を開く",
+  // Mail → Subscriptions (bulk unsubscribe, BULK_UNSUBSCRIBE_ENABLED)
+  "mailSubscriptions.title": "購読",
+  "mailSubscriptions.description":
+    "過去{days}日間にメーリングリスト経由でメールを送ってきた送信者です。接続済みアカウントごとに1行ずつ表示されます。あなたが選ぶまで購読は解除されません。",
+  "mailSubscriptions.back": "メールに戻る",
+  "mailSubscriptions.entry": "購読",
+  "mailSubscriptions.loading": "購読を読み込み中",
+  "mailSubscriptions.justNow": "たった今",
+  "mailSubscriptions.error.title": "問題が発生しました",
+  "mailSubscriptions.error.load": "購読を読み込めませんでした。",
+  "mailSubscriptions.unavailable.title": "購読管理はまだ利用できません",
+  "mailSubscriptions.unavailable.body":
+    "このアカウントではまだこのページが有効になっていません。メールはそのままです。",
+  "mailSubscriptions.empty.title": "購読はまだありません",
+  "mailSubscriptions.empty.body":
+    "受信しているニュースレターやメーリングリストが送信者ごとにここに表示されます。",
+  "mailSubscriptions.account.primary": "メインアカウント",
+  "mailSubscriptions.stats.count": "{count}通受信",
+  "mailSubscriptions.stats.readRate": "{rate}既読",
+  "mailSubscriptions.stats.last": "最終受信 {when}",
+  "mailSubscriptions.method.oneClick": "ワンクリック",
+  "mailSubscriptions.method.mailto": "メールで",
+  "mailSubscriptions.method.link": "送信者のページ",
+  "mailSubscriptions.action.unsubscribe": "購読解除",
+  "mailSubscriptions.action.unsubscribeArchive": "購読解除してアーカイブ",
+  "mailSubscriptions.confirm.title": "購読を解除してアーカイブしますか？",
+  "mailSubscriptions.confirm.message":
+    "Klornが{sender}の購読を解除し、{account}にある最新のメールを最大100通アーカイブします。アーカイブしたメールはそのアカウントのアーカイブで確認できます。",
+  "mailSubscriptions.status.pending": "{sender}の購読を解除しています…",
+  "mailSubscriptions.status.done": "{sender}の購読を解除しました。",
+  "mailSubscriptions.status.link": "{sender}のページでもう1つ手順が必要です。",
+  "mailSubscriptions.status.error": "{sender}の購読を解除できませんでした。",
+  "mailSubscriptions.row.error": "購読を解除できませんでした。もう一度お試しください。",
+  "mailSubscriptions.row.done": "購読を解除しました。",
+  "mailSubscriptions.row.archived": "{count}通をアーカイブしました。",
+  "mailSubscriptions.row.archivedSome":
+    "{count}通をアーカイブ、{failed}通はアーカイブできませんでした。",
+  "mailSubscriptions.row.linkHint":
+    "この送信者は送信者自身のページで手続きを完了する必要があります。",
+  "mailSubscriptions.row.openLink": "購読解除ページを開く",
+  "mailSubscriptions.row.newTab": "（新しいタブで開きます）",
 };
 
 export default ja;

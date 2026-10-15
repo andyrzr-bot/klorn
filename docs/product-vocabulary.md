@@ -28,6 +28,9 @@ off the hub routes hand back and the legacy pages are unchanged. With
 `MAIL_V2` on as well, `/inbox/firewall` hands over to `/email` (the lane view
 lives in Mail). Added **Activity**.
 
+Updated 2026-10-15: added **Subscriptions** (Mail → Subscriptions, the
+per-sender bulk unsubscriber) behind `BULK_UNSUBSCRIBE_ENABLED` (default OFF).
+
 ## The nouns
 
 | Term | Means | Where it appears | Never means |
@@ -41,6 +44,7 @@ lives in Mail). Added **Activity**.
 | **Firewall board** | Internal-docs term for the lane classification view. The separate screen is **retired as a user-facing term**: lanes are Mail's primary filter (PUSH / MEETING / QUEUE / INFO / SILENT). `/inbox/firewall` and the desktop tier columns persist in code until migration. | Internal docs only | A place to read mail, and never user-facing copy. |
 | **Receipt** / **Activity** | The record of what Klorn did and decided today, after the fact. "Receipt" is the concept and the legacy page; the hub page that shows it is labelled **Activity**. | `/assistant/activity` with `UNIFIED_HOME` on (P7); `/inbox/receipt` with it off | Something to act on. It is read-only history; "Request undo" only adds a reversal to Approvals. |
 | **Mail** | The actual message list and reading view; lanes are its primary filter. | `/email`, desktop reading pane | Approvals. |
+| **Subscriptions** | The senders that mail the user through a list (newsletters, mailing lists), one row per sender **and** connected account, with "Unsubscribe" and "Unsubscribe and archive". Nothing is unsubscribed until the user clicks. | Mail → Subscriptions (`/email/subscriptions`), reached from Mail's header; exists only while `BULK_UNSUBSCRIBE_ENABLED` is on (default OFF) | The user's Klorn plan or billing (that is **Plan and billing**), a lane, or the automatic one-click unsubscribe of SILENT promo mail (`AUTO_UNSUBSCRIBE_ENABLED`). |
 | **Key permission** | What an MCP API key may do: **Read only** (the default) or **Read and write**. Read and write lets an external agent mark mail as read and change lanes; it never allows send, delete or forward. Offered only while write tools are switched on. | Settings → "MCP API keys": the choice when creating a key, and a label on each key | Agent mode (`SHADOW` / `SUGGEST` / `AUTO`). A key's permission is about which tools an *external* agent may call; it says nothing about how much Klorn's own agent does without asking. |
 | **Agent activity** | The per-key history of write actions an external agent took through that key: when, what, and how it ended (Done / Refused / Error / Outcome unknown). | Settings → "MCP API keys", expandable on each Read and write key | The receipt (Klorn's own record of what Klorn did today), or agent mode. It never lists reads, and never shows message content. |
 

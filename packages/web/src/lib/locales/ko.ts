@@ -1714,6 +1714,45 @@ const ko: Record<string, string> = {
   "onboardingV2.finish.addAccount": "계정 하나 더 추가",
   "onboardingV2.finish.openToday": "오늘 열기",
   "onboardingV2.finish.openHome": "Klorn 열기",
+  // Mail → Subscriptions (bulk unsubscribe, BULK_UNSUBSCRIBE_ENABLED)
+  "mailSubscriptions.title": "구독",
+  "mailSubscriptions.description":
+    "최근 {days}일 동안 메일링 리스트로 메일을 보낸 발신자입니다. 연결된 계정마다 한 줄씩 표시됩니다. 직접 선택하기 전에는 구독이 취소되지 않습니다.",
+  "mailSubscriptions.back": "메일로 돌아가기",
+  "mailSubscriptions.entry": "구독",
+  "mailSubscriptions.loading": "구독 목록을 불러오는 중",
+  "mailSubscriptions.justNow": "방금",
+  "mailSubscriptions.error.title": "문제가 발생했습니다",
+  "mailSubscriptions.error.load": "구독 목록을 불러오지 못했습니다.",
+  "mailSubscriptions.unavailable.title": "아직 구독 관리를 사용할 수 없습니다",
+  "mailSubscriptions.unavailable.body":
+    "이 계정에서는 아직 이 페이지가 켜져 있지 않습니다. 메일은 그대로입니다.",
+  "mailSubscriptions.empty.title": "아직 구독이 없습니다",
+  "mailSubscriptions.empty.body":
+    "받고 있는 뉴스레터와 메일링 리스트가 발신자별로 여기에 표시됩니다.",
+  "mailSubscriptions.account.primary": "기본 계정",
+  "mailSubscriptions.stats.count": "{count}통 받음",
+  "mailSubscriptions.stats.readRate": "{rate} 읽음",
+  "mailSubscriptions.stats.last": "마지막 수신 {when}",
+  "mailSubscriptions.method.oneClick": "원클릭",
+  "mailSubscriptions.method.mailto": "이메일로",
+  "mailSubscriptions.method.link": "발신자 페이지",
+  "mailSubscriptions.action.unsubscribe": "구독 취소",
+  "mailSubscriptions.action.unsubscribeArchive": "구독 취소 후 보관",
+  "mailSubscriptions.confirm.title": "구독을 취소하고 보관할까요?",
+  "mailSubscriptions.confirm.message":
+    "Klorn이 {sender} 구독을 취소하고 {account}에 있는 최근 메일을 최대 100통까지 보관합니다. 보관한 메일은 해당 계정의 보관함에서 다시 찾을 수 있습니다.",
+  "mailSubscriptions.status.pending": "{sender} 구독을 취소하는 중…",
+  "mailSubscriptions.status.done": "{sender} 구독을 취소했습니다.",
+  "mailSubscriptions.status.link": "{sender} 페이지에서 한 단계를 더 진행해야 합니다.",
+  "mailSubscriptions.status.error": "{sender} 구독을 취소하지 못했습니다.",
+  "mailSubscriptions.row.error": "구독을 취소하지 못했습니다. 다시 시도해 주세요.",
+  "mailSubscriptions.row.done": "구독을 취소했습니다.",
+  "mailSubscriptions.row.archived": "{count}통 보관했습니다.",
+  "mailSubscriptions.row.archivedSome": "{count}통 보관, {failed}통은 보관하지 못했습니다.",
+  "mailSubscriptions.row.linkHint": "이 발신자는 자체 페이지에서 마무리해야 합니다.",
+  "mailSubscriptions.row.openLink": "구독 취소 페이지 열기",
+  "mailSubscriptions.row.newTab": "(새 탭에서 열림)",
 };
 
 export default ko;

@@ -1757,6 +1757,45 @@ const fr: Record<string, string> = {
   "onboardingV2.finish.addAccount": "Ajouter un autre compte",
   "onboardingV2.finish.openToday": "Ouvrir Aujourd'hui",
   "onboardingV2.finish.openHome": "Ouvrir Klorn",
+  // Mail → Subscriptions (bulk unsubscribe, BULK_UNSUBSCRIBE_ENABLED)
+  "mailSubscriptions.title": "Abonnements",
+  "mailSubscriptions.description":
+    "Les expéditeurs qui vous ont écrit via une liste au cours des {days} derniers jours, une ligne par compte connecté. Rien n'est désabonné tant que vous ne le choisissez pas.",
+  "mailSubscriptions.back": "Retour à Mail",
+  "mailSubscriptions.entry": "Abonnements",
+  "mailSubscriptions.loading": "Chargement des abonnements",
+  "mailSubscriptions.justNow": "à l'instant",
+  "mailSubscriptions.error.title": "Un problème est survenu",
+  "mailSubscriptions.error.load": "Impossible de charger vos abonnements.",
+  "mailSubscriptions.unavailable.title": "Les abonnements ne sont pas encore disponibles",
+  "mailSubscriptions.unavailable.body":
+    "Cette page n'est pas activée pour votre compte. Votre courrier n'a pas changé.",
+  "mailSubscriptions.empty.title": "Aucun abonnement pour l'instant",
+  "mailSubscriptions.empty.body":
+    "Les newsletters et listes de diffusion que vous recevez apparaîtront ici, une ligne par expéditeur.",
+  "mailSubscriptions.account.primary": "Compte principal",
+  "mailSubscriptions.stats.count": "{count} reçus",
+  "mailSubscriptions.stats.readRate": "{rate} lus",
+  "mailSubscriptions.stats.last": "Dernier {when}",
+  "mailSubscriptions.method.oneClick": "En un clic",
+  "mailSubscriptions.method.mailto": "Par e-mail",
+  "mailSubscriptions.method.link": "Page de l'expéditeur",
+  "mailSubscriptions.action.unsubscribe": "Se désabonner",
+  "mailSubscriptions.action.unsubscribeArchive": "Se désabonner et archiver",
+  "mailSubscriptions.confirm.title": "Se désabonner et archiver ?",
+  "mailSubscriptions.confirm.message":
+    "Klorn vous désabonnera de {sender} et archivera jusqu'à 100 de ses e-mails les plus récents dans {account}. Vous les retrouverez dans l'archive de ce compte.",
+  "mailSubscriptions.status.pending": "Désabonnement de {sender}…",
+  "mailSubscriptions.status.done": "Désabonné de {sender}.",
+  "mailSubscriptions.status.link": "{sender} demande une étape de plus sur sa propre page.",
+  "mailSubscriptions.status.error": "Impossible de se désabonner de {sender}.",
+  "mailSubscriptions.row.error": "Impossible de se désabonner. Réessayez.",
+  "mailSubscriptions.row.done": "Désabonné.",
+  "mailSubscriptions.row.archived": "{count} archivés.",
+  "mailSubscriptions.row.archivedSome": "{count} archivés, {failed} n'ont pas pu être archivés.",
+  "mailSubscriptions.row.linkHint": "Cet expéditeur vous demande de terminer sur sa propre page.",
+  "mailSubscriptions.row.openLink": "Ouvrir la page de désabonnement",
+  "mailSubscriptions.row.newTab": "(s'ouvre dans un nouvel onglet)",
 };
 
 export default fr;

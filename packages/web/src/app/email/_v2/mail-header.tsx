@@ -14,6 +14,7 @@ import { type Segment, SegmentedControl } from "../../../components/ui/segmented
 import { SourceBadge } from "../../../components/ui/source-badge";
 import { useT } from "../../../lib/i18n";
 import { sourceGlyph } from "../../../lib/source-provider";
+import { useMailSubscriptionsAvailable } from "../../../lib/use-mail-subscriptions";
 import { ComposeIcon, MoreIcon, SearchIcon, SyncIcon } from "./icons";
 import {
   type AccountOption,
@@ -64,6 +65,7 @@ export function MailHeader(props: MailHeaderProps) {
   const { view, onChange, counts, accounts, isDemo } = props;
   const { t, locale } = useT();
   const threads = view.filter === "threads";
+  const subscriptionsAvailable = useMailSubscriptionsAvailable();
   const number = new Intl.NumberFormat(locale);
 
   const segments = laneSegments(view.lane).map((lane): Segment<LaneView> => {
@@ -141,6 +143,16 @@ export function MailHeader(props: MailHeaderProps) {
       id: "tools",
       items: [
         { id: "candidates", label: t("mail.filterCandidates"), href: "/email/candidates" },
+        // Only once the list has loaded: absent while BULK_UNSUBSCRIBE_ENABLED is off.
+        ...(subscriptionsAvailable
+          ? [
+              {
+                id: "subscriptions",
+                label: t("mailSubscriptions.entry"),
+                href: "/email/subscriptions",
+              },
+            ]
+          : []),
         {
           id: "reanalyze",
           label: t("mailV2.more.reanalyze"),

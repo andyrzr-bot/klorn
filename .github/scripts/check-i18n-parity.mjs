@@ -176,6 +176,8 @@ const COPY_GUARD_PREFIXES = [
   // Assistant hub (productization plan P7).
   "assistantHub.",
   "keys.approvals.",
+  // Mail → Subscriptions (bulk unsubscribe).
+  "mailSubscriptions.",
 ];
 
 /** Words that are genuinely the same in another language: key -> locales. Keep this tiny. */

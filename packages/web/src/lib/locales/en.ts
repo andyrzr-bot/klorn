@@ -1727,6 +1727,45 @@ const en: Record<string, string> = {
   "onboardingV2.finish.addAccount": "Add another account",
   "onboardingV2.finish.openToday": "Open Today",
   "onboardingV2.finish.openHome": "Open Klorn",
+  // Mail → Subscriptions (bulk unsubscribe, BULK_UNSUBSCRIBE_ENABLED)
+  "mailSubscriptions.title": "Subscriptions",
+  "mailSubscriptions.description":
+    "Senders that mailed you through a list in the last {days} days, one row per connected account. Nothing is unsubscribed until you choose it.",
+  "mailSubscriptions.back": "Back to Mail",
+  "mailSubscriptions.entry": "Subscriptions",
+  "mailSubscriptions.loading": "Loading subscriptions",
+  "mailSubscriptions.justNow": "just now",
+  "mailSubscriptions.error.title": "Something went wrong",
+  "mailSubscriptions.error.load": "Couldn't load your subscriptions.",
+  "mailSubscriptions.unavailable.title": "Subscriptions isn't available yet",
+  "mailSubscriptions.unavailable.body":
+    "This page isn't turned on for your account. Your mail is unchanged.",
+  "mailSubscriptions.empty.title": "No subscriptions yet",
+  "mailSubscriptions.empty.body":
+    "Newsletters and mailing lists you receive will appear here, one row per sender.",
+  "mailSubscriptions.account.primary": "Primary account",
+  "mailSubscriptions.stats.count": "{count} received",
+  "mailSubscriptions.stats.readRate": "{rate} read",
+  "mailSubscriptions.stats.last": "Last {when}",
+  "mailSubscriptions.method.oneClick": "One-click",
+  "mailSubscriptions.method.mailto": "By email",
+  "mailSubscriptions.method.link": "Sender's page",
+  "mailSubscriptions.action.unsubscribe": "Unsubscribe",
+  "mailSubscriptions.action.unsubscribeArchive": "Unsubscribe and archive",
+  "mailSubscriptions.confirm.title": "Unsubscribe and archive?",
+  "mailSubscriptions.confirm.message":
+    "Klorn will unsubscribe you from {sender} and archive up to 100 of their most recent emails in {account}. You can still find them in that account's archive.",
+  "mailSubscriptions.status.pending": "Unsubscribing from {sender}…",
+  "mailSubscriptions.status.done": "Unsubscribed from {sender}.",
+  "mailSubscriptions.status.link": "{sender} needs one more step on their own page.",
+  "mailSubscriptions.status.error": "Couldn't unsubscribe from {sender}.",
+  "mailSubscriptions.row.error": "Couldn't unsubscribe. Try again.",
+  "mailSubscriptions.row.done": "Unsubscribed.",
+  "mailSubscriptions.row.archived": "{count} archived.",
+  "mailSubscriptions.row.archivedSome": "{count} archived, {failed} couldn't be archived.",
+  "mailSubscriptions.row.linkHint": "This sender needs you to finish on their own page.",
+  "mailSubscriptions.row.openLink": "Open the unsubscribe page",
+  "mailSubscriptions.row.newTab": "(opens in a new tab)",
 };
 
 export default en;
