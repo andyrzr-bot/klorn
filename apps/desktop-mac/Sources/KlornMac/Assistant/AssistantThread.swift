@@ -63,6 +63,10 @@ struct AssistantThread: View {
             .padding(.horizontal, Theme.s4).padding(.vertical, Theme.s3)
         }
         .onAppear { composerFocused = true }
+        // Continue the last conversation after a relaunch (once per session).
+        .task {
+            if !Theme.isRenderingOffscreen { await model.restoreChatHistory() }
+        }
     }
 
     private var messages: some View {
