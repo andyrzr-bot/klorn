@@ -100,7 +100,7 @@ jobs:
       # created to stop the 2026-08-12 price drift ($7.99 advertised, $8.99
       # charged) could not actually see the pages doing the advertising. It
       # also catches the native price falling below the web one, which the
-      # $8.99 → $30 raise did to PRO_PRICE_NATIVE on 2026-10-14.
+      # $8.99 → $29.99 raise did to PRO_PRICE_NATIVE on 2026-10-14.
       - name: Price consistency
         run: node .github/scripts/check-price-consistency.mjs
 

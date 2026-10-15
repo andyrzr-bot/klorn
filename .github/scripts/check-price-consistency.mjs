@@ -11,13 +11,13 @@
  *   pages under website/ from drifting away from it again — they import
  *   nothing.
  *
- *   2026-10-14 — the web price went $8.99 → $30 and PRO_PRICE_NATIVE stayed
+ *   2026-10-14 — the web price went $8.99 → $29.99 and PRO_PRICE_NATIVE stayed
  *   $9.99, leaving the native paywall quoting a third of the web price. Not a
  *   discount; two different public prices for one product.
  *
  * So: lib/pricing.ts is the source of truth, every static page is compared
  * against it, and native >= web is asserted. de/fr write prices in European
- * format (30 $, not $30) and a naive /\$[\d.]+/ sweep silently skips them —
+ * format (29,99 $, not $29.99) and a naive /\$[\d.]+/ sweep silently skips them —
  * both forms are matched here on purpose.
  */
 
@@ -35,7 +35,7 @@ function readConst(source, name) {
   return match[1];
 }
 
-/** Dollars in "$30", "$34.99" or "30 $" — the de/fr form included. */
+/** Dollars in "$29.99", "$34.99" or "29,99 $" — the de/fr form included. */
 function amount(price) {
   const parsed = Number(price.replace(/[^0-9.]/g, ""));
   if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -59,7 +59,7 @@ if (amount(native) < amount(web)) {
 }
 
 // Every price-like string on a page we publish, in both notations. Tolerates
-// "$30/mo", "30 $ im Monat", "<strong>$30</strong>/month".
+// "$29.99/mo", "29,99 $ im Monat", "<strong>$29.99</strong>/month".
 const PRICE = /(?:\$\s?(\d+(?:[.,]\d{2})?)|(\d+(?:[.,]\d{2})?)\s?\$)/g;
 
 const webAmount = amount(web);

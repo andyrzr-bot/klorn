@@ -13,7 +13,7 @@
 /**
  * Web checkout, billed through Paddle.
  *
- * Raised from $8.99 to $30 on 2026-10-14 (founder): the category sits at $30
+ * Raised from $8.99 to $29.99 on 2026-10-14 (founder): the category sits at $30
  * (Fyxer, Superhuman, Shortwave) and the old number read as a toy.
  *
  * Anyone already subscribed at $8.99 keeps that price until Paddle is told
@@ -26,7 +26,7 @@
  * this owns what the page claims, and on 2026-08-12 they disagreed in
  * production for long enough to advertise a price nobody was charged.
  */
-export const PRO_PRICE_WEB = "$30";
+export const PRO_PRICE_WEB = "$29.99";
 
 /**
  * In-app purchase on iOS/Android. Higher because the store takes a cut.
@@ -37,7 +37,7 @@ export const PRO_PRICE_WEB = "$30";
  * Moved $9.99 → $34.99 with the web raise on 2026-10-14. At $9.99 the native
  * paywall was quoting a third of the web price, which is not a discount, it is
  * two different public prices for one product. $34.99 is a real Apple price
- * point above $30; IAP is dark until a RevenueCat key exists (see
+ * point above $29.99; IAP is dark until a RevenueCat key exists (see
  * iapAvailable()), so nothing can be bought at this number yet — but the tier
  * must be created in App Store Connect / Play Console BEFORE it goes live, or
  * the store charges whatever its own tier says and this string is a lie.
