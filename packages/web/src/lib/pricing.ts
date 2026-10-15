@@ -14,9 +14,12 @@
  * Web checkout, billed through Paddle.
  *
  * Raised from $8.99 to $30 on 2026-10-14 (founder): the category sits at $30
- * (Fyxer, Superhuman, Shortwave) and the old number read as a toy. Nobody was
- * paying yet, so there was no migration to run — that window closes the first
- * time someone subscribes.
+ * (Fyxer, Superhuman, Shortwave) and the old number read as a toy.
+ *
+ * Anyone already subscribed at $8.99 keeps that price until Paddle is told
+ * otherwise, and raising an existing subscriber's price needs its own notice.
+ * Check Paddle for live subscriptions before assuming there are none — a live
+ * transaction was verified on 2026-08-22.
  *
  * This string must match the amount on the Paddle price behind
  * PADDLE_PRO_PRICE_ID. They are not wired together: Paddle owns the amount,
@@ -44,13 +47,4 @@ export const PRO_PRICE_NATIVE = "$34.99";
 /** The price to show for the surface the user is on. */
 export function proPrice(native: boolean): string {
   return native ? PRO_PRICE_NATIVE : PRO_PRICE_WEB;
-}
-
-/** Dollars in a "$12.34" price string, for comparing the two surfaces. */
-export function priceAmount(price: string): number {
-  const parsed = Number(price.replace(/[^0-9.]/g, ""));
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    throw new Error(`Unparseable price string: ${price}`);
-  }
-  return parsed;
 }

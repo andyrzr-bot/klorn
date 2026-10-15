@@ -78,26 +78,113 @@ function pagesUnder(dir) {
 const pages = pagesUnder("website").sort();
 if (pages.length === 0) problems.push("no website/**/index.html found");
 
+/**
+ * Prices Klorn used to charge. No competitor publishes these, so any
+ * occurrence anywhere on a published page is ours and is stale.
+ *
+ * This is the half that catches what selectors cannot. A security review of
+ * the first version of this script mutation-tested it and got a clean pass
+ * after planting $8.99 in the JSON-LD Offer, the meta/og/twitter
+ * descriptions, the pricing headline and the trial line — none of which any
+ * selector below reaches. The JSON-LD Offer is the worst of those to miss,
+ * because search engines read it and show it.
+ *
+ * $9.99 is NOT listed: it is Google AI Plus's published price and appears in
+ * competitor tables. The retired native price is covered by the native >= web
+ * assertion above instead.
+ */
+const RETIRED_PRICES = ["8.99", "7.99"];
+
+const SELF = ".github/scripts/check-price-consistency.mjs";
+
+/**
+ * Pages that are supposed to state Klorn's own price. If one of these yields
+ * no price at all, the selectors above have gone blind rather than the page
+ * having become correct.
+ */
+const QUOTES_A_PRICE =
+  /^website\/(?:[a-z]{2}\/)?(?:index\.html|next\/index\.html|pricing\/index\.html|(?:[a-z]{2}\/)?vs\/[^/]+\/index\.html)$/;
+
 for (const page of pages) {
   const html = readFileSync(page, "utf8");
-  // Only the strings that claim to be OUR price: a Klorn Pro price card, the
-  // pricing-table "us" column, or a link into /pricing/. Competitor tables sit
-  // outside these and are left alone.
+
+  // 1. Structured places that state OUR price, where an exact match is
+  //    required. Competitor tables sit outside these and are left alone.
+  //    `class='us'` is matched as well as `class="us"`: the single-quoted form
+  //    also passed the first version of this guard.
+  //    `td.us` is a general "Klorn's side" class, also used on /self-host/,
+  //    /security/ and in blog tables — scoping to the whole cell would fail
+  //    the build the first time one of those mentions "a $5 VPS". Only the
+  //    price row is read, in the four languages that label it.
+  const priceRows = [
+    ...html.matchAll(
+      /<tr><th>(?:Price|Published price|공개 가격|가격)<\/th>([\s\S]*?)<\/tr>/g,
+    ),
+  ].map((m) => m[1]);
+
   const ours = [
-    ...html.matchAll(/<div class="amt">([^<]*)</g),
-    ...html.matchAll(/<td class="us">(?:(?!<\/td>).)*?<\/td>/gs),
+    ...html.matchAll(/<div class="amt[^"]*">([\s\S]*?)<\/div>/g),
     ...html.matchAll(/<a href="\/pricing\/">([^<]*)</g),
+    // Inside a price row, only OUR column. The other cell is the competitor's
+    // published price and is none of this guard's business.
+    ...priceRows.flatMap((row) => [
+      ...row.matchAll(/<td class=['"]us['"]>(?:(?!<\/td>)[\s\S])*?<\/td>/g),
+    ]),
   ].map((m) => m[0]);
 
+  let seen = 0;
+  const reported = new Set();
   for (const fragment of ours) {
     for (const hit of fragment.matchAll(PRICE)) {
       const raw = (hit[1] ?? hit[2]).replace(",", ".");
-      if (raw === "0") continue; // the free tier card
+      if (Number(raw) === 0) continue; // the free tier card, "$0" or "$0.00"
+      seen += 1;
       if (Number(raw) !== webAmount) {
+        // A vs-page price row contains the /pricing/ link, so the same number
+        // matches twice. Report it once.
+        const key = `${page}:${raw}`;
+        if (reported.has(key)) continue;
+        reported.add(key);
         problems.push(
           `${page}: quotes $${raw} as Klorn's price, but ${PRICING_TS} says ${web}`,
         );
       }
+    }
+  }
+
+  // A page that states a price must have been read, or this guard is green
+  // because its selectors stopped matching rather than because the price is
+  // right. Markup changes are exactly when that happens — and the P11a
+  // rebuild is rewriting these pages now.
+  if (seen === 0 && QUOTES_A_PRICE.test(page)) {
+    problems.push(
+      `${page}: no Klorn price found to check. The markup moved and this ` +
+        `guard went blind on it — update the selectors in ${SELF}.`,
+    );
+  }
+
+  // JSON-LD carries a bare number ("30.00"), which PRICE does not match
+  // because it has no currency sign. Check those separately.
+  for (const hit of html.matchAll(/"price"\s*:\s*"([^"]*)"/g)) {
+    const raw = hit[1].replace(",", ".");
+    if (!/^\d+(\.\d+)?$/.test(raw)) {
+      problems.push(`${page}: JSON-LD price is not a number: ${hit[1]}`);
+    } else if (Number(raw) === 0) {
+      // The Free tier ships its own Offer at 0. That is correct and fixed.
+    } else if (Number(raw) !== webAmount) {
+      problems.push(
+        `${page}: JSON-LD offer price is ${raw}, but ${PRICING_TS} says ${web}`,
+      );
+    }
+  }
+
+  // 2. Anywhere at all: a price we no longer charge.
+  for (const retired of RETIRED_PRICES) {
+    if (html.includes(retired)) {
+      problems.push(
+        `${page}: still contains the retired price ${retired} — it is no ` +
+          `longer what anyone is charged, and no competitor publishes it`,
+      );
     }
   }
 }
