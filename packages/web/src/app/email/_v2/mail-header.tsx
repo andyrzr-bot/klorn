@@ -55,6 +55,8 @@ interface MailHeaderProps {
   tally: ViewTally | null;
   accounts: readonly AccountOption[];
   isDemo: boolean;
+  /** Recruiting intake: shown only when a loaded row carries a candidate, as Mail v1 does. */
+  hasCandidates: boolean;
   syncing: boolean;
   onCompose: () => void;
   onSync: () => void;
@@ -142,7 +144,9 @@ export function MailHeader(props: MailHeaderProps) {
     {
       id: "tools",
       items: [
-        { id: "candidates", label: t("mail.filterCandidates"), href: "/email/candidates" },
+        ...(props.hasCandidates
+          ? [{ id: "candidates", label: t("mail.filterCandidates"), href: "/email/candidates" }]
+          : []),
         // Only once the list has loaded: absent while BULK_UNSUBSCRIBE_ENABLED is off.
         ...(subscriptionsAvailable
           ? [

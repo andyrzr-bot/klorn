@@ -333,7 +333,7 @@ function EmailView() {
 
   useEffect(() => {
     if (listQuery.error) {
-      setError("Could not load mail.");
+      setError(t("mailV1.loadFailed"));
     }
   }, [listQuery.error]);
 
@@ -387,31 +387,37 @@ function EmailView() {
         const notConnected = result.error.toLowerCase().includes("not connected");
         setError(
           notConnected
-            ? "Gmail isn't connected. Reconnect in Settings → Connections."
-            : "Gmail sync failed. Check Settings → Connections to reconnect.",
+            ? t("mailV1.sync.notConnected", { section: t("settings.nav.accounts") })
+            : t("mailV1.sync.failed", { section: t("settings.nav.accounts") }),
         );
-        toast(notConnected ? "Gmail isn't connected." : "Gmail sync failed.", "error");
+        toast(
+          notConnected ? t("mailV1.sync.notConnectedToast") : t("mailV1.sync.failedToast"),
+          "error",
+        );
         return;
       }
       await load(filter, appliedSearch);
       const newCount = typeof result?.newCount === "number" ? result.newCount : 0;
       const synced = typeof result?.synced === "number" ? result.synced : 0;
       if (newCount > 0) {
-        toast(`Synced ${synced} — ${newCount} new.`, "success");
+        toast(
+          t("mailV1.sync.doneNew", { synced: String(synced), count: String(newCount) }),
+          "success",
+        );
       } else if (synced > 0) {
-        toast(`Synced ${synced} — nothing new.`, "success");
+        toast(t("mailV1.sync.doneNothingNew", { synced: String(synced) }), "success");
       } else {
-        toast("Sync complete. Nothing new.", "success");
+        toast(t("mailV1.sync.complete"), "success");
       }
     } catch (err) {
       captureClientError(err, { scope: "email.sync" });
       const message = err instanceof Error ? err.message : "";
       if (message.toLowerCase().includes("not connected")) {
-        setError("Gmail isn't connected. Reconnect in Settings → Connections.");
-        toast("Gmail isn't connected.", "error");
+        setError(t("mailV1.sync.notConnected", { section: t("settings.nav.accounts") }));
+        toast(t("mailV1.sync.notConnectedToast"), "error");
       } else {
-        setError("Gmail sync failed. Check Settings → Connections to reconnect.");
-        toast("Gmail sync failed.", "error");
+        setError(t("mailV1.sync.failed", { section: t("settings.nav.accounts") }));
+        toast(t("mailV1.sync.failedToast"), "error");
       }
     } finally {
       setSyncing(false);
@@ -429,7 +435,7 @@ function EmailView() {
       await load(filter, appliedSearch);
     } catch (err) {
       captureClientError(err, { scope: "email.attachments.analyzeAll" });
-      setError("Could not rerun attachment analysis.");
+      setError(t("mailV1.reanalyzeFailed"));
     } finally {
       setReanalyzing(false);
     }
@@ -509,11 +515,11 @@ function EmailView() {
         setBulkUndoNotice(null);
       }
       if (data.failed && data.failed.length > 0) {
-        setError(`${data.failed.length} messages could not be processed. Please try again.`);
+        setError(t("mailV1.bulk.partialFailed", { count: String(data.failed.length) }));
       }
     } catch (err) {
       captureClientError(err, { scope: "email.bulk", action });
-      setError("Could not process the selected mail.");
+      setError(t("mailV1.bulk.failed"));
     } finally {
       setBulkBusy(false);
     }
@@ -608,11 +614,11 @@ function EmailView() {
           body: JSON.stringify({ gmailId: undoNotice.gmailId }),
         },
       );
-      toast("Restored to inbox.", "success");
+      toast(t("mailV1.restored"), "success");
       router.replace(`/email/${data.emailId}?markRead=false`);
     } catch (err) {
       captureClientError(err, { scope: "email.list.undo", action: undoNotice.action });
-      setError("Could not restore that email. Check Gmail connection and try again.");
+      setError(t("mailV1.restoreFailed"));
     } finally {
       setUndoBusy(false);
     }
@@ -636,15 +642,15 @@ function EmailView() {
       );
       const failedCount = results.filter((result) => result.status === "rejected").length;
       if (failedCount > 0) {
-        setError(`${failedCount} messages could not be restored. Check Gmail and try again.`);
+        setError(t("mailV1.restorePartialFailed", { count: String(failedCount) }));
       } else {
-        toast("Restored to inbox.", "success");
+        toast(t("mailV1.restored"), "success");
         setBulkUndoNotice(null);
       }
       await load(filter, appliedSearch);
     } catch (err) {
       captureClientError(err, { scope: "email.bulk.undo" });
-      setError("Could not restore the archived mail. Check Gmail connection and try again.");
+      setError(t("mailV1.restoreBulkFailed"));
     } finally {
       setUndoBusy(false);
     }
@@ -665,14 +671,14 @@ function EmailView() {
           description: [`From: ${email.from}`, `Open: /email/${email.id}`].join("\n"),
         }),
       });
-      toast(`Reminder set for ${option.label.toLowerCase()}.`, "success");
+      toast(t(`mailV1.reminder.set.${option.key}`), "success");
     } catch (err) {
       captureClientError(err, {
         scope: "email.list.reminder",
         emailId: email.id,
         option: option.key,
       });
-      setError("Could not create a reminder for that email.");
+      setError(t("mailV1.reminder.failed"));
     } finally {
       setRowReminderBusy(null);
     }
@@ -709,7 +715,7 @@ function EmailView() {
         body: JSON.stringify({ ids: [email.id], action: "archive" }),
       });
       if (data.failed && data.failed.length > 0) {
-        toast("Could not archive that email.", "error");
+        toast(t("mailV1.archiveFailed"), "error");
         return;
       }
       patchListPages([email.id], "archive");
@@ -719,7 +725,7 @@ function EmailView() {
       });
     } catch (err) {
       captureClientError(err, { scope: "email.row.quickArchive", emailId: email.id });
-      toast("Could not archive that email.", "error");
+      toast(t("mailV1.archiveFailed"), "error");
     } finally {
       setRowQuickBusy(null);
     }
@@ -814,13 +820,13 @@ function EmailView() {
         body: JSON.stringify({ ids: [email.id], action }),
       });
       if (data.failed && data.failed.length > 0) {
-        toast("Could not update read state.", "error");
+        toast(t("mailV1.readStateFailed"), "error");
         return;
       }
       patchListPages([email.id], action);
     } catch (err) {
       captureClientError(err, { scope: "email.row.quickToggleRead", emailId: email.id, action });
-      toast("Could not update read state.", "error");
+      toast(t("mailV1.readStateFailed"), "error");
     } finally {
       setRowQuickBusy(null);
     }
@@ -843,7 +849,7 @@ function EmailView() {
             </h1>
             <p className="mt-1.5 text-sm text-ink-mid">
               {source === "demo"
-                ? "Demo data — connect Gmail"
+                ? t("mailV1.demo.short")
                 : replyCount > 0
                   ? `${replyCount} need a reply`
                   : unreadCount > 0
@@ -983,7 +989,7 @@ function EmailView() {
             </div>
             <p className="mt-2 text-sm text-ink-mid">
               {source === "demo" ? (
-                <span className="text-accent-deep">Demo data — connect Gmail in Settings</span>
+                <span className="text-accent-deep">{t("mailV1.demo.long")}</span>
               ) : replyCount > 0 ? (
                 <>
                   <span className="font-medium text-ink-soft">{replyCount}</span>

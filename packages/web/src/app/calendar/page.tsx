@@ -240,7 +240,7 @@ function CalendarView() {
               setVoiceInitial(null);
               setNewEventOpen(true);
             }}
-            aria-label="New event"
+            aria-label={t("calendarNav.newEvent")}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-accent-solid text-accent-solid-ink transition active:bg-accent-solid-hover"
           >
             <svg
@@ -261,7 +261,7 @@ function CalendarView() {
             type="button"
             onClick={syncNow}
             disabled={syncing}
-            aria-label="Sync calendar"
+            aria-label={t("calendarNav.sync")}
             className="flex h-10 w-10 items-center justify-center rounded-full bg-surface-raised text-ink-mid transition active:bg-surface-hover disabled:opacity-50"
           >
             <svg
@@ -586,6 +586,7 @@ function MonthGrid({
   todayKey: string;
   timeZone: string;
 }) {
+  const { t } = useT();
   const cells = buildMonthCells(viewMonth, timeZone);
   // Weekday header — Sun..Sat matches Google Calendar's default in Korea.
   // Locale "en-US" gives short names regardless of the user's browser locale.
@@ -599,16 +600,16 @@ function MonthGrid({
           <button
             type="button"
             onClick={onPrev}
-            aria-label="Previous month"
-            className="ease-strong flex h-8 w-8 items-center justify-center rounded-lg text-ink-mid transition duration-150 hover:bg-surface-hover hover:text-ink active:scale-[0.97]"
+            aria-label={t("calendarNav.prevMonth")}
+            className="ease-strong flex h-11 w-11 items-center justify-center rounded-lg text-ink-mid transition duration-150 hover:bg-surface-hover hover:text-ink active:scale-[0.97]"
           >
             ‹
           </button>
           <button
             type="button"
             onClick={onNext}
-            aria-label="Next month"
-            className="ease-strong flex h-8 w-8 items-center justify-center rounded-lg text-ink-mid transition duration-150 hover:bg-surface-hover hover:text-ink active:scale-[0.97]"
+            aria-label={t("calendarNav.nextMonth")}
+            className="ease-strong flex h-11 w-11 items-center justify-center rounded-lg text-ink-mid transition duration-150 hover:bg-surface-hover hover:text-ink active:scale-[0.97]"
           >
             ›
           </button>

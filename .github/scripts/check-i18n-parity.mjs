@@ -178,11 +178,23 @@ const COPY_GUARD_PREFIXES = [
   "keys.approvals.",
   // Mail → Subscriptions (bulk unsubscribe).
   "mailSubscriptions.",
+  // Legacy chrome, command palette, Mail v1 and briefing copy (UI audit 2026-10-15).
+  "dock.",
+  "calendarNav.",
+  "sidebar.",
+  "commandPalette.",
+  "mailV1.",
+  "inboxLegacy.",
+  "briefingPage.",
+  "todayActions.",
 ];
 
 /** Words that are genuinely the same in another language: key -> locales. Keep this tiny. */
 const SAME_AS_ENGLISH = {
   "settings.apiKeys.activity.outcome.error": ["es"],
+  // German UI already calls lanes "Lanes" (keys.group.lane); French "Urgent" is the word.
+  "inboxLegacy.segment.lanes": ["de"],
+  "todayActions.row.urgent": ["fr"],
 };
 
 function escapeRegExp(text) {

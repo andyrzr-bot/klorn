@@ -15,8 +15,9 @@ import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./api";
 import { queryKeys } from "./query-keys";
 
-export function useMailSubscriptions() {
+export function useMailSubscriptions(enabled = true) {
   return useQuery({
+    enabled,
     queryKey: queryKeys.email.subscriptions(),
     queryFn: async (): Promise<EmailSubscriptionsResponse | null> => {
       try {
@@ -33,8 +34,11 @@ export function useMailSubscriptions() {
   });
 }
 
-/** True only once the list has loaded — the entry points' condition. */
-export function useMailSubscriptionsAvailable(): boolean {
-  const { data } = useMailSubscriptions();
+/**
+ * True only once the list has loaded — the entry points' condition. Pass
+ * `enabled: false` to skip the request (it then stays false until enabled).
+ */
+export function useMailSubscriptionsAvailable(enabled = true): boolean {
+  const { data } = useMailSubscriptions(enabled);
   return data != null;
 }
