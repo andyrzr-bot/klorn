@@ -898,10 +898,10 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
   },
   {
    "@type": "Question",
-   "name": "サインインするとGoogleが警告を出すのはなぜですか？",
+   "name": "KlornはGoogleの審査を通っていますか？",
    "acceptedAnswer": {
     "@type": "Answer",
-    "text": "メールを読むにはGoogleの制限付きスコープが必要で、アプリが確認済みになるにはセキュリティレビューを\n        通す必要があります。それが通るまでは未確認アプリの画面が一度表示され、ベータは先着100アカウントに\n        限定されます。"
+    "text": "はい。Googleは独立したCASA Tier 2のセキュリティ評価を経て、2026年10月3日にKlornのOAuth検証を完了しました。サインイン時に表示されるのはGoogleの通常の同意画面で、未確認アプリの警告もアカウント数の上限もありません。審査の対象範囲は、スコープごとにセキュリティページ (https://klorn.ai/security/)（英語）にまとめています。"
    }
   }
  ]
@@ -953,7 +953,7 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
   </picture>
 
   <div class="wrap">
-    <span class="eyebrow rv">Gmail・Naver・Googleカレンダー &mdash; <b>ひとつの場所に</b></span>
+    <span class="eyebrow rv">Gmail・Naver・iCloudメール・Googleカレンダー &mdash; <b>ひとつの場所に</b></span>
     <h1 class="rv">割り込みが減る。<br>速く<span class="ser">なる</span>のではなく。</h1>
     <p class="lead rv"><b style="color:var(--ink);font-weight:650">Klornはすべてのメールを5つのレーンに振り分け、1通ごとにその理由を添えます。</b> ウェブ・macOS・Windows。 行を動かせばその修正は残ります — 同じ修正が2回でその送信者はルールになります。
       承認していないものは送りません。</p>
@@ -1122,7 +1122,7 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
     </div>
     <div class="vsrow">
       <div class="vscell ours" data-who="Klorn"><span class="k">03 &middot; 何を主張するか</span>
-        <p><b>再実行できる数値</b> &mdash; 評価セットはすべてリポジトリにあります（<b>pnpm eval:judge</b>、<b>pnpm eval:real</b>）。再現しなくなった数値は、このページから取り下げました。</p></div>
+        <p><b>再実行できる数値</b> &mdash; 評価ゲートはリポジトリにあり（<b>pnpm eval:judge</b>）、分類器が変わるたびにCIで実行されます。再現しなくなった数値は、このページから取り下げました。</p></div>
       <div class="vscell them" data-who="4製品すべて"><span class="k">03 &middot; 何を主張するか</span>
         <p>「AI搭載」。公開された評価セットも、コールド／ウォームの区別も、自分で数値を確かめる手段もありません。</p></div>
     </div>
@@ -1154,20 +1154,21 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
   <div class="sec-head">
     <div style="flex:1 1 420px">
       <span class="tag rv">約束ではなく計測</span>
-      <h2 class="rv">実際の受信トレイから出た数値。</h2>
+      <h2 class="rv">すべてのビルドが越えるべき下限。</h2>
     </div>
-    <p class="rv">すべてのリリースは、出荷前に実メールの手作業ラベル付きセットで採点されます。
-      これが最新の数値で、評価セットは公開リポジトリにあります。</p>
+    <p class="rv">分類器への変更はすべて、出荷前にリポジトリにある56通の合成メールのセットで採点されます。
+      実行コマンドは<b>pnpm eval:judge</b>で、全体の正解率が80%、緊急メールの再現率が90%、
+      SILENTの適合率が90%を下回ると、CIがビルドを失敗させます。</p>
   </div>
   <div class="stats">
     <div class="stat rv"><div class="sv">&ge;90%</div><div class="sl">緊急メールの再現率（CI下限）</div>
       <p>緊急メールの再現率が下限を割る変更はビルドが失敗します。</p></div>
-    <div class="stat rv"><div class="sv">95.5%</div><div class="sl">SILENTの適合率</div>
-      <p>Klornがノイズとして保管するとき、本物のシグナルを埋もれさせることはほとんどありません。</p></div>
+    <div class="stat rv"><div class="sv">&ge;90%</div><div class="sl">SILENTの適合率（CI下限）</div>
+      <p>SILENTに振り分けたメールの10通に1通を超えて本物のシグナルが混ざる変更は、ビルドが失敗します。</p></div>
     <div class="stat rv"><div class="sv">0</div><div class="sl">未承認の操作</div>
       <p>送信、削除、転送はすべてあなたを待ち、送った内容のハッシュを固定したレシートを記録します。</p></div>
   </div>
-  <p class="foot rv">手作業でラベル付けした実メールのセットは、現在ラベルを付け直しています。このセットはMeetingとInfoのレーンが生まれる前のもので両レーンを採点できないため、このセットから代表的な精度の数値を出すのはやめました。上のSilent精度は同じセットで計測していますが、この問題の影響を受けません。リポジトリに含まれる合成ゲートセットは、判定器が変わるたびに下限とともにCIで実行されます。
+  <p class="foot rv">これは合成セットに対する下限であり、あなたの受信トレイの点数ではありません。手作業でラベル付けした実メールのセットはMeetingとInfoのレーンが生まれる前のもので両レーンを採点できないため、現在ラベルを付け直しています。それが終わるまで、このセットの数値は載せません。
     <a href="https://github.com/k08200/klorn/tree/main/packages/api/eval" rel="noreferrer noopener">計測方法と評価セット →</a></p>
 </section>
 
@@ -1251,17 +1252,18 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
   </div>
   <div class="works rv">
     <div class="work"><b>Gmail</b><span>Googleでサインイン。Proでは複数の受信トレイに対応。</span></div>
-    <div class="work"><b>Naverメール</b><span>設定からIMAPで接続します。</span></div>
+    <div class="work"><b>Naverメール</b><span>ベータ版。設定からIMAPで接続します。</span></div>
+    <div class="work"><b>iCloudメール</b><span>ベータ版。App用パスワードを使ってIMAPで接続します。</span></div>
     <div class="work"><b>Google Calendar</b><span>読み取りと、あなたの承認による予定の作成。</span></div>
     <div class="work"><b>macOS 14+</b><span>Universal — Apple SiliconとIntel。</span></div>
     <div class="work"><b>メールの言語を問わない</b><span>返信は、届いたメールと同じ言語で返ります。</span></div>
     <div class="work"><b>7つのUI言語</b><span>English, 한국어, 日本語, 中文, Español, Français, Deutsch.</span></div>
   </div>
-  <p class="works-note rv"><b>非対応：</b> Naver以外のIMAPホスト。Klornへのサインインは
+  <p class="works-note rv"><b>非対応：</b> NaverとiCloud以外のIMAPホスト。Klornへのサインインは
     Googleのみで、ネイティブのモバイルアプリはありません — モバイルは現在ブラウザで動作します。
     Windowsではデスクトップアプリはベータ版です。
     Linuxではブラウザで動作します。セルフホストは、自分のデータベースとモデルキーで利用できます。</p>
-  <p class="works-note rv"><b>近日対応：</b> Outlook &amp; Microsoft 365、そしてiCloudメール — すでに実装済みで、
+  <p class="works-note rv"><b>近日対応：</b> Outlook &amp; Microsoft 365 — すでに実装済みで、
     セキュリティレビュー後の展開待ちです。AppleとNaverでのサインインは、ウェブ、Macアプリ、モバイルの
     いずれにも予定しており、1つのKlornアカウントで全デバイスをカバーします。ネイティブのモバイルアプリも準備中です。
     いずれもまだ出荷していません。出荷したときに載る場所が、このページです。</p>
@@ -1292,10 +1294,8 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
     <details class="faq-i rv"><summary>AIが請求を膨らませることはありますか？</summary>
       <p>ありません。Klornは1日あたりの支出に自分で上限を設け、使いすぎるくらいなら停止します — 暴走した
         ループにコストはかかりません。この上限があるから、仕分けは無料のままです。</p></details>
-    <details class="faq-i rv"><summary>サインインするとGoogleが警告を出すのはなぜですか？</summary>
-      <p>メールを読むにはGoogleの制限付きスコープが必要で、アプリが確認済みになるにはセキュリティレビューを
-        通す必要があります。それが通るまでは未確認アプリの画面が一度表示され、ベータは先着100アカウントに
-        限定されます。</p></details>
+    <details class="faq-i rv"><summary>KlornはGoogleの審査を通っていますか？</summary>
+      <p>はい。Googleは独立したCASA Tier 2のセキュリティ評価を経て、2026年10月3日にKlornのOAuth検証を完了しました。サインイン時に表示されるのはGoogleの通常の同意画面で、未確認アプリの警告もアカウント数の上限もありません。審査の対象範囲は、スコープごとに<a href="/security/">セキュリティページ</a>（英語）にまとめています。</p></details>
   </div>
 </section>
 
@@ -1309,8 +1309,8 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
          alt="" loading="lazy" decoding="async" width="2560" height="1709">
   </picture>
   <div class="wrapl rv">
-    <h2 class="final-h">次に来る受信トレイ、<br>それは <span class="ser">判断キュー。</span></h2>
-    <p class="final-p">仕分けは無料で、これからも無料です。ログインはGoogle OAuthでそのまま — 招待も順番待ちもありません。制限は先着100アカウントだけです。</p>
+    <h2 class="final-h">いま使っているすべてを、<br>ひとつの<span class="ser">静かな場所</span>に。</h2>
+    <p class="final-p">仕分けは無料で、これからも無料です。ログインはGoogle OAuthでそのまま — 招待も順番待ちも、アカウント数の上限もありません。</p>
     <div class="actions">
       <a class="btn btn-1" href="https://app.klorn.ai/login?mode=register">無料で始める <i>↗</i></a>
       <a class="btn btn-2 btn-dl" href="https://github.com/k08200/klorn/releases/latest/download/Klorn.dmg" rel="noreferrer noopener"

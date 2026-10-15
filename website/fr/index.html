@@ -898,10 +898,10 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
   },
   {
    "@type": "Question",
-   "name": "Pourquoi Google m'avertit-il à la connexion ?",
+   "name": "Klorn est-il vérifié par Google ?",
    "acceptedAnswer": {
     "@type": "Answer",
-    "text": "Lire votre courrier exige les scopes restreints de Google, et ceux-ci imposent une revue de sécurité avant\n        qu'une app soit marquée comme vérifiée. Tant que ce n'est pas réglé, vous voyez une fois un écran d'app non vérifiée, et la\n        bêta est limitée aux 100 premiers comptes."
+    "text": "Oui. Google a finalisé la vérification OAuth de Klorn le 3 octobre 2026, après une évaluation de sécurité indépendante CASA Tier 2. À la connexion, vous voyez l'écran de consentement habituel de Google, sans avertissement d'app non vérifiée ni plafond de comptes. Ce que la revue a couvert, scope par scope, figure sur la page sécurité (https://klorn.ai/security/) (en anglais)."
    }
   }
  ]
@@ -953,7 +953,7 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
   </picture>
 
   <div class="wrap">
-    <span class="eyebrow rv">Gmail, Naver et Google Agenda &mdash; <b>au même endroit</b></span>
+    <span class="eyebrow rv">Gmail, Naver, iCloud Mail et Google Agenda &mdash; <b>au même endroit</b></span>
     <h1 class="rv">Moins d'interruptions.<br>Pas un courrier plus <span class="ser">rapide</span>.</h1>
     <p class="lead rv"><b style="color:var(--ink);font-weight:650">Klorn range chaque message dans l'une des cinq files et y attache le motif.</b> Web, macOS et Windows. Déplacez une ligne et la correction reste : deux corrections identiques font de cet expéditeur une règle.
       Rien n'est envoyé sans votre accord.</p>
@@ -1122,7 +1122,7 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
     </div>
     <div class="vsrow">
       <div class="vscell ours" data-who="Klorn"><span class="k">03 &middot; Ce qu'il affirme</span>
-        <p><b>Des chiffres qui se rejouent</b> &mdash; tous les jeux d'évaluation sont dans le dépôt (<b>pnpm eval:judge</b>, <b>pnpm eval:real</b>). Quand l'un a cessé de se reproduire, nous l'avons retiré de cette page.</p></div>
+        <p><b>Des chiffres qui se rejouent</b> &mdash; le seuil d'évaluation est dans le dépôt (<b>pnpm eval:judge</b>) et tourne en CI à chaque changement du classifieur. Quand un chiffre a cessé de se reproduire, nous l'avons retiré de cette page.</p></div>
       <div class="vscell them" data-who="Les quatre"><span class="k">03 &middot; Ce qu'il affirme</span>
         <p>« Propulsé par l'IA ». Aucun jeu d'évaluation publié, aucune distinction froid/chaud, et rien que vous puissiez exécuter vous-même pour vérifier le chiffre.</p></div>
     </div>
@@ -1154,20 +1154,21 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
   <div class="sec-head">
     <div style="flex:1 1 420px">
       <span class="tag rv">Mesuré, pas promis</span>
-      <h2 class="rv">Des chiffres issus d'une vraie boîte.</h2>
+      <h2 class="rv">Des planchers que chaque build doit franchir.</h2>
     </div>
-    <p class="rv">Chaque version est évaluée sur un jeu d'e-mails réels annotés à la main avant d'être livrée.
-      Voici les derniers chiffres, et le jeu d'évaluation est dans le dépôt ouvert.</p>
+    <p class="rv">Chaque changement du classifieur est évalué, avant livraison, sur un jeu synthétique de
+      56 e-mails versionné dans le dépôt. La commande est <b>pnpm eval:judge</b>, et la CI casse la build
+      si la précision globale passe sous 80 %, le rappel des urgents sous 90 % ou la précision de SILENT sous 90 %.</p>
   </div>
   <div class="stats">
     <div class="stat rv"><div class="sv">&ge;90%</div><div class="sl">Rappel des urgents, plancher CI</div>
       <p>Un changement qui fait passer le rappel des urgents sous le plancher casse la build.</p></div>
-    <div class="stat rv"><div class="sv">95.5%</div><div class="sl">Précision de SILENT</div>
-      <p>Quand Klorn classe un courrier comme du bruit, il n'enterre presque jamais un vrai signal.</p></div>
+    <div class="stat rv"><div class="sv">&ge;90%</div><div class="sl">Précision de SILENT, plancher CI</div>
+      <p>Un changement qui laisse plus d'un courrier mis en silence sur dix être un vrai signal casse la build.</p></div>
     <div class="stat rv"><div class="sv">0</div><div class="sl">Actions non approuvées</div>
       <p>Chaque envoi, suppression et transfert vous attend et enregistre un reçu qui épingle une empreinte de ce qui est parti.</p></div>
   </div>
-  <p class="foot rv">Le jeu de courrier réel étiqueté à la main est en cours de réétiquetage : il est antérieur aux voies Meeting et Info, il ne peut donc pas les noter, et nous n'en citons plus de chiffre de précision en vitrine. La précision Silent ci-dessus est mesurée sur ce jeu et n'est pas affectée. Le jeu synthétique versionné dans le dépôt tourne à chaque changement du classifieur, avec ses planchers imposés en CI.
+  <p class="foot rv">Ce sont des planchers sur un jeu synthétique, pas une note de votre boîte. Le jeu de courrier réel étiqueté à la main est antérieur aux voies Meeting et Info, il ne peut donc pas les noter ; il est en cours de réétiquetage, et d'ici là nous n'en citons aucun chiffre.
     <a href="https://github.com/k08200/klorn/tree/main/packages/api/eval" rel="noreferrer noopener">Méthodologie et jeu d'évaluation →</a></p>
 </section>
 
@@ -1251,17 +1252,18 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
   </div>
   <div class="works rv">
     <div class="work"><b>Gmail</b><span>Connexion Google. Plusieurs boîtes avec Pro.</span></div>
-    <div class="work"><b>Naver Mail</b><span>Connecté en IMAP depuis les Réglages.</span></div>
+    <div class="work"><b>Naver Mail</b><span>Bêta. Connecté en IMAP depuis les Réglages.</span></div>
+    <div class="work"><b>iCloud Mail</b><span>Bêta. Connecté en IMAP avec un mot de passe pour app.</span></div>
     <div class="work"><b>Google Calendar</b><span>Lecture, et création d'événements sur votre accord.</span></div>
     <div class="work"><b>macOS 14+</b><span>Universal — Apple Silicon et Intel.</span></div>
     <div class="work"><b>Toutes les langues de courrier</b><span>Les réponses reviennent dans la langue du message reçu.</span></div>
     <div class="work"><b>7 langues d'interface</b><span>English, 한국어, 日本語, 中文, Español, Français, Deutsch.</span></div>
   </div>
-  <p class="works-note rv"><b>Non pris en charge :</b> les hébergeurs IMAP autres que Naver. La connexion à Klorn passe
+  <p class="works-note rv"><b>Non pris en charge :</b> les hébergeurs IMAP autres que Naver et iCloud. La connexion à Klorn passe
     uniquement par Google, et il n'existe pas d'app mobile native — le mobile passe aujourd'hui par le navigateur.
     Sous Windows, l'app de bureau est en bêta ;
     sous Linux, Klorn fonctionne dans le navigateur. L'auto-hébergement fonctionne avec votre propre base de données et vos propres clés de modèle.</p>
-  <p class="works-note rv"><b>Bientôt :</b> Outlook &amp; Microsoft 365 et iCloud Mail — déjà développés,
+  <p class="works-note rv"><b>Bientôt :</b> Outlook &amp; Microsoft 365 — déjà développés,
     prêts pour un déploiement après la revue de sécurité. La connexion avec Apple et Naver est prévue sur le web, sur l'app Mac
     comme sur mobile, pour qu'un seul compte Klorn couvre tous les appareils, et des apps mobiles natives sont en route.
     Rien de tout cela n'est livré ; c'est sur cette page que ça arrivera le moment venu.</p>
@@ -1292,10 +1294,8 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
     <details class="faq-i rv"><summary>L'IA peut-elle faire grimper la facture ?</summary>
       <p>Non. Klorn plafonne sa propre dépense quotidienne et s'arrête plutôt que de dépasser — une boucle
         emballée ne vous coûte rien. C'est ce plafond qui permet au tri de rester gratuit.</p></details>
-    <details class="faq-i rv"><summary>Pourquoi Google m'avertit-il à la connexion ?</summary>
-      <p>Lire votre courrier exige les scopes restreints de Google, et ceux-ci imposent une revue de sécurité avant
-        qu'une app soit marquée comme vérifiée. Tant que ce n'est pas réglé, vous voyez une fois un écran d'app non vérifiée, et la
-        bêta est limitée aux 100 premiers comptes.</p></details>
+    <details class="faq-i rv"><summary>Klorn est-il vérifié par Google ?</summary>
+      <p>Oui. Google a finalisé la vérification OAuth de Klorn le 3 octobre 2026, après une évaluation de sécurité indépendante CASA Tier 2. À la connexion, vous voyez l'écran de consentement habituel de Google, sans avertissement d'app non vérifiée ni plafond de comptes. Ce que la revue a couvert, scope par scope, figure sur la <a href="/security/">page sécurité</a> (en anglais).</p></details>
   </div>
 </section>
 
@@ -1309,8 +1309,8 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
          alt="" loading="lazy" decoding="async" width="2560" height="1709">
   </picture>
   <div class="wrapl rv">
-    <h2 class="final-h">La prochaine boîte de réception est<br>une <span class="ser">file de décisions.</span></h2>
-    <p class="final-p">Le tri est gratuit et le restera. La connexion se fait par Google OAuth, directement — sans invitation ni liste d'attente. La seule limite : les 100 premiers comptes.</p>
+    <h2 class="final-h">Tout ce que vous utilisez déjà.<br>Un seul <span class="ser">endroit calme.</span></h2>
+    <p class="final-p">Le tri est gratuit et le restera. La connexion se fait par Google OAuth, directement — sans invitation, sans liste d'attente, sans plafond de comptes.</p>
     <div class="actions">
       <a class="btn btn-1" href="https://app.klorn.ai/login?mode=register">Commencer gratuitement <i>↗</i></a>
       <a class="btn btn-2 btn-dl" href="https://github.com/k08200/klorn/releases/latest/download/Klorn.dmg" rel="noreferrer noopener"

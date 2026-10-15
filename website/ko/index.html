@@ -907,10 +907,10 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
   },
   {
    "@type": "Question",
-   "name": "로그인할 때 구글이 경고를 띄우는 이유가 뭔가요?",
+   "name": "Klorn은 구글 인증을 받았나요?",
    "acceptedAnswer": {
     "@type": "Answer",
-    "text": "메일을 읽으려면 구글의 제한 스코프가 필요하고, 그건 앱이 확인됨으로 표시되기 전에 보안 검수를 받아야 합니다. 검수가 끝날 때까지 미확인 앱 화면이 한 번 보이고, 베타는 선착순 100명으로 제한됩니다."
+    "text": "네. 구글은 독립 CASA Tier 2 보안 평가를 거쳐 2026년 10월 3일에 Klorn의 OAuth 인증 심사를 마쳤습니다. 로그인하면 구글의 일반 동의 화면이 뜨고, 미확인 앱 경고도 계정 수 제한도 없습니다. 심사가 무엇을 다뤘는지는 스코프별로 보안 페이지 (https://klorn.ai/security/)(영문)에 정리돼 있습니다."
    }
   }
  ]
@@ -954,7 +954,7 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
   </picture>
 
   <div class="wrap">
-    <span class="eyebrow rv">Gmail·Naver·Google 캘린더 &mdash; <b>한 곳에서</b></span>
+    <span class="eyebrow rv">Gmail·Naver·iCloud 메일·Google 캘린더 &mdash; <b>한 곳에서</b></span>
     <h1 class="rv">덜 방해받는 것.<br><span class="ser">빨리</span> 처리하는 게 아니라.</h1>
     <p class="lead rv"><b style="color:var(--ink);font-weight:650">Klorn은 모든 메일을 다섯 레인으로
       분류하고, 한 통마다 그 이유를 붙입니다.</b> 웹·macOS·Windows. 행을 옮기면 그 교정이 남습니다 — 같은 교정 두 번이면 그 발신자는 룰이 됩니다.
@@ -1130,7 +1130,7 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
     </div>
     <div class="vsrow">
       <div class="vscell ours" data-who="Klorn"><span class="k">03 &middot; 무엇을 주장하나</span>
-        <p><b>다시 돌려볼 수 있는 숫자</b> &mdash; 평가셋이 전부 리포에 있습니다(<b>pnpm eval:judge</b>, <b>pnpm eval:real</b>). 재현되지 않게 된 수치는 이 페이지에서 내렸습니다.</p></div>
+        <p><b>다시 돌려볼 수 있는 숫자</b> &mdash; 평가 게이트가 리포에 있고(<b>pnpm eval:judge</b>), 분류기가 바뀔 때마다 CI에서 돌아갑니다. 재현되지 않게 된 수치는 이 페이지에서 내렸습니다.</p></div>
       <div class="vscell them" data-who="네 곳 전부"><span class="k">03 &middot; 무엇을 주장하나</span>
         <p>&ldquo;AI 기반.&rdquo; 공개된 평가셋도, 콜드/웜 구분도, 그 숫자를 직접 대조해볼 방법도
           없습니다.</p></div>
@@ -1168,21 +1168,21 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
   <div class="sec-head">
     <div style="flex:1 1 420px">
       <span class="tag rv">약속이 아니라 측정</span>
-      <h2 class="rv">실제 받은편지함에서 나온 숫자.</h2>
+      <h2 class="rv">모든 빌드가 넘어야 하는 하한선.</h2>
     </div>
-    <p class="rv">모든 릴리스는 출시 전에 직접 라벨링한 실제 메일 데이터셋으로 채점합니다.
-      데이터셋은 커밋돼 있고, 실행기는 <b>pnpm eval:real</b>이며, 데이터셋이 바뀌지 않는 한
-      수치도 바뀌지 않습니다 — 이 페이지에 나오는 네 제품 중 어느 쪽도 공개하지 않는 것입니다.</p>
+    <p class="rv">분류기가 바뀔 때마다, 출시 전에 리포에 커밋된 합성 메일 56통으로 채점합니다.
+      실행기는 <b>pnpm eval:judge</b>이고, 전체 정확도가 80%, 긴급 메일 재현율이 90%,
+      SILENT 정밀도가 90% 아래로 떨어지면 CI가 빌드를 실패시킵니다.</p>
   </div>
   <div class="stats">
     <div class="stat rv"><div class="sv">&ge;90%</div><div class="sl">긴급 메일 재현율 (CI 하한)</div>
       <p>긴급 메일 재현율이 하한 아래로 떨어지는 변경은 빌드가 실패합니다.</p></div>
-    <div class="stat rv"><div class="sv">95.5%</div><div class="sl">SILENT 정밀도</div>
-      <p>Klorn이 소음으로 보관할 때, 진짜 신호를 묻어버리는 일은 거의 없습니다.</p></div>
+    <div class="stat rv"><div class="sv">&ge;90%</div><div class="sl">SILENT 정밀도 (CI 하한)</div>
+      <p>SILENT로 보낸 메일 열 통 중 한 통 넘게 진짜 신호가 섞이게 만드는 변경은 빌드가 실패합니다.</p></div>
     <div class="stat rv"><div class="sv">0</div><div class="sl">미승인 실행</div>
       <p>전송·삭제·전달은 전부 당신을 기다리고 나간 내용의 해시가 박힌 영수증을 남깁니다.</p></div>
   </div>
-  <p class="foot rv">직접 라벨링한 실제 메일 세트는 재라벨링 중입니다. 이 세트는 Meeting·Info 레인이 생기기 전에 만들어져 두 레인을 채점할 수 없고, 그래서 이 세트에서 나온 대표 정확도 수치는 더 이상 싣지 않습니다. 위의 Silent 정밀도는 같은 세트에서 측정되지만 이 문제의 영향을 받지 않습니다. 리포에 커밋된 합성 게이트셋은 판정기가 바뀔 때마다 하한과 함께 CI에서 실행됩니다.
+  <p class="foot rv">이 수치는 합성 세트에 대한 하한이지, 당신 받은편지함의 점수가 아닙니다. 직접 라벨링한 실제 메일 세트는 Meeting·Info 레인이 생기기 전에 만들어져 두 레인을 채점할 수 없기 때문에 재라벨링 중이고, 끝날 때까지 이 세트의 수치는 싣지 않습니다.
     <a href="https://github.com/k08200/klorn/tree/main/packages/api/eval" rel="noreferrer noopener">측정 방법과 평가셋 →</a></p>
 </section>
 
@@ -1275,17 +1275,18 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
   </div>
   <div class="works rv">
     <div class="work"><b>Gmail</b><span>구글 로그인. Pro에서는 여러 개.</span></div>
-    <div class="work"><b>네이버 메일</b><span>설정에서 IMAP으로 연결.</span></div>
+    <div class="work"><b>네이버 메일</b><span>베타. 설정에서 IMAP으로 연결.</span></div>
+    <div class="work"><b>iCloud 메일</b><span>베타. 앱 전용 암호로 IMAP 연결.</span></div>
     <div class="work"><b>Google 캘린더</b><span>읽고, 당신 승인으로 일정 생성.</span></div>
     <div class="work"><b>macOS 14+</b><span>유니버설 — 애플 실리콘과 인텔.</span></div>
     <div class="work"><b>메일 언어 그대로</b><span>온 메일의 언어로 답장이 나갑니다.</span></div>
     <div class="work"><b>인터페이스 7개 언어</b><span>English, 한국어, 日本語, 中文, Español, Français, Deutsch.</span></div>
   </div>
-  <p class="works-note rv"><b>미지원:</b> 네이버 외의 IMAP 호스트. Klorn 로그인은 아직 구글만 되고,
+  <p class="works-note rv"><b>미지원:</b> 네이버·iCloud 외의 IMAP 호스트. Klorn 로그인은 아직 구글만 되고,
     네이티브 모바일 앱은 없습니다 — 지금 모바일은 브라우저로 실행됩니다.
     윈도우 데스크탑 앱은 베타입니다 — 리눅스는 브라우저로 실행됩니다.
     셀프호스팅은 당신의 DB와 모델 키로 동작합니다.</p>
-  <p class="works-note rv"><b>곧 지원:</b> Outlook·Microsoft 365, iCloud 메일 — 구현은 끝났고,
+  <p class="works-note rv"><b>곧 지원:</b> Outlook·Microsoft 365 — 구현은 끝났고,
     보안 심사 후 순차 공개됩니다. Apple·네이버 로그인은 웹과 맥 앱, 모바일 모두에 예정되어 있어
     Klorn 계정 하나로 모든 기기를 씁니다. 네이티브 모바일 앱도 준비 중입니다.
     나온 것은 아직 없고, 나오면 이 페이지에 올라옵니다.</p>
@@ -1315,10 +1316,8 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
     <details class="faq-i rv"><summary>AI가 요금을 폭주시킬 수 있나요?</summary>
       <p>아니요. Klorn은 하루 지출에 스스로 상한을 걸고, 초과하느니 멈춥니다 — 폭주한 루프가
         당신에게 청구되는 일은 없습니다. 분류가 무료인 이유도 그 상한 덕분입니다.</p></details>
-    <details class="faq-i rv"><summary>로그인할 때 구글이 경고를 띄우는 이유가 뭔가요?</summary>
-      <p>메일을 읽으려면 구글의 제한 스코프가 필요하고, 그건 앱이 확인됨으로 표시되기 전에 보안 검수를
-        받아야 합니다. 검수가 끝날 때까지 미확인 앱 화면이 한 번 보이고, 베타는 선착순 100명으로
-        제한됩니다.</p></details>
+    <details class="faq-i rv"><summary>Klorn은 구글 인증을 받았나요?</summary>
+      <p>네. 구글은 독립 CASA Tier 2 보안 평가를 거쳐 2026년 10월 3일에 Klorn의 OAuth 인증 심사를 마쳤습니다. 로그인하면 구글의 일반 동의 화면이 뜨고, 미확인 앱 경고도 계정 수 제한도 없습니다. 심사가 무엇을 다뤘는지는 스코프별로 <a href="/security/">보안 페이지</a>(영문)에 정리돼 있습니다.</p></details>
   </div>
 </section>
 
@@ -1332,8 +1331,8 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
          alt="" loading="lazy" decoding="async" width="2560" height="1709">
   </picture>
   <div class="wrapl rv">
-    <h2 class="final-h">다음 세대의 받은편지함은<br><span class="ser">결정 대기열</span>입니다.</h2>
-    <p class="final-p">분류는 무료이고 계속 무료입니다. 로그인은 구글 OAuth로 바로 — 초대장도, 대기자 명단도 없습니다. 제한은 선착순 100계정뿐입니다.</p>
+    <h2 class="final-h">이미 쓰는 모든 것을,<br><span class="ser">차분한 한 곳</span>에서.</h2>
+    <p class="final-p">분류는 무료이고 계속 무료입니다. 로그인은 구글 OAuth로 바로 — 초대장도, 대기자 명단도, 계정 수 제한도 없습니다.</p>
     <div class="actions">
       <a class="btn btn-1" href="https://app.klorn.ai/login?mode=register">무료로 시작 <i>↗</i></a>
       <a class="btn btn-2 btn-dl" href="https://github.com/k08200/klorn/releases/latest/download/Klorn.dmg" rel="noreferrer noopener"

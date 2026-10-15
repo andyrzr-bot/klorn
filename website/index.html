@@ -907,10 +907,10 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
   },
   {
    "@type": "Question",
-   "name": "Why does Google warn me when I sign in?",
+   "name": "Is Klorn verified by Google?",
    "acceptedAnswer": {
     "@type": "Answer",
-    "text": "Reading your mail needs Google's restricted scopes, and those need a security review before an app is marked verified. Until that clears you see an unverified-app screen once, and the beta is limited to the first 100 accounts."
+    "text": "Yes. Google completed its OAuth verification of Klorn on 2026-10-03, after an independent CASA Tier 2 security assessment. Sign-in shows Google's normal consent screen, with no unverified-app warning and no cap on accounts. What the review covered, scope by scope, is on the security page (https://klorn.ai/security/)."
    }
   }
  ]
@@ -954,7 +954,7 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
   </picture>
 
   <div class="wrap">
-    <span class="eyebrow rv">Gmail, Naver and Google Calendar &mdash; <b>in one place</b></span>
+    <span class="eyebrow rv">Gmail, Naver, iCloud Mail and Google Calendar &mdash; <b>in one place</b></span>
     <h1 class="rv">Fewer interruptions.<br>Not <span class="ser">faster</span> email.</h1>
     <p class="lead rv"><b style="color:var(--ink);font-weight:650">Klorn sorts every message into five
       lanes and puts the reason on each one</b> — web, macOS and Windows. Move a row and the correction sticks — two matching corrections make that sender a rule.
@@ -1130,7 +1130,7 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
     </div>
     <div class="vsrow">
       <div class="vscell ours" data-who="Klorn"><span class="k">03 &middot; What it claims</span>
-        <p>Numbers that <b>re-run</b> &mdash; every eval set ships in the repo (<b>pnpm eval:judge</b>, <b>pnpm eval:real</b>). When one stopped reproducing, we took it off this page.</p></div>
+        <p>Numbers that <b>re-run</b> &mdash; the eval gate ships in the repo (<b>pnpm eval:judge</b>) and runs in CI on every classifier change. When a figure stopped reproducing, we took it off this page.</p></div>
       <div class="vscell them" data-who="All four"><span class="k">03 &middot; What it claims</span>
         <p>&ldquo;AI-powered.&rdquo; No published evaluation set, no cold-versus-warm split, and nothing you
           can run yourself to check the number against.</p></div>
@@ -1168,21 +1168,21 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
   <div class="sec-head">
     <div style="flex:1 1 420px">
       <span class="tag rv">Measured, not promised</span>
-      <h2 class="rv">Numbers from a real inbox.</h2>
+      <h2 class="rv">Floors every build must clear.</h2>
     </div>
-    <p class="rv">Every release is scored against a hand-labelled set of real emails before it ships.
-      The set is committed, the runner is <b>pnpm eval:real</b>, and the number only moves when the
-      set does — which is more than any of the four products on this page publishes.</p>
+    <p class="rv">Every change to the classifier is scored against a committed synthetic set of
+      56 emails before it ships. The runner is <b>pnpm eval:judge</b>, and CI fails the build if
+      overall accuracy drops below 80%, urgent recall below 90% or silenced precision below 90%.</p>
   </div>
   <div class="stats">
     <div class="stat rv"><div class="sv">&ge;90%</div><div class="sl">Urgent recall, CI floor</div>
       <p>A change that drops urgent recall below the floor fails the build.</p></div>
-    <div class="stat rv"><div class="sv">95.5%</div><div class="sl">Silent precision</div>
-      <p>When Klorn files mail as noise, it almost never buries a real signal.</p></div>
+    <div class="stat rv"><div class="sv">&ge;90%</div><div class="sl">Silent precision, CI floor</div>
+      <p>A change that lets more than one in ten silenced emails be a real signal fails the build.</p></div>
     <div class="stat rv"><div class="sv">0</div><div class="sl">Unapproved actions</div>
       <p>Every send, delete and forward waits for you and logs a receipt pinned to a hash of what went out.</p></div>
   </div>
-  <p class="foot rv">The hand-labelled real-mail set is being re-labelled: it predates the Meeting and Info lanes, so it cannot score them, and we no longer quote a headline accuracy from it. Silent precision above is measured on that set and is unaffected. The committed synthetic gate set runs on every judge change, with its floors enforced in CI.
+  <p class="foot rv">These are floors on a synthetic set, not a score for your inbox. The hand-labelled real-mail set predates the Meeting and Info lanes, so it cannot score them; it is being re-labelled, and until it is we quote no figure from it.
     <a href="https://github.com/k08200/klorn/tree/main/packages/api/eval" rel="noreferrer noopener">Methodology and eval set →</a></p>
 </section>
 
@@ -1275,17 +1275,18 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
   </div>
   <div class="works rv">
     <div class="work"><b>Gmail</b><span>Google sign-in. Multiple inboxes on Pro.</span></div>
-    <div class="work"><b>Naver Mail</b><span>Connected over IMAP from Settings.</span></div>
+    <div class="work"><b>Naver Mail</b><span>Beta. Connected over IMAP from Settings.</span></div>
+    <div class="work"><b>iCloud Mail</b><span>Beta. Connected over IMAP with an app-specific password.</span></div>
     <div class="work"><b>Google Calendar</b><span>Read, and create events on your say-so.</span></div>
     <div class="work"><b>macOS 14+</b><span>Universal — Apple Silicon and Intel.</span></div>
     <div class="work"><b>Any mail language</b><span>Replies come back in the language the mail arrived in.</span></div>
     <div class="work"><b>7 interface languages</b><span>English, 한국어, 日本語, 中文, Español, Français, Deutsch.</span></div>
   </div>
-  <p class="works-note rv"><b>Not supported:</b> IMAP hosts other than Naver. Signing in to Klorn is
+  <p class="works-note rv"><b>Not supported:</b> IMAP hosts other than Naver and iCloud. Signing in to Klorn is
     Google-only, and there is no native mobile app — mobile runs in the browser today.
     On Windows the desktop app is in beta;
     on Linux, Klorn runs in the browser. Self-hosting works against your own database and model keys.</p>
-  <p class="works-note rv"><b>Coming soon:</b> Outlook &amp; Microsoft 365 and iCloud Mail — already built,
+  <p class="works-note rv"><b>Coming soon:</b> Outlook &amp; Microsoft 365 — already built,
     staged for rollout after security review. Sign in with Apple and Naver is planned on the web, the Mac
     app and mobile alike, so one Klorn account covers every device, and native mobile apps are on the way.
     None of it has shipped; this page is where it lands when it does.</p>
@@ -1316,10 +1317,8 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
     <details class="faq-i rv"><summary>Can the AI run up a bill?</summary>
       <p>No. Klorn caps its own spend per day, and stops rather than overspending — a runaway loop
         costs you nothing. That cap is why sorting stays free.</p></details>
-    <details class="faq-i rv"><summary>Why does Google warn me when I sign in?</summary>
-      <p>Reading your mail needs Google's restricted scopes, and those need a security review before
-        an app is marked verified. Until that clears you see an unverified-app screen once, and the
-        beta is limited to the first 100 accounts.</p></details>
+    <details class="faq-i rv"><summary>Is Klorn verified by Google?</summary>
+      <p>Yes. Google completed its OAuth verification of Klorn on 2026-10-03, after an independent CASA Tier 2 security assessment. Sign-in shows Google's normal consent screen, with no unverified-app warning and no cap on accounts. What the review covered, scope by scope, is on the <a href="/security/">security page</a>.</p></details>
   </div>
 </section>
 
@@ -1333,8 +1332,8 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
          alt="" loading="lazy" decoding="async" width="2560" height="1709">
   </picture>
   <div class="wrapl rv">
-    <h2 class="final-h">The next inbox is<br>a <span class="ser">decision queue.</span></h2>
-    <p class="final-p">Sorting is free and stays free. Signing in is Google OAuth, straight through — no invite, no waitlist. The only limit is the first 100 accounts.</p>
+    <h2 class="final-h">Everything you already use.<br>One <span class="ser">calm place.</span></h2>
+    <p class="final-p">Sorting is free and stays free. Signing in is Google OAuth, straight through — no invite, no waitlist, no cap on accounts.</p>
     <div class="actions">
       <a class="btn btn-1" href="https://app.klorn.ai/login?mode=register">Start free <i>↗</i></a>
       <a class="btn btn-2 btn-dl" href="https://github.com/k08200/klorn/releases/latest/download/Klorn.dmg" rel="noreferrer noopener"

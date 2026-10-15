@@ -898,10 +898,10 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
   },
   {
    "@type": "Question",
-   "name": "Warum warnt mich Google bei der Anmeldung?",
+   "name": "Ist Klorn von Google verifiziert?",
    "acceptedAnswer": {
     "@type": "Answer",
-    "text": "Deine Mail zu lesen erfordert Googles restricted scopes, und die brauchen ein Security-Review, bevor\n        eine App als verifiziert gilt. Bis das durch ist, siehst du einmal den Hinweis auf eine nicht verifizierte App, und die\n        Beta ist auf die ersten 100 Konten begrenzt."
+    "text": "Ja. Google hat die OAuth-Verifizierung von Klorn am 3. Oktober 2026 abgeschlossen, nach einem unabhängigen CASA-Tier-2-Sicherheitsassessment. Bei der Anmeldung siehst du Googles normalen Zustimmungsbildschirm — ohne Warnung vor einer nicht verifizierten App und ohne Kontogrenze. Was das Review abgedeckt hat, Scope für Scope, steht auf der Sicherheitsseite (https://klorn.ai/security/) (auf Englisch)."
    }
   }
  ]
@@ -953,7 +953,7 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
   </picture>
 
   <div class="wrap">
-    <span class="eyebrow rv">Gmail, Naver und Google Kalender &mdash; <b>an einem Ort</b></span>
+    <span class="eyebrow rv">Gmail, Naver, iCloud Mail und Google Kalender &mdash; <b>an einem Ort</b></span>
     <h1 class="rv">Weniger Unterbrechungen.<br>Nicht <span class="ser">schnellere</span> Mail.</h1>
     <p class="lead rv"><b style="color:var(--ink);font-weight:650">Klorn sortiert jede Nachricht in eine von fünf Spuren und schreibt den Grund dazu.</b> Web, macOS und Windows. Verschiebe eine Zeile, und die Korrektur bleibt: zwei gleiche Korrekturen machen diesen Absender zur Regel.
       Es wird nichts ohne deine Freigabe gesendet.</p>
@@ -1122,7 +1122,7 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
     </div>
     <div class="vsrow">
       <div class="vscell ours" data-who="Klorn"><span class="k">03 &middot; Was es behauptet</span>
-        <p><b>Zahlen, die sich neu messen lassen</b> &mdash; alle Eval-Sets liegen im Repository (<b>pnpm eval:judge</b>, <b>pnpm eval:real</b>). Als eine sich nicht mehr reproduzieren ließ, haben wir sie von dieser Seite genommen.</p></div>
+        <p><b>Zahlen, die sich neu messen lassen</b> &mdash; das Eval-Gate liegt im Repository (<b>pnpm eval:judge</b>) und läuft bei jeder Änderung am Klassifikator in CI. Als eine Zahl sich nicht mehr reproduzieren ließ, haben wir sie von dieser Seite genommen.</p></div>
       <div class="vscell them" data-who="Alle vier"><span class="k">03 &middot; Was es behauptet</span>
         <p>„KI-gestützt." Kein veröffentlichter Evaluationssatz, keine Trennung von Kalt und Warm, und nichts, was du selbst laufen lassen könntest, um die Zahl zu prüfen.</p></div>
     </div>
@@ -1154,20 +1154,21 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
   <div class="sec-head">
     <div style="flex:1 1 420px">
       <span class="tag rv">Gemessen, nicht versprochen</span>
-      <h2 class="rv">Zahlen aus einem echten Posteingang.</h2>
+      <h2 class="rv">Untergrenzen, die jeder Build schaffen muss.</h2>
     </div>
-    <p class="rv">Jedes Release wird vor der Auslieferung gegen ein handgelabeltes Set echter E-Mails bewertet.
-      Das sind die aktuellen Zahlen, und das Eval-Set liegt im offenen Repo.</p>
+    <p class="rv">Jede Änderung am Klassifikator wird vor der Auslieferung gegen ein im Repository versioniertes
+      synthetisches Set aus 56 E-Mails bewertet. Der Befehl ist <b>pnpm eval:judge</b>, und CI lässt den Build scheitern,
+      wenn die Gesamtgenauigkeit unter 80 %, die Dringend-Trefferquote unter 90 % oder die SILENT-Präzision unter 90 % fällt.</p>
   </div>
   <div class="stats">
     <div class="stat rv"><div class="sv">&ge;90%</div><div class="sl">Dringend-Trefferquote, CI-Untergrenze</div>
       <p>Eine Änderung, die die Dringend-Trefferquote unter die Untergrenze drückt, lässt den Build scheitern.</p></div>
-    <div class="stat rv"><div class="sv">95.5%</div><div class="sl">SILENT-Präzision</div>
-      <p>Wenn Klorn Mail als Rauschen ablegt, begräbt es fast nie ein echtes Signal.</p></div>
+    <div class="stat rv"><div class="sv">&ge;90%</div><div class="sl">SILENT-Präzision, CI-Untergrenze</div>
+      <p>Eine Änderung, bei der mehr als jede zehnte stummgeschaltete Mail ein echtes Signal ist, lässt den Build scheitern.</p></div>
     <div class="stat rv"><div class="sv">0</div><div class="sl">Nicht freigegebene Aktionen</div>
       <p>Jedes Senden, Löschen und Weiterleiten wartet auf dich und protokolliert eine Quittung mit einem Hash des Gesendeten.</p></div>
   </div>
-  <p class="foot rv">Das handmarkierte Echt-Mail-Set wird neu markiert: Es stammt aus der Zeit vor den Spuren Meeting und Info, kann diese also nicht bewerten, und wir nennen daraus keine Kennzahl mehr. Die Silent-Präzision oben wird auf diesem Set gemessen und ist davon nicht betroffen. Das im Repository versionierte synthetische Gate-Set läuft bei jeder Änderung am Klassifikator, mit in CI erzwungenen Untergrenzen.
+  <p class="foot rv">Das sind Untergrenzen auf einem synthetischen Set, keine Note für deinen Posteingang. Das handmarkierte Echt-Mail-Set stammt aus der Zeit vor den Spuren Meeting und Info und kann diese nicht bewerten; es wird neu markiert, und bis dahin nennen wir daraus keine Zahl.
     <a href="https://github.com/k08200/klorn/tree/main/packages/api/eval" rel="noreferrer noopener">Methodik und Eval-Set →</a></p>
 </section>
 
@@ -1251,17 +1252,18 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
   </div>
   <div class="works rv">
     <div class="work"><b>Gmail</b><span>Anmeldung mit Google. Mehrere Postfächer mit Pro.</span></div>
-    <div class="work"><b>Naver Mail</b><span>Über IMAP in den Einstellungen verbunden.</span></div>
+    <div class="work"><b>Naver Mail</b><span>Beta. Über IMAP in den Einstellungen verbunden.</span></div>
+    <div class="work"><b>iCloud Mail</b><span>Beta. Über IMAP mit einem app-spezifischen Passwort verbunden.</span></div>
     <div class="work"><b>Google Calendar</b><span>Lesen, und Termine nur auf deine Freigabe hin anlegen.</span></div>
     <div class="work"><b>macOS 14+</b><span>Universal — Apple Silicon und Intel.</span></div>
     <div class="work"><b>Jede Mail-Sprache</b><span>Antworten kommen in der Sprache zurück, in der die Mail ankam.</span></div>
     <div class="work"><b>7 Oberflächensprachen</b><span>English, 한국어, 日本語, 中文, Español, Français, Deutsch.</span></div>
   </div>
-  <p class="works-note rv"><b>Nicht unterstützt:</b> IMAP-Hoster außer Naver. Die Anmeldung bei Klorn läuft
+  <p class="works-note rv"><b>Nicht unterstützt:</b> IMAP-Hoster außer Naver und iCloud. Die Anmeldung bei Klorn läuft
     nur über Google, und es gibt keine native Mobile-App — mobil läuft es heute im Browser.
     Unter Windows ist die Desktop-App eine Beta;
     unter Linux läuft Klorn im Browser. Self-Hosting funktioniert mit deiner eigenen Datenbank und deinen eigenen Modell-Keys.</p>
-  <p class="works-note rv"><b>Bald verfügbar:</b> Outlook &amp; Microsoft 365 und iCloud Mail — bereits gebaut,
+  <p class="works-note rv"><b>Bald verfügbar:</b> Outlook &amp; Microsoft 365 — bereits gebaut,
     zum Rollout nach dem Security-Review bereitgestellt. Anmelden mit Apple und Naver ist im Web, in der Mac-App
     und mobil gleichermaßen geplant, damit ein Klorn-Konto jedes Gerät abdeckt, und native Mobile-Apps sind unterwegs.
     Nichts davon ist ausgeliefert; sobald es so weit ist, steht es auf dieser Seite.</p>
@@ -1291,10 +1293,8 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
     <details class="faq-i rv"><summary>Kann die KI eine Rechnung auflaufen lassen?</summary>
       <p>Nein. Klorn deckelt seine Ausgaben pro Tag und stoppt lieber, als zu überziehen — eine außer Kontrolle geratene Schleife
         kostet dich nichts. Wegen dieses Deckels bleibt das Sortieren kostenlos.</p></details>
-    <details class="faq-i rv"><summary>Warum warnt mich Google bei der Anmeldung?</summary>
-      <p>Deine Mail zu lesen erfordert Googles restricted scopes, und die brauchen ein Security-Review, bevor
-        eine App als verifiziert gilt. Bis das durch ist, siehst du einmal den Hinweis auf eine nicht verifizierte App, und die
-        Beta ist auf die ersten 100 Konten begrenzt.</p></details>
+    <details class="faq-i rv"><summary>Ist Klorn von Google verifiziert?</summary>
+      <p>Ja. Google hat die OAuth-Verifizierung von Klorn am 3. Oktober 2026 abgeschlossen, nach einem unabhängigen CASA-Tier-2-Sicherheitsassessment. Bei der Anmeldung siehst du Googles normalen Zustimmungsbildschirm — ohne Warnung vor einer nicht verifizierten App und ohne Kontogrenze. Was das Review abgedeckt hat, Scope für Scope, steht auf der <a href="/security/">Sicherheitsseite</a> (auf Englisch).</p></details>
   </div>
 </section>
 
@@ -1308,8 +1308,8 @@ html[lang=ko] .final-h .ser{font-family:'Apple SD Gothic Neo','Nanum Myeongjo','
          alt="" loading="lazy" decoding="async" width="2560" height="1709">
   </picture>
   <div class="wrapl rv">
-    <h2 class="final-h">Der nächste Posteingang ist<br>eine <span class="ser">Entscheidungs-Queue.</span></h2>
-    <p class="final-p">Sortieren ist kostenlos und bleibt es. Die Anmeldung läuft direkt über Google OAuth — keine Einladung, keine Warteliste. Die einzige Grenze sind die ersten 100 Konten.</p>
+    <h2 class="final-h">Alles, was du schon nutzt.<br>Ein <span class="ser">ruhiger Ort.</span></h2>
+    <p class="final-p">Sortieren ist kostenlos und bleibt es. Die Anmeldung läuft direkt über Google OAuth — keine Einladung, keine Warteliste, keine Kontogrenze.</p>
     <div class="actions">
       <a class="btn btn-1" href="https://app.klorn.ai/login?mode=register">Kostenlos starten <i>↗</i></a>
       <a class="btn btn-2 btn-dl" href="https://github.com/k08200/klorn/releases/latest/download/Klorn.dmg" rel="noreferrer noopener"
