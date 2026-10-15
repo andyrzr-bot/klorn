@@ -48,7 +48,7 @@ final class AppModel {
             onWindowPresenceChanged?()
         }
     }
-    /// True while the compose window (M5, `macMainWindow`) is on screen. It
+    /// True while the compose window (M5) is on screen. It
     /// counts like the main window: an open window keeps the app .regular.
     var composeWindowOpen = false {
         didSet {
@@ -68,31 +68,27 @@ final class AppModel {
     /// window (Settings, main, compose, onboarding) opens or closes.
     @ObservationIgnored var onWindowPresenceChanged: (() -> Void)?
     /// Wired by the AppDelegate to the compose window (M5): fires when the
-    /// composer is asked for (again) or put away. Unused with the flag off.
+    /// composer is asked for (again) or put away.
     @ObservationIgnored var onComposePresentationChanged: (() -> Void)?
 
-    /// Mirrors whether the top bar is in its full (app window) state.
-    /// Written by TopBarController on every render.
-    var barFullOpen = false
-    /// Whether the full view is up anywhere — the bar's full state or the
-    /// main window — so the app menus enable only what the UI can act on.
-    var isFullViewOpen: Bool { barFullOpen || mainWindowOpen }
+    /// A full-view request fell back to the expanded panel because the user
+    /// stored `macMainWindow` OFF: the panel says so once, with a way to
+    /// Settings. Written by TopBarController; cleared when the bar rests.
+    var mainWindowOffHint = false
+    /// Whether the full view (the main window) is up, so the app menus
+    /// enable only what the UI can act on.
+    var isFullViewOpen: Bool { mainWindowOpen }
     /// Mirrors the reading pane's inline reply composer being open: Reply in
     /// the Message menu is disabled then, since re-drafting would wipe
     /// what the user has typed.
     var readerReplying = false
-    /// Mirrors whether the top bar's panel is the key window. Written by
-    /// TopBarController.
-    var barPanelIsKey = false
     /// Mirrors whether the main window is the key window. Written by its
     /// window tracker.
     var mainWindowIsKey = false
     /// Message-menu commands act on what the full view shows, so they stay
     /// off while another window (Settings) is key.
     var mailSurfaceIsKey: Bool {
-        MenuRules.mailSurfaceIsKey(
-            barPanelIsKey: barPanelIsKey, barFullOpen: barFullOpen,
-            mainWindowIsKey: mainWindowIsKey, mainWindowOpen: mainWindowOpen)
+        MenuRules.mailSurfaceIsKey(mainWindowIsKey: mainWindowIsKey, mainWindowOpen: mainWindowOpen)
     }
     /// Set by the Message menu's Reply; the reading pane answers by starting
     /// the same AI-drafted reply as its own button — for this item only.
@@ -108,11 +104,9 @@ final class AppModel {
         replyRequest = ReplyRequest(token: (replyRequest?.token ?? 0) &+ 1, itemId: item.id)
     }
 
-    /// Go-menu navigation: switch the list column and put the sidebar on the
-    /// level that owns the destination (mail family vs root features).
+    /// Go-menu navigation: switch the list column.
     func go(to mode: ListMode) {
         listMode = mode
-        sidebarLevel = mode.isMailFamily ? .mail : .root
         clearSelection()
     }
 
@@ -128,25 +122,19 @@ final class AppModel {
         return queue?.item(id: id)
     }
 
-    /// A modal overlay covers the full view (its background is disabled).
-    var fullViewModalOpen: Bool {
-        MainSheetRules.modalOpen(
-            macMainWindow: settings.macMainWindow,
-            overlayModal: composeOverlayOpen || showTierGuide || showEventEditor || showPurposePrompt,
-            sheetAttached: mainSheetAttached)
-    }
+    /// A modal covers the full view (its background is disabled): only a
+    /// sheet actually attached to the open main window, so a flag left set
+    /// while that window is closed never disables ⌘N, Find or Go. The
+    /// compose window is its own window and covers nothing.
+    var fullViewModalOpen: Bool { mainSheetAttached }
     /// A sheet is attached to the open main window (M5). Written by
     /// `MainWindowController`; a sheet flag left set while the window is
     /// closed blocks nothing.
     var mainSheetAttached = false
-    /// The composer as an in-window overlay (the bar's full view). With
-    /// `macMainWindow` on it is its own window (M5) and covers nothing.
-    var composeOverlayOpen: Bool {
-        ComposeWindowRules.overlayOpen(
-            showCompose: showCompose, macMainWindow: settings.macMainWindow)
-    }
     /// Device calendars uploaded from EventKit (step C6): opt-in per calendar.
     let deviceCalendars: DeviceCalendarBridge
+    /// Files the user picks, imported into the Klorn drive (step D7): opt-in per pick.
+    let driveImport: DriveImporter
 
     /// Drives the tier explainer. Set on first run and by the sidebar's
     /// "How sorting works", which is what keeps it re-readable.
@@ -201,17 +189,11 @@ final class AppModel {
     }
     /// Where the main window is (M4b): section, Assistant pane, last mail facet.
     var mainNav = MainNav()
-    /// Which sidebar the full view shows: the root feature nav, or the mail
-    /// client's own sidebar (folders + categories, with a Back row). The
-    /// reference clients swap ONE sidebar between levels — two stacked nav
-    /// groups was the founder's first complaint about the previous shell.
-    var sidebarLevel: SidebarLevel = .root
 
     /// Open the full view on `tier`, and clear any reading-pane selection so the
     /// pane doesn't keep showing a message from the tier the user just left.
     func showTier(_ tier: Tier) {
         listMode = .tier(tier)
-        sidebarLevel = .mail  // a lane IS the mail level — Back must be there
         clearSelection()
     }
 
@@ -299,6 +281,9 @@ final class AppModel {
         self.deviceCalendars = DeviceCalendarBridge(
             api: api,
             currentUser: { SessionIdentity.userId(fromToken: tokenStore.load()) })
+        self.driveImport = DriveImporter(api: api)
+        self.files = FilesStore(api: api)
+        self.freeTime = FreeTimeStore(api: api)
         self.phase = tokenStore.load() != nil ? .signedIn : .signedOut
         self.selectedInbox =
             UserDefaults.standard.string(forKey: Self.selectedInboxKey) ?? "all"
@@ -350,6 +335,59 @@ final class AppModel {
             loginProviders = resp.providers.map(\.id)
         }
     }
+    // MARK: Files and team free-time (P12)
+
+    /// The drive list behind the Files section and Today's recent files.
+    let files: FilesStore
+    /// Today's "When is everyone free?".
+    let freeTime: FreeTimeStore
+    /// `user.files` / `user.teamMode` from GET /api/auth/me; both false until read.
+    private(set) var clientFlags = ClientFlags()
+    @ObservationIgnored private var clientFlagsFetchedAt: Date?
+
+    /// Re-reads the flags at most every `clientFlagsInterval` (the poll runs
+    /// every minute; the flags move with a server deploy). A failed read keeps
+    /// the last known flags.
+    func refreshClientFlags(now: Date = Date()) async {
+        if let fetched = clientFlagsFetchedAt, now.timeIntervalSince(fetched) < Self.clientFlagsInterval { return }
+        let session = sessionGeneration
+        clientFlagsFetchedAt = now
+        do {
+            let me = try await api.get("/api/auth/me", as: MeFlagsResponse.self)
+            guard isCurrent(session) else { return }
+            applyClientFlags(me.user)
+        } catch _ where !isCurrent(session) {
+            return
+        } catch {
+            clientFlagsFetchedAt = nil
+            Log.app.debug("client flags fetch failed: \(String(describing: error), privacy: .private)")
+        }
+    }
+
+    static let clientFlagsInterval: TimeInterval = 10 * 60
+
+    /// Takes new flags. Files switched off leaves the Files section; team
+    /// mode switched on reads the saved teams (sign-in never did).
+    func applyClientFlags(_ flags: ClientFlags) {
+        let previous = clientFlags
+        clientFlags = flags
+        if !flags.files {
+            files.reset()
+            if mainNav.section == .files { navigate(to: .today) }
+        } else if !previous.files {
+            Task { await files.refreshRecent() }
+        }
+        if flags.teamMode, !previous.teamMode { Task { await refreshTeams() } }
+        if !flags.teamMode { freeTime.reset() }
+    }
+
+    /// The per-account P12 state, at sign-out and when a session begins.
+    private func resetFilesState() {
+        files.reset()
+        freeTime.reset()
+        clientFlagsFetchedAt = nil
+    }
+
     // MARK: Teams (team mode P1)
 
     /// The user's saved teams for team-availability questions.
@@ -707,6 +745,13 @@ final class AppModel {
         }
     }
 
+    /// Render-probe seam for the P12 shots: the /me flags and the saved
+    /// teams. No network, no disk.
+    func seedP12ForRender(flags: ClientFlags, teams: [TeamWire]) {
+        clientFlags = flags
+        self.teams = teams
+    }
+
     /// Render-probe seam for the main-window shots (M4b): the state the
     /// fixtures cannot reach through `seedForPreview`. No network, no disk.
     func seedMainWindowForRender(
@@ -743,10 +788,14 @@ final class AppModel {
         // Which sign-in buttons to offer — server-driven, fetched once at
         // launch (unauthed; harmless if it fails: Google stays the default).
         Task { await refreshLoginProviders() }
+        // Request bodies a quit or a crash left mid-import (D7), signed in or not.
+        Task { await driveImport.sweepLeftovers() }
         guard phase == .signedIn else { return }
         Task { await loadQueue() }
         // Resumes uploading only calendars the user already turned on; asks nothing.
         deviceCalendars.start()
+        // Whether the Klorn drive is live (D7): shows or hides "Import to Klorn Drive…".
+        Task { await driveImport.refreshAvailability() }
         // Team mode availability probe (403 while dark) — decides whether the
         // 팀 sidebar row and screen render at all.
         Task { await refreshTeams() }
@@ -793,6 +842,7 @@ final class AppModel {
         case .success(let token):
             beginSession(token: token)
             deviceCalendars.start()
+            Task { await driveImport.refreshAvailability() }
             await loadQueue()
         case .failure(let reason, let detail):
             Log.app.error("sign-in failed: \(reason.rawValue, privacy: .public) \(detail, privacy: .private)")
@@ -808,6 +858,8 @@ final class AppModel {
             Log.app.warning("Keychain save denied (unsigned dev build?) — token kept in memory for this session only")
         }
         sessionGeneration += 1
+        resetFilesState()
+        clientFlags = ClientFlags()
         // The poll loop and the socket belong to the session that started
         // them. A socket opened under the PREVIOUS token would also 4001-loop
         // forever (RealtimeClient captures its token once). Both stop here.
@@ -2150,12 +2202,15 @@ final class AppModel {
         shownMeetingIds = []
         // The device-calendar opt-in belongs to the account that gave it.
         deviceCalendars.signOut(token: sessionToken)
+        // An import in flight belongs to the account that started it.
+        driveImport.signOut()
         // A draft belongs to the account that wrote it: the next account
         // must not find it, send it, or delete the Gmail draft it edits.
         // Putting the composer away also closes the compose window (M5).
         discardComposeDraft()
         showCompose = false
         resetAccountState()
+        resetFilesState()
         phase = .signedOut
         onSessionEnded?()
     }
@@ -2253,6 +2308,9 @@ final class AppModel {
             field("teams", \.teams, [], isClean: { $0.isEmpty }),
             text("teamError", \.teamError),
             flag("teamModeAvailable", \.teamModeAvailable),
+            field(
+                "clientFlags", \.clientFlags, ClientFlags(),
+                dirty: ClientFlags(files: true, teamMode: true)),
             field("teamAvailability", \.teamAvailability, nil, isClean: { $0 == nil }),
             text("checkingTeamId", \.checkingTeamId),
             text("teamBookingResult", \.teamBookingResult),
@@ -2604,6 +2662,8 @@ final class AppModel {
         Task { await refreshCommitments() }
         Task { await refreshAgentToday() }
         Task { await refreshAutomation() }
+        Task { await refreshClientFlags() }
+        if clientFlags.files { Task { await files.refreshRecent() } }
         Task { await refreshPendingActions() }
         Task { await checkForUpdateIfDue() }
         do {

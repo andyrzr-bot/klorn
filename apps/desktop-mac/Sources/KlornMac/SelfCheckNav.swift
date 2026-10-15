@@ -3,8 +3,8 @@ import SwiftUI
 
 // Self-check for the main window's navigation and Today (M4b), run by
 // `KlornMac --self-check`. Pure rules first, then the model wiring on an
-// in-memory model, then source pins that keep the bar's full view (the
-// `macMainWindow`-off path) exactly what it was.
+// in-memory model, then source pins that keep the bar's surfaces off the
+// main window's views.
 
 private let navCheckQueueJSON = """
 {"tiers":{
@@ -42,8 +42,10 @@ func navSelfChecks(sourceDir: URL) -> [(String, Bool)] {
           && NavRules.section(for: .commitments) == .assistant)
     check("calendar and teams are Calendar",
           NavRules.section(for: .calendar) == .calendar && NavRules.section(for: .teams) == .calendar)
-    check("four sections, in the plan's order, no Files without a drive source",
-          NavSection.allCases == [.today, .mail, .calendar, .assistant])
+    check("five sections in the plan's order; Files only with a drive source (FD-7)",
+          NavSection.allCases == [.today, .mail, .calendar, .files, .assistant]
+          && FilesRules.sections(files: false) == [.today, .mail, .calendar, .assistant]
+          && FilesRules.sections(files: true) == [.today, .mail, .calendar, .files, .assistant])
 
     let start = MainNav()
     check("the window opens on Today with QUEUE waiting in Mail",
@@ -158,8 +160,11 @@ func navSelfChecks(sourceDir: URL) -> [(String, Bool)] {
           && sourceMonogram(provider: "IMAP") == "IMAP" && sourceMonogram(provider: nil) == "K")
 
     // MARK: Go menu
-    check("main window: the sections take the first four digits",
-          NavSection.allCases.map(NavRules.shortcutDigit) == [1, 2, 3, 4])
+    check("main window: the sections keep ⌘1–4, Files takes ⌘6 (Approvals keeps ⌘5)",
+          FilesRules.sections(files: false).map(NavRules.shortcutDigit) == [1, 2, 3, 4]
+          && NavRules.shortcutDigit(for: .files) == 6
+          && Set(NavSection.allCases.map(NavRules.shortcutDigit)).count == NavSection.allCases.count
+          && !NavSection.allCases.map(NavRules.shortcutDigit).contains(NavRules.numberedSecondaryDigit))
     check("main window: Approvals keeps a digit, other old targets keep none",
           MenuRules.mainWindowShortcut(for: .go(.proposals)) != nil
           && NavRules.numberedSecondaryDigit == 5
@@ -293,7 +298,7 @@ func navSelfChecks(sourceDir: URL) -> [(String, Bool)] {
     check("new string formats render",
           L("today.row.a11y", "x", "y").contains("x") && !L("today.row.a11y", "x", "y").contains("%"))
 
-    // MARK: flag-off invariance (source pins)
+    // MARK: source pins
     let files = swiftSources(under: sourceDir)
     func text(_ name: String) -> String {
         files.first { $0.lastPathComponent == name }
@@ -303,15 +308,12 @@ func navSelfChecks(sourceDir: URL) -> [(String, Bool)] {
     let shellUsers = files.map(\.lastPathComponent)
         .filter { !$0.hasPrefix("SelfCheck") && text($0).contains(shell) }.sorted()
     check("flag off: only the main window (and its render shots) builds the new shell",
-          shellUsers == ["MainWindow.swift", "PreviewRenderNav.swift"])
-    check("flag off: the bar's full state is still FullView",
-          text("TopBarRoot.swift").contains("case .full: FullView(actions: actions)"))
-    let newViews = ["NavSidebar(", "TodayScreen(", "MailSection(", "CalendarSection(", "AssistantSection("]
+          shellUsers == ["MainWindow.swift", "PreviewRenderFiles.swift", "PreviewRenderNav.swift"])
+    let newViews = ["NavSidebar(", "TodayScreen(", "MailSection(", "CalendarSection(", "AssistantSection(", "FilesSection("]
     let barFiles = [
-        "FullView.swift", "Sidebar.swift", "FullList.swift", "TopBarRoot.swift",
-        "ExpandedDashboard.swift", "CollapsedPill.swift",
+        "TopBarRoot.swift", "ExpandedDashboard.swift", "CollapsedPill.swift",
     ]
-    check("flag off: no bar surface mounts a main-window view",
+    check("no bar surface mounts a main-window view",
           barFiles.allSatisfy { file in !newViews.contains { text(file).contains($0) } })
     check("flag off: shared views default to their pre-M4b behaviour",
           text("ProposalsList.swift").contains("var title = L(\"proposals.title\")")
@@ -343,7 +345,6 @@ func navSelfChecks(sourceDir: URL) -> [(String, Bool)] {
               "AppModel.swift": 2,  // go(to:), showTier(_:)
               "TopBarController.swift": 1,  // onOpenProposals
               "MainNav.swift": 2,  // revealInMail(_:), prepareMainNavigation()
-              "FullView.swift": 1,  // the bar sidebar's selection binding
           ])
     let m4bFiles = [
         "MainNav.swift", "MainShell.swift", "NavSidebar.swift", "TodayRules.swift",

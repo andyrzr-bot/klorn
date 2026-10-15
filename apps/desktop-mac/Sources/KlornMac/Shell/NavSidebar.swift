@@ -12,7 +12,7 @@ struct NavSidebar: View {
         VStack(alignment: .leading, spacing: 0) {
             OffscreenFriendlyScroll {
                 VStack(alignment: .leading, spacing: 2) {
-                    ForEach(NavSection.allCases) { section in
+                    ForEach(FilesRules.sections(files: model.clientFlags.files)) { section in
                         sectionRow(section)
                         if section == .mail, model.mainNav.section == .mail {
                             MailFacetRows()
@@ -33,7 +33,7 @@ struct NavSidebar: View {
     }
 
     private func sectionRow(_ section: NavSection) -> some View {
-        let selected = model.mainNav.section == section
+        let selected = FilesRules.displayed(model.mainNav.section, files: model.clientFlags.files) == section
         return Button { model.navigate(to: section) } label: {
             NavRowLabel(
                 icon: section.icon, title: section.title, count: count(for: section),
@@ -54,7 +54,7 @@ struct NavSidebar: View {
             return count > 0 ? count : nil
         case .assistant:
             return model.pendingActions.isEmpty ? nil : model.pendingActions.count
-        case .today, .calendar:
+        case .today, .calendar, .files:
             return nil
         }
     }

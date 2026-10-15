@@ -13,6 +13,18 @@
  */
 
 export const queryKeys = {
+  // Files (productization plan P12): the drive's metadata list, per search.
+  drive: {
+    all: ["drive"] as const,
+    files: (q: string, folder: string | null = null) => ["drive", "files", q, folder] as const,
+    file: (id: string) => ["drive", "file", id] as const,
+    recent: () => ["drive", "recent"] as const,
+  },
+  // Saved teams (team mode, P12).
+  teams: {
+    all: ["teams"] as const,
+    list: () => ["teams", "list"] as const,
+  },
   tasks: {
     all: ["tasks"] as const,
     list: () => ["tasks", "list"] as const,

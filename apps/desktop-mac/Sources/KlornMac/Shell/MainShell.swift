@@ -9,11 +9,8 @@ import SwiftUI
 /// window's first responder, and the offscreen renderer cannot draw
 /// AppKit-backed containers. A selectable sidebar `List` would take the
 /// arrow keys, and the split view would add its own toolbar and column
-/// autosave next to ours. The structure is the same, so the swap is local
-/// once `BarState.full` is deleted (M8).
-///
-/// The bar's full view (`FullView`) is untouched and stays what the panel
-/// shows while `macMainWindow` is off.
+/// autosave next to ours. The structure is the same, so the swap stays
+/// local now that `BarState.full` is deleted (M8).
 struct MainShell: View {
     @Environment(AppModel.self) private var model
     let actions: TopBarActions
@@ -75,10 +72,12 @@ struct MainShell: View {
                 SurfaceStateView(state: model.surfaceState)
             }
         } else {
-            switch model.mainNav.section {
+            switch FilesRules.displayed(model.mainNav.section, files: model.clientFlags.files) {
             case .today: TodayScreen(actions: actions, now: renderDate ?? Date())
             case .mail: MailSection(actions: actions)
             case .calendar: CalendarSection(actions: actions, initialAnchor: renderDate ?? Date())
+            // FD-7: with the flag off `displayed` already answered Today.
+            case .files: FilesSection()
             case .assistant: AssistantSection(actions: actions)
             }
         }
