@@ -347,6 +347,15 @@ export default function Sidebar() {
                   >
                     {t("settings.title")}
                   </Link>
+                  <a
+                    href="https://klorn.ai/blog/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setShowUserMenu(false)}
+                    className="block px-3 py-2 text-sm text-ink-mid hover:bg-surface-hover rounded-md mx-1 transition"
+                  >
+                    {t("nav.blog")}
+                  </a>
                   <div className="border-t border-line my-1" />
                   <button
                     type="button"

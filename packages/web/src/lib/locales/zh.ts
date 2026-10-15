@@ -26,6 +26,7 @@ const zh: Record<string, string> = {
   "nav.graph": "关系图",
   "nav.billing": "套餐与账单",
   "nav.usage": "用量",
+  "nav.blog": "博客",
   "nav.workspace": "工作区",
   "nav.logIn": "登录",
   "nav.logout": "退出登录",

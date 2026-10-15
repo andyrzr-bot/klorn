@@ -28,6 +28,7 @@ const en: Record<string, string> = {
   "nav.graph": "Graph",
   "nav.billing": "Plan and billing",
   "nav.usage": "Usage",
+  "nav.blog": "Blog",
   "nav.workspace": "Workspace",
   "nav.logIn": "Log in",
   "nav.logout": "Log out",

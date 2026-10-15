@@ -26,6 +26,7 @@ const ja: Record<string, string> = {
   "nav.graph": "グラフ",
   "nav.billing": "プランと請求",
   "nav.usage": "使用状況",
+  "nav.blog": "ブログ",
   "nav.workspace": "ワークスペース",
   "nav.logIn": "ログイン",
   "nav.logout": "ログアウト",

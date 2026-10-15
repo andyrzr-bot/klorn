@@ -28,6 +28,7 @@ const ko: Record<string, string> = {
   "nav.graph": "그래프",
   "nav.billing": "플랜 및 결제",
   "nav.usage": "사용량",
+  "nav.blog": "블로그",
   "nav.workspace": "워크스페이스",
   "nav.logIn": "로그인",
   "nav.logout": "로그아웃",
