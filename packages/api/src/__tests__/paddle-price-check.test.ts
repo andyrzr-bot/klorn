@@ -15,7 +15,9 @@ function paddlePrice(over: Record<string, unknown> = {}) {
     id: "pri_01abc",
     status: "active",
     unit_price: { amount: "3000", currency_code: "USD" },
+    billing_cycle: { interval: "month", frequency: 1 },
     trial_period: { interval: "day", frequency: 7 },
+    tax_mode: "account_setting",
     ...over,
   };
 }
@@ -130,5 +132,90 @@ describe("comparePaddlePrice", () => {
       }),
     });
     expect(result.problems.length).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe("billing_cycle", () => {
+  // $29.99 a YEAR matches on amount and is a different product. Review found
+  // this; the first version of the comparator passed it.
+  it("catches a yearly cycle quoted as monthly", () => {
+    const result = comparePaddlePrice({
+      advertised: "$29.99",
+      price: paddlePrice({
+        unit_price: { amount: "2999", currency_code: "USD" },
+        billing_cycle: { interval: "year", frequency: 1 },
+      }),
+    });
+    expect(result.ok).toBe(false);
+    expect(result.problems.join(" ")).toMatch(/year/);
+  });
+
+  it("catches a one-time price (no billing_cycle)", () => {
+    const result = comparePaddlePrice({
+      advertised: "$29.99",
+      price: paddlePrice({
+        unit_price: { amount: "2999", currency_code: "USD" },
+        billing_cycle: null,
+      }),
+    });
+    expect(result.ok).toBe(false);
+    expect(result.problems.join(" ")).toMatch(/one-time/);
+  });
+
+  it("catches billing every 3 months", () => {
+    const result = comparePaddlePrice({
+      advertised: "$29.99",
+      price: paddlePrice({
+        unit_price: { amount: "2999", currency_code: "USD" },
+        billing_cycle: { interval: "month", frequency: 3 },
+      }),
+    });
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe("tax_mode", () => {
+  // "external" bills the quoted price PLUS tax, so the card is charged more
+  // than any page says — the same class of problem as a wrong amount.
+  it("catches tax added on top of the quoted price", () => {
+    const result = comparePaddlePrice({
+      advertised: "$29.99",
+      price: paddlePrice({
+        unit_price: { amount: "2999", currency_code: "USD" },
+        tax_mode: "external",
+      }),
+    });
+    expect(result.ok).toBe(false);
+    expect(result.problems.join(" ")).toMatch(/tax/i);
+  });
+});
+
+describe("amount formatting and precision", () => {
+  it("prints whole cents rather than a truncated float", () => {
+    const result = comparePaddlePrice({
+      advertised: "$29.99",
+      price: paddlePrice({ unit_price: { amount: "2950", currency_code: "USD" } }),
+    });
+    expect(result.problems.join(" ")).toContain("$29.50");
+    expect(result.problems.join(" ")).not.toContain("$29.5 ");
+  });
+
+  it("accepts a one-week trial as seven days", () => {
+    const result = comparePaddlePrice({
+      advertised: "$29.99",
+      price: paddlePrice({
+        unit_price: { amount: "2999", currency_code: "USD" },
+        trial_period: { interval: "week", frequency: 1 },
+      }),
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects fractional minor units rather than rounding them away", () => {
+    const result = comparePaddlePrice({
+      advertised: "$29.99",
+      price: paddlePrice({ unit_price: { amount: "2999.4", currency_code: "USD" } }),
+    });
+    expect(result.ok).toBe(false);
   });
 });
