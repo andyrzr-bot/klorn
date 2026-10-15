@@ -456,7 +456,11 @@ async function extractFeaturesWithLlm(
           max_tokens: 1024,
         },
         {
-          ...(userId ? { userId, priority: "background" as const } : {}),
+          // `reserved` lets this call reach the slice of the daily cap that chat,
+          // agent and briefing are held back from. Without it the judge is the
+          // first thing to go dark when something else spends the budget, and
+          // nothing looks broken because mail is still being sorted.
+          ...(userId ? { userId, priority: "background" as const, reserved: true } : {}),
           ...(credentials ? { credentials } : {}),
         },
       );

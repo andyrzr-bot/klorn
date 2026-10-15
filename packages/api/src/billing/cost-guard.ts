@@ -18,6 +18,7 @@ import {
   DAILY_COST_CAP_CENTS,
   FREE_DAILY_COST_CAP_CENTS,
   GLOBAL_DAILY_COST_CAP_CENTS,
+  JUDGE_BUDGET_RESERVE_CENTS,
   PAYWALL_ENABLED,
 } from "../config.js";
 import { prisma } from "../db.js";
@@ -77,11 +78,49 @@ async function resolveCapCents(
 }
 
 /**
+ * How much of the daily cap only the judge may spend.
+ *
+ * On 2026-10-15 a credit top-up brought the LLM back at 22:07; by 22:28 the
+ * account had spent 101¢ of a 100¢ cap, nearly all of it chat/agent traffic on
+ * a model 6.7x the judge's price. Every paid call was then blocked until UTC
+ * midnight and the judge fell back to keywords, which structurally cannot emit
+ * PUSH. The product's one promise went dark because a side surface spent the
+ * budget first.
+ *
+ * `priority: "background"` was already documented as stopping background work
+ * from starving chat, but it only feeds the concurrency pacer — this file
+ * never read it — so neither direction was actually protected.
+ *
+ * Classification costs ~700 tokens/email; at gemini-2.5-flash prices that is
+ * ~0.02¢, so the 25¢ default covers on the order of a thousand emails a day
+ * and is noise against any cap worth setting.
+ *
+ * 0 disables the reserve and restores the previous behaviour exactly.
+ */
+function reserveCents(capCents: number): number {
+  if (JUDGE_BUDGET_RESERVE_CENTS <= 0 || capCents <= 0) return 0;
+  // A reserve at or above the cap would leave every other surface nothing,
+  // which presents as "chat is broken" rather than "the reserve is too big".
+  // Never take more than half.
+  return Math.min(JUDGE_BUDGET_RESERVE_CENTS, Math.floor(capCents / 2));
+}
+
+/**
  * Check whether `userId` is allowed to make another paid LLM call today.
  * Reads but does not mutate. Cap = 0 disables the gate entirely.
+ *
+ * `reserved` marks a call that may draw on the judge's reserved slice. Only
+ * the firewall judge passes it: it is the one surface whose failure is
+ * invisible to the user, because mail keeps being sorted — just without the
+ * lane the product is sold on.
  */
-export async function checkCostGate(userId: string): Promise<CostGateResult> {
-  const { capCents: cap, freeCapApplied } = await resolveCapCents(userId);
+export async function checkCostGate(
+  userId: string,
+  options: { reserved?: boolean } = {},
+): Promise<CostGateResult> {
+  const { capCents: fullCap, freeCapApplied } = await resolveCapCents(userId);
+  // Ordinary calls stop early so the judge always has somewhere to spend.
+  const cap = options.reserved ? fullCap : fullCap - reserveCents(fullCap);
   if (cap <= 0) {
     return {
       allowed: true,

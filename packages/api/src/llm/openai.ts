@@ -121,6 +121,14 @@ export interface CompletionOptions {
    */
   priority?: CallPriority;
   /**
+   * Draw on the judge's reserved slice of the daily cap
+   * (JUDGE_BUDGET_RESERVE_CENTS). Only the firewall judge sets this: it is the
+   * one surface whose failure is invisible, because mail keeps being sorted —
+   * just without the lane the product is sold on. Everything else stops at
+   * (cap - reserve) so it cannot spend the judge's budget.
+   */
+  reserved?: boolean;
+  /**
    * Conversational surfaces (agent conversations / chat) pass true so the
    * user's chosen frontier chat model (credentials.userModel) is applied.
    * Absent/false = pinned surfaces (judge/summarize/draft/vision) — the
@@ -177,6 +185,7 @@ async function enforceCostGates(
   userId?: string,
   playgroundOnly?: boolean,
   userKeyAvailable?: boolean,
+  reserved?: boolean,
 ): Promise<void> {
   // Playground calls run entirely on the visitor's own key (no server provider
   // in the chain), so they incur zero server cost. They must NOT be gated by
@@ -205,7 +214,7 @@ async function enforceCostGates(
   }
 
   if (userId) {
-    const gate = await checkCostGate(userId);
+    const gate = await checkCostGate(userId, { reserved });
     if (!gate.allowed) {
       throw new DailyCostCapExceededError(dailyCostCapMessageFor(gate.freeCapApplied === true));
     }
@@ -494,7 +503,13 @@ async function createCompletionWithFailover(
   // Daily-cost gate: enforce BEFORE the call so we don't burn budget twice
   // when a runaway loop has already crossed the cap. Covers the global
   // ceiling (always) and the per-user cap (when a userId is present).
-  await enforceCostGates(params.model, options.userId, playgroundOnly, userKeyAvailable);
+  await enforceCostGates(
+    params.model,
+    options.userId,
+    playgroundOnly,
+    userKeyAvailable,
+    options.reserved,
+  );
 
   // Ground-truth usage ledger context, frozen before the failover loop so
   // every retry records the same caller identity + the same pre-bill
@@ -754,7 +769,13 @@ async function createVisionCompletionWithFailover(
 
   // Daily-cost gate: vision/OCR calls bill the same ledgers as chat. Without
   // this, a runaway attachment-analysis batch can blow past the cap.
-  await enforceCostGates(params.model, options.userId, playgroundOnly, userKeyAvailable);
+  await enforceCostGates(
+    params.model,
+    options.userId,
+    playgroundOnly,
+    userKeyAvailable,
+    options.reserved,
+  );
 
   // Vision prefers Gemini (best OCR), but a BYOK user's OWN key must keep
   // priority — otherwise env Gemini gets hoisted ahead of the user's
