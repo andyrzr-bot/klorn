@@ -67,6 +67,14 @@
 
         </activity>
 
+        <!-- FCM notification messages (no channel of their own) land on the PUSH
+             channel the app creates at launch (src/platform/local-notify.ts,
+             importance high). Data-only messages are posted by the app itself,
+             with action buttons (src/push/android.ts). -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="klorn_push" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

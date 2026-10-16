@@ -691,6 +691,12 @@ export const zh: Messages = {
   "push.denied": "通知已关闭，可以在设备设置中开启。",
   "push.snoozed": "1 小时后再提醒你。",
   "push.done": "已标记为完成。",
+  "push.action.later": "1 小时后",
+  "push.action.done": "已处理",
+  "push.action.review": "查看",
+  "push.channel.push": "PUSH 邮件",
+  "push.channel.pushBody": "只有现在需要你处理的邮件，可在通知上直接选择“1 小时后”或“已处理”。",
+  "push.channel.other": "其他通知",
   "push.cover.draftReady": "回复草稿已备好",
   "push.cover.snoozeFailed": "无法推迟，已放回列表。",
 

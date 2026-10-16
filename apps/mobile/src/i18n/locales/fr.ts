@@ -732,6 +732,13 @@ export const fr: Messages = {
     "Les notifications sont désactivées. Vous pouvez les activer dans les réglages de l'appareil.",
   "push.snoozed": "Reporté d'une heure.",
   "push.done": "Marqué comme traité.",
+  "push.action.later": "Dans 1 heure",
+  "push.action.done": "Traité",
+  "push.action.review": "Examiner",
+  "push.channel.push": "E-mails PUSH",
+  "push.channel.pushBody":
+    "Seulement les e-mails qui ont besoin de vous maintenant, avec Dans 1 heure et Traité sur la notification.",
+  "push.channel.other": "Autres notifications",
   "push.cover.draftReady": "brouillon de réponse prêt",
   "push.cover.snoozeFailed": "Impossible de reporter. Il est de retour dans la liste.",
 

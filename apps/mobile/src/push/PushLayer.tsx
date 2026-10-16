@@ -1,14 +1,23 @@
 /**
  * Push, app side: the priming screen (asked once, after sign-in, before the
  * OS prompt — and only PUSH-lane mail rings), the in-app banner for a push
- * that arrives while the app is open, and what a tap or an action button
- * does. "Send draft" never sends: it opens the approval card, where sending
+ * that arrives while the app is open, Android's own notifications for
+ * data-only messages (push/android.ts — the only way to get action buttons
+ * there), and what a tap or an action button does. "Send draft" (iOS) and
+ * "Review" (Android) never send: they open the approval card, where sending
  * is one more explicit tap (and on iOS the button already required unlock).
  */
 import { useEffect, useState } from "react";
 import { getServices } from "../app/services";
 import { MOCK_API } from "../config";
 import { useI18n } from "../i18n/I18nProvider";
+import {
+  appIsActive,
+  installLocalNotificationListeners,
+  isAndroid,
+  setupAndroidNotifications,
+  showDataPush,
+} from "../platform/local-notify";
 import {
   enablePush,
   type IncomingPush,
@@ -20,10 +29,22 @@ import {
 import { useRouter } from "../router/Router";
 import { Icon } from "../ui/Icon";
 import { notify } from "../ui/StatusNote";
+import { parseDataPush } from "./android";
 import { intentOf, routeFromPush } from "./route";
 import "./push.css";
 
 const BANNER_MS = 6000;
+
+/** FCM message ids already handled (the plugin can deliver its last message again on launch). */
+const delivered = new Set<string>();
+
+function firstDelivery(id: string | undefined): boolean {
+  if (!id) return true;
+  if (delivered.has(id)) return false;
+  delivered.add(id);
+  if (delivered.size > 100) delivered.delete(delivered.values().next().value as string);
+  return true;
+}
 
 function useForcedPriming(): boolean {
   // Mock / dev builds: `?priming=1` shows the screen (screenshots, review).
@@ -174,28 +195,57 @@ export function PushLayer() {
     };
   }, []);
 
-  useEffect(
-    () =>
-      installPushListeners({
-        onForeground: (push) => setBanner(push),
-        onAction: (actionId, push) => {
-          const intent = intentOf(actionId, push.data);
-          const { ep } = getServices();
-          if (intent.kind === "open" || intent.kind === "review") {
-            navigate(intent.route);
-            return;
-          }
-          const run =
-            intent.kind === "snooze"
-              ? ep.triage.snooze(intent.attentionItemId, new Date(Date.now() + 3_600_000))
-              : ep.triage.done(intent.attentionItemId);
-          void run
-            .then(() => notify(t(intent.kind === "snooze" ? "push.snoozed" : "push.done")))
-            .catch(() => navigate(intent.fallback));
-        },
-      }),
-    [navigate, t],
-  );
+  // Android: channels (PUSH = importance high) and the action buttons, in the app language.
+  useEffect(() => {
+    void setupAndroidNotifications({
+      later: t("push.action.later"),
+      done: t("push.action.done"),
+      review: t("push.action.review"),
+      pushChannel: t("push.channel.push"),
+      pushChannelBody: t("push.channel.pushBody"),
+      otherChannel: t("push.channel.other"),
+    });
+  }, [t]);
+
+  useEffect(() => {
+    // One handler for iOS actions, Android local-notification actions and taps.
+    const onAction = (actionId: string, push: IncomingPush) => {
+      const intent = intentOf(actionId, push.data);
+      const { ep } = getServices();
+      if (intent.kind === "open" || intent.kind === "review") {
+        navigate(intent.route);
+        return;
+      }
+      const run =
+        intent.kind === "snooze"
+          ? ep.triage.snooze(intent.attentionItemId, new Date(Date.now() + 3_600_000))
+          : ep.triage.done(intent.attentionItemId);
+      void run
+        .then(() => notify(t(intent.kind === "snooze" ? "push.snoozed" : "push.done")))
+        .catch(() => navigate(intent.fallback));
+    };
+    const onForeground = (push: IncomingPush) => {
+      if (!push.dataOnly) {
+        setBanner(push);
+        return;
+      }
+      // A data-only message: Android posts it with action buttons — or, with
+      // the app on screen, shows the in-app banner instead (as iOS does).
+      if (!isAndroid() || !firstDelivery(push.id)) return;
+      const parsed = parseDataPush({ title: null, data: push.data }, Date.now());
+      if (!parsed) return;
+      void appIsActive().then((active) => {
+        if (active) setBanner({ title: parsed.title, body: parsed.body, data: parsed.data });
+        else void showDataPush(parsed);
+      });
+    };
+    const removePush = installPushListeners({ onForeground, onAction });
+    const removeLocal = installLocalNotificationListeners(onAction);
+    return () => {
+      removePush();
+      removeLocal();
+    };
+  }, [navigate, t]);
 
   return (
     <>

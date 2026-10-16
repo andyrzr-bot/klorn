@@ -704,6 +704,13 @@ export const ko: Messages = {
   "push.denied": "알림이 꺼져 있어요. 기기 설정에서 켤 수 있어요.",
   "push.snoozed": "1시간 뒤에 다시 알려 드릴게요.",
   "push.done": "처리 완료로 표시했어요.",
+  "push.action.later": "1시간 뒤에",
+  "push.action.done": "처리 완료",
+  "push.action.review": "검토하기",
+  "push.channel.push": "PUSH 메일",
+  "push.channel.pushBody":
+    "지금 챙겨야 할 메일만 알려요. 알림에서 바로 1시간 뒤에·처리 완료를 고를 수 있어요.",
+  "push.channel.other": "기타 알림",
   "push.cover.draftReady": "답장 초안 준비됨",
   "push.cover.snoozeFailed": "미루지 못했어요. 다시 목록에 올렸어요.",
 

@@ -60,16 +60,23 @@ export function routeFromPush(data: PushData | null | undefined): Route {
   return { name: "today" };
 }
 
-/** The notification action buttons (iOS UNNotificationCategory ids, AppDelegate.swift). */
+/**
+ * The notification action buttons: iOS UNNotificationCategory actions
+ * (AppDelegate.swift) and the Android local-notification action types
+ * (push/android.ts) share these ids.
+ */
 export const PUSH_ACTIONS = {
+  /** iOS "Send draft" — opens the approval card; it never sends. */
   send: "KLORN_SEND",
+  /** Android "Review" — opens the approval card / the mail. */
+  review: "KLORN_REVIEW",
   later: "KLORN_LATER",
   done: "KLORN_DONE",
 } as const;
 
 export type PushIntent =
   | { kind: "open"; route: Route }
-  /** "Send draft" never sends: it opens the approval card, where the user taps Send. */
+  /** "Send draft" / "Review" never send: they open the approval card, where the user taps Send. */
   | { kind: "review"; route: Route }
   | { kind: "snooze"; attentionItemId: string; fallback: Route }
   | { kind: "done"; attentionItemId: string; fallback: Route };
@@ -79,6 +86,7 @@ export function intentOf(actionId: string, data: PushData | null | undefined): P
   const attentionItemId = idOf(data?.attentionItemId);
   switch (actionId) {
     case PUSH_ACTIONS.send:
+    case PUSH_ACTIONS.review:
       return { kind: "review", route };
     case PUSH_ACTIONS.later:
       return attentionItemId

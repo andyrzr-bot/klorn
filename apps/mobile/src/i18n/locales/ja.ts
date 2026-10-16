@@ -720,6 +720,13 @@ export const ja: Messages = {
   "push.denied": "通知がオフです。端末の設定でオンにできます。",
   "push.snoozed": "1時間後にもう一度お知らせします。",
   "push.done": "処理済みにしました。",
+  "push.action.later": "1時間後に",
+  "push.action.done": "処理済み",
+  "push.action.review": "確認する",
+  "push.channel.push": "PUSH メール",
+  "push.channel.pushBody":
+    "今対応が必要なメールだけ。通知から「1時間後に」「処理済み」を選べます。",
+  "push.channel.other": "その他の通知",
   "push.cover.draftReady": "返信の下書きあり",
   "push.cover.snoozeFailed": "後回しにできませんでした。一覧に戻しました。",
 

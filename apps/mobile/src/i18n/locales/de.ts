@@ -739,6 +739,13 @@ export const de: Messages = {
     "Benachrichtigungen sind aus. Du kannst sie in den Geräteeinstellungen einschalten.",
   "push.snoozed": "Um eine Stunde verschoben.",
   "push.done": "Als erledigt markiert.",
+  "push.action.later": "In 1 Stunde",
+  "push.action.done": "Erledigt",
+  "push.action.review": "Prüfen",
+  "push.channel.push": "PUSH-Mails",
+  "push.channel.pushBody":
+    "Nur Mails, die dich jetzt brauchen – mit „In 1 Stunde“ und „Erledigt“ direkt in der Benachrichtigung.",
+  "push.channel.other": "Weitere Benachrichtigungen",
   "push.cover.draftReady": "Antwortentwurf bereit",
   "push.cover.snoozeFailed": "Verschieben hat nicht geklappt. Es steht wieder in der Liste.",
 

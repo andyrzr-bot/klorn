@@ -727,6 +727,13 @@ export const es: Messages = {
     "Las notificaciones están desactivadas. Puedes activarlas en los ajustes del dispositivo.",
   "push.snoozed": "Pospuesto una hora.",
   "push.done": "Marcado como hecho.",
+  "push.action.later": "En 1 hora",
+  "push.action.done": "Hecho",
+  "push.action.review": "Revisar",
+  "push.channel.push": "Correo PUSH",
+  "push.channel.pushBody":
+    "Solo el correo que te necesita ahora, con En 1 hora y Hecho en la notificación.",
+  "push.channel.other": "Otras notificaciones",
   "push.cover.draftReady": "borrador de respuesta listo",
   "push.cover.snoozeFailed": "No se pudo posponer. Vuelve a estar en la lista.",
 
