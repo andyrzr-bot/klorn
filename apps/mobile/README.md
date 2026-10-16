@@ -381,6 +381,10 @@ Calendar · Assistant · Files · push:
 - **Android**: `resizeableActivity`, no orientation lock, configChanges cover
   screen size / layout / smallest width (fold, unfold, multi-window),
   `adjustResize` for the keyboard, `READ_CALENDAR` removed (no feature uses it).
+  `android:allowBackup="false"` plus `dataExtractionRules`
+  (`res/xml/data_extraction_rules.xml`) that exclude every domain from cloud
+  backup and device-to-device transfer, so the offline cache and the session
+  never come back on a restored or new phone.
   Capacitor 8 SystemBars injects `--safe-area-inset-*` for edge-to-edge.
 
 ### Verify on device / CI (cannot run in a container without the Android SDK / Xcode)

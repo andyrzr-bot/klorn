@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- No backups (store-pack/privacy-labels.md §5): the offline mail cache and
+         the session are device-only and cleared on sign-out. allowBackup="false"
+         for Android 11 and lower; dataExtractionRules also exclude
+         device-to-device transfers on 12+ (res/xml/data_extraction_rules.xml). -->
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
