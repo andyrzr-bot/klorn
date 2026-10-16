@@ -171,6 +171,39 @@ test("settings: plan shows without any purchase link in a browser", async ({ pag
   await expect(page.getByRole("link", { name: /checkout|stripe|paddle/i })).toHaveCount(0);
 });
 
+test("Plans states the subscription terms Apple 3.1.2 asks for, next to Restore", async ({
+  page,
+}) => {
+  await openApp(page, "/settings/plans?iap=ios");
+  await settle(page);
+  const offer = page.getByRole("region", { name: "Klorn Pro" });
+  await expect(offer).toContainText("자동 갱신 구독");
+  await expect(offer).toContainText("1개월");
+  await expect(offer).toContainText("월 ₩14,000");
+  await expect(page.getByText(/기간이 끝나기 24시간 전까지 해지하지 않으면/)).toContainText(
+    "App Store 계정",
+  );
+  await expect(page.getByText(/설정 › \[내 이름\] › 구독/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "구매 복원" })).toBeVisible();
+  const legal = page.getByRole("navigation", { name: "약관과 개인정보" });
+  await expect(legal.getByRole("link", { name: "이용약관" })).toHaveAttribute(
+    "href",
+    "https://klorn.ai/terms/",
+  );
+  await expect(legal.getByRole("link", { name: "개인정보 처리방침" })).toHaveAttribute(
+    "href",
+    "https://klorn.ai/privacy/",
+  );
+  await expect(page.getByRole("link", { name: /checkout|stripe|paddle/i })).toHaveCount(0);
+});
+
+test("Plans on Google Play names Play's cancel path", async ({ page }) => {
+  await openApp(page, "/settings/plans?iap=android");
+  await settle(page);
+  await expect(page.getByText(/Google Play 계정/)).toBeVisible();
+  await expect(page.getByText(/결제 및 정기 결제 › 정기 결제/)).toBeVisible();
+});
+
 test("the expanded assistant side sheet closes with Escape", async ({ page }) => {
   await page.setViewportSize({ width: 1366, height: 1024 });
   await openApp(page, "/files");

@@ -777,7 +777,28 @@ export const de: Messages = {
   "plans.unavailable": "Abos sind im Store gerade nicht verfügbar.",
   "plans.restored": "Dein Kauf ist wiederhergestellt.",
   "plans.nothingToRestore": "Für dieses Store-Konto gibt es keinen Kauf zum Wiederherstellen.",
-  "plans.storeNote":
-    "Abgerechnet über den App Store oder Google Play. Dort verwalten oder kündigen.",
   "plans.notInApp": "Abonnieren in der App ist noch nicht verfügbar.",
+  "plans.offer.label": "Automatisch verlängertes Abo",
+  "plans.offer.length": "Laufzeit",
+  "plans.offer.price": "Preis",
+  "plans.period.week": "1 Woche",
+  "plans.period.month": "1 Monat",
+  "plans.period.year": "1 Jahr",
+  "plans.period.weeks": "{count} Wochen",
+  "plans.period.months": "{count} Monate",
+  "plans.period.years": "{count} Jahre",
+  "plans.pricePer.week": "{price} pro Woche",
+  "plans.pricePer.month": "{price} pro Monat",
+  "plans.pricePer.year": "{price} pro Jahr",
+  "plans.pricePer.weeks": "{price} alle {count} Wochen",
+  "plans.pricePer.months": "{price} alle {count} Monate",
+  "plans.pricePer.years": "{price} alle {count} Jahre",
+  "plans.autoRenew":
+    "Das Abo verlängert sich automatisch um denselben Zeitraum zum selben Preis, wenn du es nicht mindestens 24 Stunden vor Ende des aktuellen Zeitraums kündigst. Die Zahlung wird bei Bestätigung des Kaufs über dein {store}-Konto abgerechnet; jede Verlängerung innerhalb der 24 Stunden vor Ende des Zeitraums.",
+  "plans.cancel.ios":
+    "Kündigen kannst du jederzeit unter Einstellungen › [dein Name] › Abonnements. Das Löschen der App oder deines Klorn-Kontos kündigt das Abo nicht.",
+  "plans.cancel.android":
+    "Kündigen kannst du jederzeit im Google Play Store › Profil › Zahlungen und Abos › Abos. Das Deinstallieren der App oder Löschen deines Klorn-Kontos kündigt das Abo nicht.",
+  "plans.legal": "Bedingungen und Datenschutz",
+  "plans.terms": "Nutzungsbedingungen",
 };

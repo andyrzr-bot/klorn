@@ -764,8 +764,30 @@ export const en = {
   "plans.unavailable": "Subscriptions aren't available in the store right now.",
   "plans.restored": "Your purchase is restored.",
   "plans.nothingToRestore": "No purchase to restore on this store account.",
-  "plans.storeNote": "Billed by the App Store or Google Play. Manage or cancel it there.",
   "plans.notInApp": "Subscribing in the app isn't available yet.",
+  "plans.offer.label": "Auto-renewing subscription",
+  "plans.offer.length": "Length",
+  "plans.offer.price": "Price",
+  "plans.period.week": "1 week",
+  "plans.period.month": "1 month",
+  "plans.period.year": "1 year",
+  "plans.period.weeks": "{count} weeks",
+  "plans.period.months": "{count} months",
+  "plans.period.years": "{count} years",
+  "plans.pricePer.week": "{price} per week",
+  "plans.pricePer.month": "{price} per month",
+  "plans.pricePer.year": "{price} per year",
+  "plans.pricePer.weeks": "{price} every {count} weeks",
+  "plans.pricePer.months": "{price} every {count} months",
+  "plans.pricePer.years": "{price} every {count} years",
+  "plans.autoRenew":
+    "The subscription renews automatically for the same length and price unless you cancel it at least 24 hours before the current period ends. Payment is charged to your {store} account when you confirm the purchase; each renewal is charged within the 24 hours before the period ends.",
+  "plans.cancel.ios":
+    "Cancel any time in Settings › [your name] › Subscriptions. Deleting the app or your Klorn account does not cancel the subscription.",
+  "plans.cancel.android":
+    "Cancel any time in the Google Play Store › your profile › Payments & subscriptions › Subscriptions. Uninstalling the app or deleting your Klorn account does not cancel the subscription.",
+  "plans.legal": "Terms and privacy",
+  "plans.terms": "Terms of Use",
 } as const satisfies Record<string, string>;
 
 export type MessageKey = keyof typeof en;

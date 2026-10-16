@@ -121,6 +121,12 @@ const SCREENS: Screen[] = [
   },
   { name: "settings-plans", path: "/settings/plans", ready: (p) => heading(p, "요금제") },
   {
+    // A faked App Store offer (mock builds only): the 3.1.2 disclosures.
+    name: "settings-plans-store",
+    path: "/settings/plans?iap=ios",
+    ready: (p) => expect(p.getByRole("heading", { name: "Klorn Pro", level: 2 })).toBeVisible(),
+  },
+  {
     name: "settings-delete",
     path: "/settings/delete-account",
     ready: (p) => heading(p, "계정 삭제"),

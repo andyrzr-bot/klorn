@@ -4,6 +4,12 @@
  * checkout or an external purchase link in the app (App Store 3.1.1) — the
  * price, the purchase sheet and the subscription page are the store's own.
  * Without a RevenueCat key (or in a browser) the screen shows the plan only.
+ *
+ * Next to "Subscribe" the screen states what App Store 3.1.2 asks the purchase
+ * flow to state: the subscription's title, its length and price per period
+ * (from the store package), that it renews automatically unless cancelled 24 h
+ * before the period ends, how to cancel (the store's settings), and links to
+ * the Terms of Use and the Privacy Policy; Restore purchases sits beside it.
  */
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -18,13 +24,69 @@ import {
   restoreNativePurchases,
   type StoreOffer,
   startNativePurchase,
+  storePlatform,
 } from "../../platform/iap";
 import { Icon } from "../../ui/Icon";
 import { ProblemState, SkeletonRows } from "../../ui/StateView";
 import { notify } from "../../ui/StatusNote";
-import { SettingsBack } from "./parts";
+import { PRIVACY_URL, SettingsBack, TERMS_URL } from "./parts";
+import { lengthText, pricePerText } from "./plans-model";
 
 const PRO_PLANS = new Set(["PRO", "TEAM", "BUSINESS", "ENTERPRISE"]);
+
+const STORE_NAMES = { ios: "App Store", android: "Google Play" } as const;
+
+/** Terms of Use · Privacy Policy, opened in the system browser. */
+function LegalLinks() {
+  const { t } = useI18n();
+  const links = [
+    { href: TERMS_URL, label: t("plans.terms") },
+    { href: PRIVACY_URL, label: t("welcome.privacy") },
+  ];
+  return (
+    <nav className="plan-legal" aria-label={t("plans.legal")}>
+      {links.map((link) => (
+        <a
+          key={link.href}
+          href={link.href}
+          onClick={(e) => {
+            e.preventDefault();
+            void openExternal(link.href);
+          }}
+        >
+          {link.label}
+        </a>
+      ))}
+    </nav>
+  );
+}
+
+/** The store offer with the 3.1.2 disclosures: title, length, price per period. */
+function OfferCard({ offer }: { offer: StoreOffer }) {
+  const { t } = useI18n();
+  const length = offer.length ? lengthText(offer.length) : null;
+  const price = offer.length ? pricePerText(offer.length, offer.priceString) : null;
+  return (
+    <section className="plan-offer card" aria-labelledby="offer-h">
+      <span className="plan-card__label">{t("plans.offer.label")}</span>
+      <h2 id="offer-h" className="plan-offer__title">
+        {offer.title}
+      </h2>
+      <dl className="plan-offer__facts">
+        {length ? (
+          <div>
+            <dt>{t("plans.offer.length")}</dt>
+            <dd>{t(length.key, length.values)}</dd>
+          </div>
+        ) : null}
+        <div>
+          <dt>{t("plans.offer.price")}</dt>
+          <dd>{price ? t(price.key, price.values) : offer.priceString}</dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
 
 export function PlansScreen() {
   const { t, intlTag } = useI18n();
@@ -35,6 +97,7 @@ export function PlansScreen() {
   const [manage, setManage] = useState<string | null>(null);
   const [busy, setBusy] = useState<"buy" | "restore" | null>(null);
   const store = iapAvailable();
+  const platform = storePlatform();
   const userId = me.data?.id;
 
   useEffect(() => {
@@ -115,6 +178,8 @@ export function PlansScreen() {
         </ul>
       </section>
 
+      {store && offer ? <OfferCard offer={offer} /> : null}
+
       {store ? (
         <div className="plan-actions">
           {!pro ? (
@@ -127,7 +192,14 @@ export function PlansScreen() {
               {busy === "buy"
                 ? t("plans.working")
                 : offer
-                  ? t("plans.subscribePrice", { price: offer.priceString })
+                  ? t("plans.subscribePrice", {
+                      price: offer.length
+                        ? t(
+                            pricePerText(offer.length, offer.priceString).key,
+                            pricePerText(offer.length, offer.priceString).values,
+                          )
+                        : offer.priceString,
+                    })
                   : t("plans.subscribe")}
             </button>
           ) : null}
@@ -148,10 +220,19 @@ export function PlansScreen() {
               {t("plans.manage")}
             </button>
           ) : null}
-          <p className="set-group__foot">{t("plans.storeNote")}</p>
+          {platform ? (
+            <div className="plan-terms">
+              <p>{t("plans.autoRenew", { store: STORE_NAMES[platform] })}</p>
+              <p>{t(platform === "ios" ? "plans.cancel.ios" : "plans.cancel.android")}</p>
+            </div>
+          ) : null}
+          <LegalLinks />
         </div>
       ) : (
-        <p className="set-group__foot">{t("plans.notInApp")}</p>
+        <>
+          <p className="set-group__foot">{t("plans.notInApp")}</p>
+          <LegalLinks />
+        </>
       )}
     </div>
   );
