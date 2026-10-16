@@ -5,9 +5,11 @@ import { createQueryClient } from "./api/query-client";
 import { App } from "./app/App";
 import { initServices } from "./app/services";
 import { MOCK_API } from "./config";
+import { prepareI18n } from "./i18n/I18nProvider";
 import { platformName } from "./platform/native";
 import "./styles/tokens.css";
 import "./styles/base.css";
+import "./styles/shared.css";
 
 const root = document.documentElement;
 root.classList.add(`platform-${platformName()}`);
@@ -46,12 +48,17 @@ window.addEventListener("resize", flagLargeText);
 // start in airplane mode fires none, so seed it from the OS once.
 if (typeof navigator !== "undefined" && navigator.onLine === false) onlineManager.setOnline(false);
 
-void initServices().then(() => {
-  const container = document.getElementById("root");
-  if (!container) throw new Error("#root missing");
-  createRoot(container).render(
+const container = document.getElementById("root");
+if (!container) throw new Error("#root missing");
+const reactRoot = createRoot(container);
+// The boot surface (under the native splash) while the session and the active
+// language's catalog load — the first real frame is already translated.
+reactRoot.render(<div className="boot" aria-busy="true" />);
+
+void Promise.all([initServices(), prepareI18n()]).then(([, i18n]) => {
+  reactRoot.render(
     <StrictMode>
-      <App queryClient={createQueryClient()} />
+      <App queryClient={createQueryClient()} initialLocale={i18n.override} />
     </StrictMode>,
   );
 });

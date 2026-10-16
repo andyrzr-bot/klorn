@@ -5,19 +5,58 @@
  * language is a server setting and reply language follows the mail
  * (docs/product-vocabulary.md, "Two different language settings").
  */
-import { de } from "./locales/de";
-import { en, type MessageKey, type Messages } from "./locales/en";
-import { es } from "./locales/es";
-import { fr } from "./locales/fr";
-import { ja } from "./locales/ja";
-import { ko } from "./locales/ko";
-import { zh } from "./locales/zh";
+import type { MessageKey, Messages } from "./locales/en";
 
 export const LOCALES = ["en", "ko", "ja", "zh", "es", "fr", "de"] as const;
 export type Locale = (typeof LOCALES)[number];
 export type { MessageKey, Messages };
 
-export const CATALOGS: Record<Locale, Messages> = { en, ko, ja, zh, es, fr, de };
+/**
+ * Catalogs load on demand, one chunk per language: startup bundles none of
+ * them and awaits only the active one (main.tsx, before the first render), so
+ * no key ever flashes untranslated; switching language loads the next one.
+ * There is no English fallback at runtime — the parity test pins every key in
+ * every catalog, so a lookup can only miss on a key that does not exist.
+ */
+const LOADERS: Record<Locale, () => Promise<Messages>> = {
+  en: () => import("./locales/en").then((m) => m.en),
+  ko: () => import("./locales/ko").then((m) => m.ko),
+  ja: () => import("./locales/ja").then((m) => m.ja),
+  zh: () => import("./locales/zh").then((m) => m.zh),
+  es: () => import("./locales/es").then((m) => m.es),
+  fr: () => import("./locales/fr").then((m) => m.fr),
+  de: () => import("./locales/de").then((m) => m.de),
+};
+
+const loaded = new Map<Locale, Messages>();
+const loading = new Map<Locale, Promise<Messages>>();
+
+/** The catalog if it is already loaded (synchronous; null otherwise). */
+export function loadedCatalog(locale: Locale): Messages | null {
+  return loaded.get(locale) ?? null;
+}
+
+/** Load (once) and cache a language's catalog. */
+export function loadCatalog(locale: Locale): Promise<Messages> {
+  const ready = loaded.get(locale);
+  if (ready) return Promise.resolve(ready);
+  let pending = loading.get(locale);
+  if (!pending) {
+    pending = LOADERS[locale]().then(
+      (messages) => {
+        loaded.set(locale, messages);
+        loading.delete(locale);
+        return messages;
+      },
+      (err: unknown) => {
+        loading.delete(locale);
+        throw err;
+      },
+    );
+    loading.set(locale, pending);
+  }
+  return pending;
+}
 
 /** Each language's own name, shown in the language picker (never translated). */
 export const LOCALE_NAMES: Record<Locale, string> = {
@@ -91,12 +130,10 @@ export interface Translator {
   tn(base: PluralBase, count: number, params?: Params): string;
 }
 
-export function createTranslator(locale: Locale): Translator {
-  const messages = CATALOGS[locale];
+export function createTranslator(locale: Locale, messages: Messages): Translator {
   const intlTag = INTL_TAGS[locale];
   const rules = new Intl.PluralRules(intlTag);
-  const lookup = (key: string): string =>
-    (messages as Record<string, string>)[key] ?? (en as Record<string, string>)[key] ?? key;
+  const lookup = (key: string): string => (messages as Record<string, string>)[key] ?? key;
   return {
     locale,
     intlTag,

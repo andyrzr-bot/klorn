@@ -52,36 +52,6 @@
   align-self: flex-start;
 }
 
-.segmented {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  padding: 2px;
-  border-radius: 10px;
-  background: var(--surface-control);
-}
-
-.segmented__item {
-  position: relative;
-  height: 32px;
-  border-radius: 8px;
-  font-size: var(--type-subhead);
-  font-weight: 600;
-  color: var(--ink);
-  transition: background-color var(--motion-state) var(--ease);
-}
-
-.segmented__item::after {
-  content: "";
-  position: absolute;
-  inset: -6px 0;
-}
-
-.segmented__item[aria-selected="true"],
-.segmented__item[aria-checked="true"] {
-  background: var(--surface-card);
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
-}
-
 .assistant-scroll {
   flex: 1 1 auto;
   min-height: 0;
@@ -238,11 +208,6 @@
 
 .shell[data-nav="tabs"] .chat-composer {
   padding-bottom: calc(var(--tabbar-height) + var(--safe-bottom) + 12px);
-}
-
-/* The keyboard is up: no tab bar under the composer, which rides on top of it. */
-html.keyboard-open .shell[data-nav="tabs"] .tabbar {
-  display: none;
 }
 
 html.keyboard-open .shell[data-nav="tabs"] .chat-composer {
