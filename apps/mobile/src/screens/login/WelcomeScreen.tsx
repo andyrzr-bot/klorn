@@ -245,9 +245,9 @@ export function WelcomeScreen() {
             <p className="welcome__body">{t("welcome.body")}</p>
           </div>
           <div className="welcome__actions" aria-busy={providers.isPending || undefined}>
-            {endedReason === "expired" ? (
+            {endedReason ? (
               <p className="welcome__notice" role="status">
-                {t("session.expired")}
+                {t(endedReason === "deleted" ? "settings.delete.done" : "session.expired")}
               </p>
             ) : null}
             {error ? (

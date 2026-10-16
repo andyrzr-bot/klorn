@@ -24,9 +24,11 @@ export type SessionStatus = "loading" | "signedOut" | "signedIn";
 interface SessionValue {
   status: SessionStatus;
   /** Why the last session ended, for the Welcome notice. */
-  endedReason: "expired" | null;
+  endedReason: "expired" | "deleted" | null;
   signIn(token: string): Promise<void>;
   signOut(): Promise<void>;
+  /** After DELETE /api/auth/account: wipe the device and say so on Welcome. */
+  accountDeleted(): Promise<void>;
 }
 
 const SessionContext = createContext<SessionValue | null>(null);
@@ -42,7 +44,7 @@ async function initialToken(): Promise<string | null> {
 export function SessionProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<SessionStatus>("loading");
-  const [endedReason, setEndedReason] = useState<"expired" | null>(null);
+  const [endedReason, setEndedReason] = useState<"expired" | "deleted" | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -94,9 +96,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setStatus("signedOut");
   }, [wipe]);
 
+  const accountDeleted = useCallback(async () => {
+    // The server already removed the user and every session row: no logout call.
+    await wipe();
+    setEndedReason("deleted");
+    setStatus("signedOut");
+  }, [wipe]);
+
   const value = useMemo(
-    () => ({ status, endedReason, signIn, signOut }),
-    [status, endedReason, signIn, signOut],
+    () => ({ status, endedReason, signIn, signOut, accountDeleted }),
+    [status, endedReason, signIn, signOut, accountDeleted],
   );
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
