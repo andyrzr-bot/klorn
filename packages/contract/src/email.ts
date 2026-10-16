@@ -114,7 +114,13 @@ export interface EmailListItem {
   candidateIntake: CandidateIntakeWire | null;
 }
 
-/** `GET /api/email` — the paged inbox list. */
+/**
+ * `GET /api/email` — the paged inbox list. With the opt-in `hideHandled=1`
+ * (or `true`) it leaves out mail whose attention item is DISMISSED (Done) or
+ * SNOOZED with a wake-up time still ahead (Later); `total` then counts the
+ * same rows. Absent, the list is unchanged. `filter=candidates` cannot be
+ * combined with it (400).
+ */
 export interface EmailListResponse {
   emails: EmailListItem[];
   /** "gmail" = the real DB-backed inbox (any connected source, IMAP included). */
