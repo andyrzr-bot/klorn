@@ -6,7 +6,7 @@ import type { EmailLaneCounts, FirewallResponse, LiveTier } from "@klorn/contrac
 import { useQuery } from "@tanstack/react-query";
 import { getServices } from "../app/services";
 import { isApiError } from "./client";
-import type { InboxScope, LaneFilter } from "./endpoints";
+import type { InboxScope } from "./endpoints";
 
 export const qk = {
   me: ["auth", "me"] as const,
@@ -14,8 +14,6 @@ export const qk = {
   firewall: (inbox: InboxScope = "all") => ["mail", "firewall", inbox] as const,
   laneCounts: (inbox: InboxScope = "all") => ["mail", "lane-counts", inbox] as const,
   inboxes: ["mail", "inboxes"] as const,
-  emailList: (tier: LaneFilter, inbox: InboxScope, page: number) =>
-    ["mail", "list", tier, inbox, page] as const,
   email: (id: string) => ["mail", "detail", id] as const,
   events: (from: string, to: string) => ["calendar", "events", from, to] as const,
   approvals: ["assistant", "pending-actions"] as const,
@@ -89,13 +87,6 @@ export function useInboxes() {
     queryKey: qk.inboxes,
     queryFn: ({ signal }) => getServices().ep.mail.inboxes({ signal }),
     staleTime: 5 * 60_000,
-  });
-}
-
-export function useEmailList(tier: LaneFilter = "ALL", inbox: InboxScope = "all", page = 1) {
-  return useQuery({
-    queryKey: qk.emailList(tier, inbox, page),
-    queryFn: ({ signal }) => getServices().ep.mail.list({ tier, inbox, page }, { signal }),
   });
 }
 

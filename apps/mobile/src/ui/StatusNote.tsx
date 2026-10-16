@@ -1,11 +1,13 @@
 /**
- * A short status line at the bottom of the screen ("Sent — the receipt is in
- * Activity"), announced politely to screen readers. One at a time; anything
- * can raise one through `notify()`, the host renders it.
+ * A short status note at the bottom of the screen ("Sent — the receipt is in
+ * Activity"). One at a time; anything can raise one through `notify()`, and
+ * the host (mounted once, signed in) shows it with the app's one toast,
+ * `Snackbar` — the same component Mail's undo window uses — for 4.5 s, or
+ * until closed. Errors are announced assertively.
  */
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
-import { Icon } from "./Icon";
+import { Snackbar } from "./Snackbar";
 
 export type NoteTone = "ok" | "info" | "error";
 
@@ -46,40 +48,31 @@ export function StatusNoteHost() {
     () => current,
     () => null,
   );
-  const [shown, setShown] = useState<Note | null>(null);
   useEffect(() => {
-    setShown(note);
     if (!note) return;
     const timer = setTimeout(() => {
       if (current?.id === note.id) clearNote();
     }, HIDE_AFTER_MS);
     return () => clearTimeout(timer);
   }, [note]);
+  const action = note?.action;
   return createPortal(
-    <div className="status-note-host" role="status" aria-live="polite">
-      {shown ? (
-        <div className={`status-note status-note--${shown.tone}`} key={shown.id}>
-          <Icon
-            name={shown.tone === "error" ? "alert" : shown.tone === "info" ? "info" : "check"}
-            size={18}
-            strokeWidth={2}
-          />
-          <span className="status-note__text">{shown.text}</span>
-          {shown.action ? (
-            <button
-              type="button"
-              className="status-note__action"
-              onClick={() => {
-                shown.action?.run();
-                clearNote();
-              }}
-            >
-              {shown.action.label}
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-    </div>,
+    <Snackbar
+      fixed
+      message={note?.text ?? null}
+      tone={note?.tone === "error" ? "error" : "neutral"}
+      icon={note?.tone === "info" ? "info" : "ok"}
+      actionLabel={action?.label}
+      onAction={
+        action
+          ? () => {
+              action.run();
+              clearNote();
+            }
+          : undefined
+      }
+      onClose={clearNote}
+    />,
     document.body,
   );
 }

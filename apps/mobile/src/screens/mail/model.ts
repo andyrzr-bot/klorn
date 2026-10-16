@@ -140,12 +140,6 @@ export function accountShortLabel(
   return clash ? (inbox.email ?? mine) : mine;
 }
 
-/** The value the list's `inbox=` takes for an account choice. */
-export function inboxScopeOf(inbox: InboxOption | null): string {
-  if (!inbox) return "all";
-  return inbox.id ?? "primary";
-}
-
 // ── Attention items ─────────────────────────────────────────────────────────
 
 export interface AttentionFacts {

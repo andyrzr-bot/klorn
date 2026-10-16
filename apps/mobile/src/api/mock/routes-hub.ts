@@ -74,17 +74,7 @@ function freshState(): HubState {
   };
 }
 
-let state = freshState();
-
-/** Tests start from the fixtures again. */
-export function resetHubState(): void {
-  state = freshState();
-}
-
-/** Which inboxes / accounts were disconnected in this mock session. */
-export function removedInboxIds(): ReadonlySet<string> {
-  return state.removedInboxes;
-}
+const state = freshState();
 
 function json(status: number, body: unknown): Response {
   return new Response(status === 204 ? null : JSON.stringify(body), {

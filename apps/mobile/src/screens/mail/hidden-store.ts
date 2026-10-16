@@ -64,10 +64,6 @@ export function unhideMail(ids: readonly string[]): void {
   emit();
 }
 
-export function hiddenSnapshot(): ReadonlyMap<string, number> {
-  return hidden;
-}
-
 export function clearHidden(): void {
   hidden = new Map();
   void kv.removeItem(KEY);

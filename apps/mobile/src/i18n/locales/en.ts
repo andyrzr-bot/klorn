@@ -45,7 +45,6 @@ export const en = {
   "today.next.now": "Now",
   "today.next.join": "Join",
   "today.next.open": "View",
-  "today.next.allDay": "All day",
   "today.next.empty": "Nothing else on your calendar today.",
   "today.approvals.title": "Waiting for approval",
   "today.approvals.seeAll": "See all",
@@ -74,12 +73,9 @@ export const en = {
   "state.noAccounts.body":
     "Klorn sorts mail from the accounts you connect. Add one on the web at app.klorn.ai for now.",
 
-  "placeholder.body": "This screen is on its way.",
   "mail.selectPrompt": "Pick an email to read it here.",
 
   "accounts.title": "Accounts & sources",
-  "accounts.signedInAs": "Signed in as {email}",
-  "accounts.connected": "Connected inboxes",
   "accounts.needsReconnect": "Needs reconnecting",
   "accounts.language": "App language",
   "accounts.theme": "Appearance",
@@ -345,7 +341,6 @@ export const en = {
   "settings.push.on": "On",
   "settings.push.off": "Off",
   "settings.push.ask": "Not set",
-  "settings.push.server": "Server",
   "settings.push.device": "This device",
   "settings.push.onBody": "Notifications are on for this device.",
   "settings.push.offBody":

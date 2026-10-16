@@ -35,7 +35,6 @@ export function swipeIntent(dx: number, dy: number): SwipeIntent {
   return "pending";
 }
 
-export type SwipeDirection = "right" | "left";
 export type SwipeOutcome = "done" | "lane" | "cancel";
 
 /** Which action a drag of `dx` would trigger if released now (for the reveal + haptic). */

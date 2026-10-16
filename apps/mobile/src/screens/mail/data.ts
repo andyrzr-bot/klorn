@@ -61,16 +61,6 @@ export function inLane(email: Pick<EmailListItem, "tier">, lane: LaneFilter): bo
   return email.tier === lane;
 }
 
-export interface ReaderFacts {
-  tier: LiveTier | null;
-  tierReason: string | null;
-  linkedInboxAccountId: string | null;
-  newerId: string | null;
-  olderId: string | null;
-  /** False when reader-context is dark (MAIL_V2 off): the reader falls back. */
-  fromServer: boolean;
-}
-
 export function useReaderContext(
   id: string,
   view: { tier: LaneFilter; inbox: InboxScope; search: string },

@@ -1,9 +1,19 @@
 /**
- * The undo snackbar (canvas: "5초 실행 취소"). One line, an Undo button, and
- * a close button; announced politely to screen readers. It sits above the
- * tab bar / reader toolbar and leaves on its own when the window closes.
+ * The app's one toast (canvas: "5초 실행 취소"): a line of text, an optional
+ * action (Undo, Retry) and an optional close button, announced politely —
+ * assertively for an error (role=alert). Two hosts render it:
+ *
+ *   - Mail, inside `.mail-screen`: the Done / lane-move undo window (owned by
+ *     the undo queue, so it stays exactly as long as the undo is possible),
+ *     sitting above the tab bar / reader toolbar;
+ *   - StatusNoteHost (ui/StatusNote.tsx), `fixed` on the page: `notify()`
+ *     notes from any screen ("Sent — the receipt is in Activity"), with a tone
+ *     icon, hiding on their own.
+ *
+ * Same shape, colours, type and 44px targets everywhere.
  */
 import { useI18n } from "../i18n/I18nProvider";
+import { Icon } from "./Icon";
 import { MailGlyph } from "./MailGlyph";
 import "./snackbar.css";
 
@@ -15,6 +25,10 @@ export interface SnackbarProps {
   onClose?: () => void;
   /** "error": a refusal the user must see (role=alert). */
   tone?: "neutral" | "error";
+  /** A leading icon: "ok" (done) or "info". An error always leads with the alert icon. */
+  icon?: "ok" | "info";
+  /** Fixed to the viewport (the app-wide host) instead of the enclosing screen. */
+  fixed?: boolean;
 }
 
 export function Snackbar({
@@ -23,12 +37,26 @@ export function Snackbar({
   onAction,
   onClose,
   tone = "neutral",
+  icon,
+  fixed = false,
 }: SnackbarProps) {
   const { t } = useI18n();
+  const glyph =
+    tone === "error" ? "alert" : icon === "ok" ? "check" : icon === "info" ? "info" : null;
   return (
-    <div className="snackbar-region" aria-live={tone === "error" ? "assertive" : "polite"}>
+    <div
+      className={fixed ? "snackbar-region snackbar-region--fixed" : "snackbar-region"}
+      aria-live={tone === "error" ? "assertive" : "polite"}
+    >
       {message ? (
-        <div className={`snackbar snackbar--${tone}`} role={tone === "error" ? "alert" : "status"}>
+        <div
+          className={`snackbar snackbar--${tone}`}
+          role={tone === "error" ? "alert" : "status"}
+          data-icon={glyph && tone !== "error" ? icon : undefined}
+        >
+          {glyph ? (
+            <Icon name={glyph} size={18} strokeWidth={2} className="snackbar__icon" />
+          ) : null}
           <span className="snackbar__text">{message}</span>
           {actionLabel && onAction ? (
             <button type="button" className="snackbar__action" onClick={onAction}>

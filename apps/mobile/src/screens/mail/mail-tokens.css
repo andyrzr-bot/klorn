@@ -45,9 +45,6 @@
   --ok-ink: #047857;
   --attachment-tile-bg: #ffe4e6;
   --attachment-tile-ink: #9f1239;
-  --snackbar-bg: #0f172a;
-  --snackbar-ink: #f1f5f9;
-  --snackbar-action: #7dd3fc;
   --select-check: #0369a1;
 }
 
@@ -94,9 +91,6 @@
     --ok-ink: #6ee7b7;
     --attachment-tile-bg: rgba(251, 113, 133, 0.16);
     --attachment-tile-ink: #fda4af;
-    --snackbar-bg: #e2e8f0;
-    --snackbar-ink: #0b1120;
-    --snackbar-action: #0369a1;
     --select-check: #38bdf8;
   }
 }
@@ -143,8 +137,5 @@
   --ok-ink: #6ee7b7;
   --attachment-tile-bg: rgba(251, 113, 133, 0.16);
   --attachment-tile-ink: #fda4af;
-  --snackbar-bg: #e2e8f0;
-  --snackbar-ink: #0b1120;
-  --snackbar-action: #0369a1;
   --select-check: #38bdf8;
 }

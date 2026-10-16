@@ -163,6 +163,11 @@
   /* States. */
   --state-ok-bg: #ecfdf5;
   --state-ok-ink: #047857;
+  /* Snackbar (ui/Snackbar.tsx): an inverted surface — dark on light, light on dark. */
+  --snackbar-bg: #0f172a;
+  --snackbar-ink: #f1f5f9;
+  --snackbar-action: #7dd3fc;
+  --snackbar-ok: #6ee7b7;
   --state-warn-bg: #fffbeb;
   --state-warn-line: #fde68a;
   --state-warn-ink: #92400e;
@@ -258,6 +263,10 @@
     --meeting-tile-ink: #a5b4fc;
     --state-ok-bg: #0c2a20;
     --state-ok-ink: #6ee7b7;
+    --snackbar-bg: #e2e8f0;
+    --snackbar-ink: #0b1120;
+    --snackbar-action: #0369a1;
+    --snackbar-ok: #047857;
     --state-warn-bg: #2c220c;
     --state-warn-line: #6b5320;
     --state-warn-ink: #fcd34d;
@@ -322,6 +331,10 @@
   --meeting-tile-ink: #a5b4fc;
   --state-ok-bg: #0c2a20;
   --state-ok-ink: #6ee7b7;
+  --snackbar-bg: #e2e8f0;
+  --snackbar-ink: #0b1120;
+  --snackbar-action: #0369a1;
+  --snackbar-ok: #047857;
   --state-warn-bg: #2c220c;
   --state-warn-line: #6b5320;
   --state-warn-ink: #fcd34d;

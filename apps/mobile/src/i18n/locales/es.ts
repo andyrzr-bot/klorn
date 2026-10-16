@@ -38,7 +38,6 @@ export const es: Messages = {
   "today.next.now": "Ahora",
   "today.next.join": "Unirse",
   "today.next.open": "Ver",
-  "today.next.allDay": "Todo el día",
   "today.next.empty": "No tienes nada más en el calendario hoy.",
   "today.approvals.title": "Pendiente de aprobación",
   "today.approvals.seeAll": "Ver todo",
@@ -68,12 +67,9 @@ export const es: Messages = {
   "state.noAccounts.body":
     "Klorn ordena el correo de las cuentas que conectes. Por ahora puedes añadir una en la web, en app.klorn.ai.",
 
-  "placeholder.body": "Esta pantalla llegará pronto.",
   "mail.selectPrompt": "Elige un correo para leerlo aquí.",
 
   "accounts.title": "Cuentas y fuentes",
-  "accounts.signedInAs": "Sesión iniciada como {email}",
-  "accounts.connected": "Cuentas de correo conectadas",
   "accounts.needsReconnect": "Hay que volver a conectarla",
   "accounts.language": "Idioma de la app",
   "accounts.theme": "Apariencia",
@@ -337,7 +333,6 @@ export const es: Messages = {
   "settings.push.on": "Activadas",
   "settings.push.off": "Desactivadas",
   "settings.push.ask": "Sin configurar",
-  "settings.push.server": "Servidor",
   "settings.push.device": "Este dispositivo",
   "settings.push.onBody": "Las notificaciones están activadas en este dispositivo.",
   "settings.push.offBody":
