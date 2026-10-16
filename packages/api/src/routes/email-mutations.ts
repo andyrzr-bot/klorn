@@ -17,7 +17,17 @@ import { recordContactEngagement } from "../learning/contact-engagement.js";
 import { mailActionsFor } from "../mail/providers/dispatch.js";
 import { isImapFamily } from "../mail/providers/error-semantics.js";
 import { logProviderSoftFailure } from "../mail/providers/log-soft-failure.js";
+import { SendOutcomeUnknownError } from "../mail/providers/send-outcome-unknown.js";
 import type { MailAttachment, SendMailResult } from "../mail/providers/types.js";
+import {
+  openSendReceipt,
+  outcomeOfSend,
+  SEND_RECEIPT_UNAVAILABLE_MESSAGE,
+  type SendReceiptHandle,
+  sendReceiptWire,
+  settleSendReceipt,
+  verifySendOrRefuse,
+} from "../mail/send-receipt.js";
 import { recordSentMessage } from "../mail/sent-messages.js";
 import { captureError } from "../sentry.js";
 import { safeAttachmentFilename } from "./email.js";
@@ -119,6 +129,37 @@ function resolveUndoLinkedInbox(body: unknown): string | null {
     : null;
 }
 
+const SEND_OUTCOME_UNKNOWN_MESSAGE =
+  "The message may already have been sent. Check Sent Items before retrying.";
+
+/** Longest id accepted for a linked inbox (ids are UUIDs; the cap only bounds input). */
+const MAX_LINKED_INBOX_ID_LENGTH = 128;
+
+type SendInbox =
+  | { kind: "primary" }
+  | { kind: "linked"; id: string }
+  | { kind: "invalid" }
+  | { kind: "not_found" };
+
+/**
+ * Which account a new message (POST /send) leaves from. Absent, null or
+ * "primary" is the primary inbox, exactly as before the field existed. Any other
+ * value must be the id of a LinkedInboxAccount the CALLER owns: the row is read
+ * by id AND userId, so another user's id is not_found — never a silent fall back
+ * to the primary inbox, which would send from an account the user did not pick.
+ */
+async function resolveSendInbox(userId: string, value: unknown): Promise<SendInbox> {
+  if (value === undefined || value === null || value === "primary") return { kind: "primary" };
+  if (typeof value !== "string") return { kind: "invalid" };
+  const id = value.trim();
+  if (!id || id.length > MAX_LINKED_INBOX_ID_LENGTH) return { kind: "invalid" };
+  const row = await prisma.linkedInboxAccount.findFirst({
+    where: { id, userId },
+    select: { id: true },
+  });
+  return row ? { kind: "linked", id: row.id } : { kind: "not_found" };
+}
+
 export async function registerEmailMutationsRoutes(app: FastifyInstance) {
   // Multipart parser for the compose route's file uploads. Scoped to this
   // plugin's encapsulation context, so JSON routes elsewhere are untouched.
@@ -147,20 +188,82 @@ export async function registerEmailMutationsRoutes(app: FastifyInstance) {
     },
     async (request, reply) => {
       const uid = getUserId(request);
-      const { to, subject, body } = request.body as { to: string; subject: string; body: string };
+      const { to, subject, body, linkedInboxAccountId } = request.body as {
+        to: string;
+        subject: string;
+        body: string;
+        // Optional: the LinkedInboxAccount to send from (multi-inbox rule —
+        // every mail action threads the account id end to end). Absent / null /
+        // "primary" = the primary inbox, as before.
+        linkedInboxAccountId?: unknown;
+      };
 
       if (!to || !subject || !body) {
         return reply.code(400).send({ error: "Missing required fields: to, subject, body" });
       }
 
+      const inbox = await resolveSendInbox(uid, linkedInboxAccountId);
+      if (inbox.kind === "invalid") {
+        return reply.code(400).send({ error: "linkedInboxAccountId must be a linked inbox id." });
+      }
+      if (inbox.kind === "not_found") {
+        return reply.code(404).send({ error: "Linked inbox not found" });
+      }
+      const linkedId = inbox.kind === "linked" ? inbox.id : null;
+
       // A soft error from sendEmail (bad address, no-reply, Gmail not connected)
       // must be a 4xx, not a 200 with an { error } body — otherwise callers that
       // gate on HTTP status treat a failed send as success (the reply-draft flow
       // cleared the draft on failure before this).
-      // Compose sends from the primary inbox until per-account send routing
-      // (Phase 1 of the multi-provider plan) lands.
-      const actions = await mailActionsFor(uid, null);
-      const result = await actions.sendEmail(uid, to, subject, body);
+      // The provider is dispatched from the chosen account's row (a linked
+      // Outlook or IMAP mailbox has its own surface), and the id rides into the
+      // send options so the provider uses THAT account's credentials. The primary
+      // inbox keeps the exact call it always made.
+      const actions = await mailActionsFor(uid, linkedId);
+
+      // Deterministic floor (MANUAL_SEND_RECEIPTS_ENABLED): the receipt of the
+      // bytes the user confirmed is written before anything leaves. No receipt,
+      // no send. null while the flag is off — then nothing below changes.
+      let receipt: SendReceiptHandle | null;
+      try {
+        receipt = await openSendReceipt({
+          userId: uid,
+          route: "send",
+          to,
+          subject,
+          body,
+          inbox: linkedId ?? "primary",
+        });
+      } catch (err) {
+        captureError(err, { tags: { scope: "email.send.receipt" }, extra: { userId: uid } });
+        return reply.code(503).send({ error: SEND_RECEIPT_UNAVAILABLE_MESSAGE });
+      }
+
+      // The exact bytes handed to the provider, verified against the receipt.
+      if (receipt) await verifySendOrRefuse(receipt, uid, { to, subject, body });
+      let result: SendMailResult;
+      try {
+        result = linkedId
+          ? await actions.sendEmail(uid, to, subject, body, [], { linkedInboxAccountId: linkedId })
+          : await actions.sendEmail(uid, to, subject, body);
+      } catch (err) {
+        // A throw may come after the mail left: the receipt says "unknown", never "refused".
+        if (receipt) await settleSendReceipt(receipt, uid, { status: "UNKNOWN" });
+        if (!(err instanceof SendOutcomeUnknownError)) throw err;
+        // The provider could not say whether the message went out (a linked
+        // Outlook mailbox, step B0b). The user is told not to simply retry.
+        captureError(err, {
+          tags: { scope: "email.send.send-outcome-unknown" },
+          extra: { userId: uid },
+        });
+        return reply.code(502).send({ error: SEND_OUTCOME_UNKNOWN_MESSAGE });
+      }
+      if (receipt) await settleSendReceipt(receipt, uid, outcomeOfSend(result));
+      // A linked mailbox whose provider cannot send from Klorn: 501, as the reply
+      // route answers (the primary Google inbox never returns this).
+      if (result && "unsupported" in result) {
+        return reply.code(501).send({ error: result.error });
+      }
       if (result && "error" in result) {
         return reply.code(400).send(result);
       }
@@ -175,10 +278,10 @@ export async function registerEmailMutationsRoutes(app: FastifyInstance) {
           to,
           subject,
           sentAt: new Date(),
-          inbox: "primary",
+          inbox: linkedId ?? "primary",
         });
       }
-      return result;
+      return receipt ? { ...result, receipt: sendReceiptWire(receipt) } : result;
     },
   );
 

@@ -619,6 +619,10 @@ async function pushForFirewallEmail(userId: string, email: JudgeableEmailRow): P
       body: email.subject || "(no subject)",
       url: "/inbox/firewall",
       attentionItemId: attentionItemId ?? undefined,
+      // Native deep link (push.ts hands it to FCM / APNs only). No
+      // pendingActionId: a reply draft for this mail, if any, is proposed after
+      // the judge, so none exists yet at this point.
+      emailId: email.id,
     },
     "email_urgent",
   );

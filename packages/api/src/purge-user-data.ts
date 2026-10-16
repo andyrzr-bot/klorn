@@ -37,6 +37,9 @@ export async function purgeUserData(tx: PurgeTx, userId: string): Promise<void> 
   await tx.senderLabel.deleteMany(scope);
   // SentMessage: headers of the user's own sent mail.
   await tx.sentMessage.deleteMany(scope);
+  // SendReceipt: the floor receipt of each manual send — recipient (receipt
+  // target) and payload hash, written while MANUAL_SEND_RECEIPTS_ENABLED is on.
+  await tx.sendReceipt.deleteMany(scope);
   // ImapMovedMessage: where trash/archive parked the user's Naver and iCloud mail
   // (folder, UID, subject and Message-ID of each message).
   await tx.imapMovedMessage.deleteMany(scope);

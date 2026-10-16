@@ -35,6 +35,15 @@ import type { SendMailResult } from "../mail/providers/types.js";
 import { pickInReplyTo } from "../mail/reply-headers.js";
 import { buildReplySystemPrompt } from "../mail/reply-prompt.js";
 import { markEmailReplied } from "../mail/reply-state.js";
+import {
+  openSendReceipt,
+  outcomeOfSend,
+  SEND_RECEIPT_UNAVAILABLE_MESSAGE,
+  type SendReceiptHandle,
+  sendReceiptWire,
+  settleSendReceipt,
+  verifySendOrRefuse,
+} from "../mail/send-receipt.js";
 import { senderDossierFacts } from "../mail/sender-dossier.js";
 import { recordSentMessage } from "../mail/sent-messages.js";
 import { cachedThreadBrief, threadBriefFacts } from "../mail/thread-brief.js";
@@ -652,6 +661,31 @@ export async function registerEmailRepliesRoutes(app: FastifyInstance) {
       );
       const referencesChain = [references, messageId].filter(Boolean).join(" ") || undefined;
 
+      // Deterministic floor (MANUAL_SEND_RECEIPTS_ENABLED): the receipt binds the
+      // recipient and subject derived above and the body the user confirmed, and
+      // is written before anything leaves. No receipt, no send. null while the
+      // flag is off — then nothing below changes.
+      let receipt: SendReceiptHandle | null;
+      try {
+        receipt = await openSendReceipt({
+          userId: uid,
+          route: "reply",
+          to,
+          subject,
+          body,
+          inbox: dbEmail.linkedInboxAccountId ?? "primary",
+          emailId: dbEmail.id,
+        });
+      } catch (err) {
+        captureError(err, {
+          tags: { scope: "email-replies.receipt" },
+          extra: { userId: uid, emailId: dbEmail.id },
+        });
+        return reply.code(503).send({ error: SEND_RECEIPT_UNAVAILABLE_MESSAGE });
+      }
+
+      // The exact bytes handed to the provider, verified against the receipt.
+      if (receipt) await verifySendOrRefuse(receipt, uid, { to, subject, body });
       let result: SendMailResult;
       try {
         result = await actions.sendEmail(uid, to, subject, body, [], {
@@ -664,6 +698,8 @@ export async function registerEmailRepliesRoutes(app: FastifyInstance) {
           ...replyTargetFor(actions, dbEmail.gmailId),
         });
       } catch (err) {
+        // A throw may come after the mail left: the receipt says "unknown", never "refused".
+        if (receipt) await settleSendReceipt(receipt, uid, { status: "UNKNOWN" });
         if (!(err instanceof SendOutcomeUnknownError)) throw err;
         // The provider could not say whether the reply went out. Nothing is recorded as
         // answered, and the user is told not to simply retry: that could deliver twice.
@@ -673,6 +709,7 @@ export async function registerEmailRepliesRoutes(app: FastifyInstance) {
         });
         return reply.code(502).send({ error: SEND_OUTCOME_UNKNOWN_MESSAGE });
       }
+      if (receipt) await settleSendReceipt(receipt, uid, outcomeOfSend(result));
       if ("unsupported" in result) return reply.code(501).send({ error: result.error });
       if ("error" in result) return reply.code(409).send(result);
 
@@ -703,6 +740,7 @@ export async function registerEmailRepliesRoutes(app: FastifyInstance) {
         ...result,
         to,
         threaded: result.threaded === true || pickInReplyTo(messageId) !== undefined,
+        ...(receipt ? { receipt: sendReceiptWire(receipt) } : {}),
       };
     },
   );
