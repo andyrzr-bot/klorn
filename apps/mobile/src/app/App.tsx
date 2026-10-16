@@ -17,6 +17,7 @@ import { LinkRelay } from "../screens/accounts/LinkRelay";
 import { CoverScreen } from "../screens/cover/CoverScreen";
 import { WelcomeScreen } from "../screens/login/WelcomeScreen";
 import { TodayScreen } from "../screens/today/TodayScreen";
+import { ReadySignal } from "../ui/ReadySignal";
 import { StatusNoteHost } from "../ui/StatusNote";
 import { ThemeProvider } from "./theme";
 
@@ -94,9 +95,17 @@ function Root() {
   }, [session.status]);
 
   if (session.status === "loading") return <div className="boot" aria-busy="true" />;
-  if (session.status === "signedOut") return <WelcomeScreen />;
+  if (session.status === "signedOut") {
+    return (
+      <>
+        <WelcomeScreen />
+        <ReadySignal />
+      </>
+    );
+  }
   const signedIn = (
     <>
+      <ReadySignal />
       <StatusNoteHost />
       <LinkRelay />
       <PushLayer />

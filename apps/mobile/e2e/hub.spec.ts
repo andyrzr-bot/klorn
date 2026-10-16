@@ -5,7 +5,15 @@
  * offline / features-off states. Screenshots go to $KLORN_SHOTS_DIR.
  */
 import { expect, type Page, test } from "@playwright/test";
-import { emulateHinge, type Hinge, openApp, SHOTS_DIR, segmentCount, settle } from "./helpers";
+import {
+  emulateHinge,
+  type Hinge,
+  openApp,
+  SHOTS_DIR,
+  segmentCount,
+  settle,
+  snap,
+} from "./helpers";
 
 interface Device {
   name: string;
@@ -144,7 +152,7 @@ for (const theme of ["light", "dark"] as const) {
           await screen.open(page);
           await settle(page);
         }
-        await page.screenshot({ path: `${SHOTS_DIR}/${screen.name}-${device.name}-${theme}.png` });
+        await snap(page, `${SHOTS_DIR}/${screen.name}-${device.name}-${theme}.png`);
       });
     }
   }
@@ -156,8 +164,7 @@ for (const theme of ["light", "dark"] as const) {
     await page.getByRole("button", { name: "도우미에게 묻기" }).click();
     const sheet = page.getByRole("dialog", { name: "도우미" });
     await expect(sheet.getByText("디자인팀 회의")).toBeVisible();
-    await settle(page);
-    await page.screenshot({ path: `${SHOTS_DIR}/assistant-sheet-${device.name}-${theme}.png` });
+    await snap(page, `${SHOTS_DIR}/assistant-sheet-${device.name}-${theme}.png`);
   });
 
   test(`flip cover · 360x400 · ${theme}`, async ({ page }) => {
@@ -165,7 +172,7 @@ for (const theme of ["light", "dark"] as const) {
     await openApp(page, "/calendar", { theme });
     await settle(page);
     await expect(page.getByText("박서연 · 회사")).toBeVisible();
-    await page.screenshot({ path: `${SHOTS_DIR}/cover-360x400-${theme}.png` });
+    await snap(page, `${SHOTS_DIR}/cover-360x400-${theme}.png`);
   });
 }
 
@@ -184,9 +191,9 @@ for (const scenario of ["loading", "empty", "error", "featuresOff"] as const) {
     test(`state · ${scenario} · ${s.name} · 390x844`, async ({ page }) => {
       await page.setViewportSize({ width: 390, height: 844 });
       await openApp(page, s.path, { scenario, insets: "47,0,34,0" });
-      if (scenario === "loading") await page.waitForTimeout(700);
-      else await settle(page);
-      await page.screenshot({ path: `${SHOTS_DIR}/state-${scenario}-${s.name}-390x844.png` });
+      await snap(page, `${SHOTS_DIR}/state-${scenario}-${s.name}-390x844.png`, {
+        loading: scenario === "loading",
+      });
     });
   }
 }
@@ -201,6 +208,6 @@ test("state · offline without cache · calendar + files · 390x844", async ({ p
     await expect(
       page.getByRole("alert").filter({ hasText: "오프라인이에요" }).first(),
     ).toBeVisible();
-    await page.screenshot({ path: `${SHOTS_DIR}/state-offline-${s.name}-390x844.png` });
+    await snap(page, `${SHOTS_DIR}/state-offline-${s.name}-390x844.png`);
   }
 });
