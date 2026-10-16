@@ -303,3 +303,21 @@ export interface SendEmailRequest {
   body: string;
   linkedInboxAccountId?: string | null;
 }
+
+/**
+ * The deterministic-floor receipt of a user-initiated send, added to the
+ * success response of `POST /api/email/send` and `POST /api/email/:id/reply`
+ * while MANUAL_SEND_RECEIPTS_ENABLED is on (absent otherwise). `payloadHash` is
+ * `sendEmailPayloadHash({ to, subject, body })` (packages/api
+ * judge/attention-floor.ts, schema `v`) over the bytes the provider received —
+ * a client that hashes what its confirm sheet showed gets the same hex. `id` is
+ * the server's SendReceipt row. No recipient or content is echoed.
+ */
+export interface SendReceiptWire {
+  id: string;
+  v: "v1";
+  action: "send_email";
+  payloadHash: string;
+  /** ISO time the receipt was minted (the send's approval). */
+  approvedAt: string;
+}

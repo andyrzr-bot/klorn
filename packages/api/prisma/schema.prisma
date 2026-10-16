@@ -161,6 +161,7 @@ model User {
   senderTraits              SenderTrait[]
   senderLabels              SenderLabel[]
   sentMessages              SentMessage[]
+  sendReceipts              SendReceipt[]
   learnedRules              LearnedRule[]
   apiKeys                   ApiKey[]
   mcpWriteAudits            McpWriteAudit[]
@@ -1944,6 +1945,35 @@ model SentMessage {
 
   @@unique([userId, gmailId])
   @@index([userId, sentAt])
+}
+
+/// Deterministic floor for USER-INITIATED sends (POST /api/email/send and
+/// POST /api/email/:id/reply), behind MANUAL_SEND_RECEIPTS_ENABLED (OFF).
+///
+/// The agent path keeps its ActionReceipt on PendingAction / ActionOutbox and
+/// tool-executor verifies it. A manual send never passes through either: the
+/// user's confirm IS the approval and the request carries the approved bytes.
+/// This row is that approval's receipt: the same ActionReceipt (attention-floor.ts,
+/// RECEIPT_SCHEMA_VERSION) over sendEmailPayloadHash({ to, subject, body }), written
+/// BEFORE the provider is called — no row, no send — and verified against the
+/// bytes handed to the provider, then settled with the outcome. A crash between
+/// the write and the settle leaves PENDING, which reads as "may have gone out".
+model SendReceipt {
+  id                String    @id @default(uuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  route             String // "send" | "reply"
+  action            String // FloorAction — "send_email"
+  payloadHash       String // sha256 hex, = receipt.payloadHash
+  receipt           Json // the full ActionReceipt (v, action, inputHash, payloadHash, target, approvedAt, approvedBy)
+  inbox             String // "primary" | LinkedInboxAccount id — the account the mail left from
+  emailId           String? // reply: the EmailMessage answered (no FK: the receipt outlives the row)
+  status            String    @default("PENDING") // PENDING | SENT | REFUSED | UNKNOWN
+  providerMessageId String?
+  createdAt         DateTime  @default(now())
+  completedAt       DateTime?
+
+  @@index([userId, createdAt])
 }
 
 /// A standing, user-made decision about whether a sender may reach them.

@@ -19,6 +19,15 @@ import { isImapFamily } from "../mail/providers/error-semantics.js";
 import { logProviderSoftFailure } from "../mail/providers/log-soft-failure.js";
 import { SendOutcomeUnknownError } from "../mail/providers/send-outcome-unknown.js";
 import type { MailAttachment, SendMailResult } from "../mail/providers/types.js";
+import {
+  openSendReceipt,
+  outcomeOfSend,
+  SEND_RECEIPT_UNAVAILABLE_MESSAGE,
+  type SendReceiptHandle,
+  sendReceiptWire,
+  settleSendReceipt,
+  verifySendOrRefuse,
+} from "../mail/send-receipt.js";
 import { recordSentMessage } from "../mail/sent-messages.js";
 import { captureError } from "../sentry.js";
 import { safeAttachmentFilename } from "./email.js";
@@ -211,12 +220,35 @@ export async function registerEmailMutationsRoutes(app: FastifyInstance) {
       // send options so the provider uses THAT account's credentials. The primary
       // inbox keeps the exact call it always made.
       const actions = await mailActionsFor(uid, linkedId);
+
+      // Deterministic floor (MANUAL_SEND_RECEIPTS_ENABLED): the receipt of the
+      // bytes the user confirmed is written before anything leaves. No receipt,
+      // no send. null while the flag is off — then nothing below changes.
+      let receipt: SendReceiptHandle | null;
+      try {
+        receipt = await openSendReceipt({
+          userId: uid,
+          route: "send",
+          to,
+          subject,
+          body,
+          inbox: linkedId ?? "primary",
+        });
+      } catch (err) {
+        captureError(err, { tags: { scope: "email.send.receipt" }, extra: { userId: uid } });
+        return reply.code(503).send({ error: SEND_RECEIPT_UNAVAILABLE_MESSAGE });
+      }
+
+      // The exact bytes handed to the provider, verified against the receipt.
+      if (receipt) await verifySendOrRefuse(receipt, uid, { to, subject, body });
       let result: SendMailResult;
       try {
         result = linkedId
           ? await actions.sendEmail(uid, to, subject, body, [], { linkedInboxAccountId: linkedId })
           : await actions.sendEmail(uid, to, subject, body);
       } catch (err) {
+        // A throw may come after the mail left: the receipt says "unknown", never "refused".
+        if (receipt) await settleSendReceipt(receipt, uid, { status: "UNKNOWN" });
         if (!(err instanceof SendOutcomeUnknownError)) throw err;
         // The provider could not say whether the message went out (a linked
         // Outlook mailbox, step B0b). The user is told not to simply retry.
@@ -226,6 +258,7 @@ export async function registerEmailMutationsRoutes(app: FastifyInstance) {
         });
         return reply.code(502).send({ error: SEND_OUTCOME_UNKNOWN_MESSAGE });
       }
+      if (receipt) await settleSendReceipt(receipt, uid, outcomeOfSend(result));
       // A linked mailbox whose provider cannot send from Klorn: 501, as the reply
       // route answers (the primary Google inbox never returns this).
       if (result && "unsupported" in result) {
@@ -248,7 +281,7 @@ export async function registerEmailMutationsRoutes(app: FastifyInstance) {
           inbox: linkedId ?? "primary",
         });
       }
-      return result;
+      return receipt ? { ...result, receipt: sendReceiptWire(receipt) } : result;
     },
   );
 
