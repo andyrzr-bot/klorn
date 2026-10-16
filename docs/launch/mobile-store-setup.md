@@ -49,9 +49,11 @@ developer.apple.com → Keys → `+` → enable **Apple Push Notifications servi
 ### 4. Store listing (~1 h, can wait until the first TestFlight build works)
 
 App Store Connect → the app → fill from `apps/mobile/store-pack/metadata.md`,
-privacy answers from `apps/mobile/store-pack/privacy-labels.md`, screenshots
-from the CI artifact `mobile-screenshots` (6.9" iPhone and 13" iPad sizes),
-demo account per `apps/mobile/store-pack/review-notes.md`. Then **Add for
+privacy answers from `apps/mobile/store-pack/privacy-labels.md`, store-size
+screenshots rendered by `npx playwright test --config
+store-pack/capture/playwright.store.config.ts` in `apps/mobile` (sizes and
+captions in `store-pack/screenshots-plan.md`; the CI `mobile-screenshots`
+artifact is device-scale review shots, not upload sizes), demo account per `apps/mobile/store-pack/review-notes.md`. Then **Add for
 Review** → **Submit**.
 
 ---
