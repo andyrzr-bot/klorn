@@ -87,7 +87,7 @@ for (const theme of ["light", "dark"] as const) {
 
     test(`lane sheet (left swipe) · ${device.name} · ${theme}`, async ({ page }) => {
       await open(page, device, "/mail", theme);
-      await swipe(page, page.getByRole("link", { name: /쿠팡이츠/ }).first(), -160);
+      await swipe(page, page.getByRole("link", { name: /한끼배달/ }).first(), -160);
       const sheet = page.getByRole("dialog", { name: "레인 옮기기" });
       await expect(sheet).toBeVisible();
       await expect(sheet.getByRole("radio", { name: /SILENT/ })).toBeChecked();
@@ -112,14 +112,14 @@ const PHONE: Device = { name: "iphone-390x844", width: 390, height: 844, insets:
 for (const theme of ["light", "dark"] as const) {
   test(`mid-swipe reveal · ${theme}`, async ({ page }) => {
     await open(page, PHONE, "/mail", theme);
-    const release = await holdSwipe(page, page.getByRole("link", { name: /쿠팡이츠/ }).first(), 96);
+    const release = await holdSwipe(page, page.getByRole("link", { name: /한끼배달/ }).first(), 96);
     await shot(page, `swipe-done-reveal-390x844-${theme}`);
     await release();
   });
 
   test(`done + undo snackbar · ${theme}`, async ({ page }) => {
     await open(page, PHONE, "/mail", theme);
-    await swipe(page, page.getByRole("link", { name: /쿠팡이츠/ }).first(), 160);
+    await swipe(page, page.getByRole("link", { name: /한끼배달/ }).first(), 160);
     await expect(page.getByRole("status").filter({ hasText: "처리 완료" })).toBeVisible();
     await shot(page, `done-snackbar-390x844-${theme}`);
   });

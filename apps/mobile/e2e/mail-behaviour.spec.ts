@@ -19,8 +19,8 @@ test("swipe right: the row leaves at once, dismiss is sent only after the 5 s wi
   page,
 }) => {
   await phone(page, "/mail");
-  await swipe(page, row(page, /쿠팡이츠/), 160);
-  await expect(row(page, /쿠팡이츠/)).toHaveCount(0);
+  await swipe(page, row(page, /한끼배달/), 160);
+  await expect(row(page, /한끼배달/)).toHaveCount(0);
   await expect(page.getByRole("status").filter({ hasText: "처리 완료" })).toBeVisible();
   expect((await mockState(page)).dismissed).toEqual([]);
   await page.clock.runFor(5_200);
@@ -30,17 +30,17 @@ test("swipe right: the row leaves at once, dismiss is sent only after the 5 s wi
 
 test("undo inside the window brings the row back and sends nothing", async ({ page }) => {
   await phone(page, "/mail");
-  await swipe(page, row(page, /쿠팡이츠/), 160);
+  await swipe(page, row(page, /한끼배달/), 160);
   await page.getByRole("button", { name: "실행 취소" }).click();
-  await expect(row(page, /쿠팡이츠/)).toBeVisible();
+  await expect(row(page, /한끼배달/)).toBeVisible();
   await page.clock.runFor(6_000);
   expect((await mockState(page)).dismissed).toEqual([]);
 });
 
 test("a short drag springs back and changes nothing", async ({ page }) => {
   await phone(page, "/mail");
-  await swipe(page, row(page, /쿠팡이츠/), 40, 20);
-  await expect(row(page, /쿠팡이츠/)).toBeVisible();
+  await swipe(page, row(page, /한끼배달/), 40, 20);
+  await expect(row(page, /한끼배달/)).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
@@ -48,16 +48,16 @@ test("swipe left → SILENT preselected → move; undo goes through the server's
   page,
 }) => {
   await phone(page, "/mail");
-  await swipe(page, row(page, /쿠팡이츠/), -160);
+  await swipe(page, row(page, /한끼배달/), -160);
   const sheet = page.getByRole("dialog", { name: "레인 옮기기" });
   await expect(sheet.getByRole("radio", { name: /SILENT/ })).toBeChecked();
   await sheet.getByRole("button", { name: "SILENT로 옮기기" }).click();
   await expect(sheet).toHaveCount(0);
   // SILENT is recorded, never rendered in 전체: the row leaves the list.
-  await expect(row(page, /쿠팡이츠/)).toHaveCount(0);
+  await expect(row(page, /한끼배달/)).toHaveCount(0);
   expect((await mockState(page)).tiers).toEqual([["email-att-info-1", "SILENT"]]);
   await page.getByRole("button", { name: "실행 취소" }).click();
-  await expect(row(page, /쿠팡이츠/)).toBeVisible();
+  await expect(row(page, /한끼배달/)).toBeVisible();
   await expect
     .poll(async () => (await mockState(page)).tiers)
     .toEqual([["email-att-info-1", "INFO"]]);
@@ -65,9 +65,9 @@ test("swipe left → SILENT preselected → move; undo goes through the server's
 
 test("'keep this sender here' pins the sender to the chosen lane", async ({ page }) => {
   await phone(page, "/mail");
-  await swipe(page, row(page, /쿠팡이츠/), -160);
+  await swipe(page, row(page, /한끼배달/), -160);
   const sheet = page.getByRole("dialog", { name: "레인 옮기기" });
-  await sheet.getByRole("switch", { name: /쿠팡이츠 메일은 앞으로도 여기로/ }).check();
+  await sheet.getByRole("switch", { name: /한끼배달 메일은 앞으로도 여기로/ }).check();
   await sheet.getByRole("button", { name: "SILENT로 옮기기" }).click();
   await expect
     .poll(async () => (await mockState(page)).pins)
@@ -97,14 +97,14 @@ test("long press starts multi-select; bulk Done clears every selected row", asyn
   await page.mouse.down();
   await page.clock.runFor(600);
   await page.mouse.up();
-  await row(page, /쿠팡이츠/).click();
+  await row(page, /한끼배달/).click();
   await expect(page.getByText("2개 선택됨")).toBeVisible();
   await page
     .getByRole("toolbar", { name: "선택한 메일 동작" })
     .getByRole("button", { name: "처리 완료" })
     .click();
   await expect(row(page, /Mark Chen/)).toHaveCount(0);
-  await expect(row(page, /쿠팡이츠/)).toHaveCount(0);
+  await expect(row(page, /한끼배달/)).toHaveCount(0);
   await page.clock.runFor(5_200);
   await expect
     .poll(async () => (await mockState(page)).dismissed.sort())
@@ -282,7 +282,7 @@ test("the account filter scopes the list to one connected account", async ({ pag
   await phone(page, "/mail");
   await page.getByRole("button", { name: /계정 선택/ }).click();
   await page.getByRole("button", { name: /jisu@naver\.example/ }).click();
-  await expect(row(page, /네이버페이/)).toBeVisible();
+  await expect(row(page, /모아페이/)).toBeVisible();
   await expect(row(page, /박서연/)).toHaveCount(0);
   await expect(page.getByRole("button", { name: /계정 선택: jisu@naver\.example/ })).toBeVisible();
 });
@@ -291,9 +291,9 @@ test("lane tabs filter, SILENT is reachable, and the list pages on scroll", asyn
   await phone(page, "/mail");
   await page.getByRole("tab", { name: /SILENT/ }).click();
   await expect(page).toHaveURL(/lane=SILENT/);
-  await expect(row(page, /무신사/)).toBeVisible();
+  await expect(row(page, /옷장마켓/)).toBeVisible();
   await page.getByRole("tab", { name: /전체/ }).click();
-  await expect(row(page, /무신사/)).toHaveCount(0);
+  await expect(row(page, /옷장마켓/)).toHaveCount(0);
   // 45 mock rows, 20 per page: scrolling to the end loads the rest.
   const scroller = page.locator(".mail-scroll");
   const booked = page.getByRole("link", { name: /예약이 확정되었습니다/ });
@@ -348,7 +348,7 @@ test("Subscriptions: bulk clean-up lists the rarely read senders before acting",
   await page.getByRole("button", { name: "더 보기" }).first().click();
   await page.getByRole("button", { name: /구독 관리/ }).click();
   await expect(page).toHaveURL(/\/mail\/subscriptions$/);
-  await page.getByRole("button", { name: "무신사 구독취소" }).click();
+  await page.getByRole("button", { name: "옷장마켓 구독취소" }).click();
   await expect(page.getByRole("status").filter({ hasText: "취소됨" })).toBeVisible();
   await page.getByRole("button", { name: /거의 안 읽는 11곳 한 번에 정리/ }).click();
   const confirm = page.getByRole("dialog", { name: "11곳 구독을 취소할까요?" });

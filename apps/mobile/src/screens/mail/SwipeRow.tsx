@@ -1,5 +1,5 @@
 /**
- * A list row that can be swiped (Mail artboard: the 쿠팡이츠 row mid-swipe).
+ * A list row that can be swiped (Mail artboard: the 한끼배달 row mid-swipe).
  * Pointer Events, so touch and a mouse / trackpad drag behave the same.
  * `touch-action: pan-y` leaves vertical scrolling (and pull-to-refresh) to
  * the browser; the row only claims a drag once it is clearly horizontal.

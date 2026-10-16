@@ -88,7 +88,7 @@ export const en = {
   "welcome.headline.em": "in one place",
   "welcome.headline.after": "— calmly.",
   "welcome.body":
-    "Gmail, work mail, Outlook, Naver and iCloud with one sign-in. Only what matters gets through, and we show you why.",
+    "Gmail, your company's Google Workspace, Naver (beta) and iCloud (beta) in one place. Only what matters gets through, and we show you why.",
   "welcome.card.label": "Today · in one place",
   "welcome.card.line": "We only flag the 2 emails that need a reply",
   "welcome.apple": "Continue with Apple",
@@ -644,7 +644,7 @@ export const en = {
   "accounts.calendar.name": "Calendar",
   "accounts.calendar.sub": "Calendar · {email}",
   "accounts.add.title": "Add an account",
-  "accounts.add.sub": "Gmail, Outlook, Naver, iCloud or other mail",
+  "accounts.add.sub": "Gmail, Google Workspace, Naver or iCloud",
   "accounts.add.lede": "Connect one at a time. You can disconnect any of them later.",
   "accounts.add.mail": "Mail",
   "accounts.add.other": "Calendars and files",

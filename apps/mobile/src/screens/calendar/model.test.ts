@@ -103,7 +103,7 @@ describe("agenda", () => {
 
   it("builds the source legend once per calendar", () => {
     const legend = legendOf(day, "personal");
-    expect(legend.map((s) => s.key)).toEqual(["cal-work", "cal-icloud", "cal-outlook"]);
+    expect(legend.map((s) => s.key)).toEqual(["cal-work", "cal-icloud", "cal-partners"]);
     const week = legendOf(EVENTS, "personal");
     expect(week.find((s) => s.key === "primary")?.purpose).toBe("personal");
   });

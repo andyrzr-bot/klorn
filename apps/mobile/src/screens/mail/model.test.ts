@@ -59,7 +59,7 @@ describe("lane sheet", () => {
   });
 
   it("names the sender from a From header", () => {
-    expect(senderLabel("쿠팡이츠 <no-reply@coupangeats.example>")).toBe("쿠팡이츠");
+    expect(senderLabel("한끼배달 <no-reply@hankki.example>")).toBe("한끼배달");
     expect(senderLabel('"Mark Chen" <mark@capital.example>')).toBe("Mark Chen");
     expect(senderLabel("<a@b.example>")).toBe("a@b.example");
     expect(senderLabel("a@b.example")).toBe("a@b.example");

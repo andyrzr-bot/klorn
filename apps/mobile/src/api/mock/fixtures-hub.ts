@@ -47,7 +47,11 @@ function wall(now: number, dayOffset: number, hhmm: string): string {
 // ── Calendar ────────────────────────────────────────────────────────────────
 
 const WORK = { provider: "GOOGLE", sourceAccountId: "cal-work", sourceLabel: "회사 캘린더" };
-const OUTLOOK = { provider: "OUTLOOK", sourceAccountId: "cal-outlook", sourceLabel: "Outlook" };
+const PARTNERS = {
+  provider: "GOOGLE",
+  sourceAccountId: "cal-partners",
+  sourceLabel: "파트너스 캘린더",
+};
 const ICLOUD = { provider: "ICLOUD", sourceAccountId: "cal-icloud", sourceLabel: "iCloud" };
 const PERSONAL = { provider: "GOOGLE", sourceAccountId: null };
 
@@ -80,8 +84,8 @@ export function mockWeekEvents(now: number): CalendarEventWire[] {
       meetingLink: "https://meet.google.com/wkl-plan-mon",
     }),
     ev("evt-interview", -3, "15:00", "16:00", "채용 인터뷰 — 프로덕트 디자이너", WORK),
-    ev("evt-partner", -2, "13:00", "14:00", "파트너 정기 콜", OUTLOOK, {
-      meetingLink: "https://teams.microsoft.com/l/meetup-join/partner",
+    ev("evt-partner", -2, "13:00", "14:00", "파트너 정기 콜", PARTNERS, {
+      meetingLink: "https://meet.google.com/ptn-week-call",
     }),
     ev("evt-standup", 0, "09:30", "10:00", "팀 스탠드업", WORK, {
       meetingLink: "https://meet.google.com/std-daily-up",
@@ -91,8 +95,8 @@ export function mockWeekEvents(now: number): CalendarEventWire[] {
       description: "모바일 v1 시안 최종 검토. 캘린더·파일·도우미 화면을 함께 봐요.",
     }),
     ev("evt-lunch", 0, "12:30", "13:30", "점심 — 민지", ICLOUD, { location: "성수동" }),
-    ev("evt-investor", 0, "14:00", "15:00", "투자사 미팅 · Mark Chen", OUTLOOK, {
-      meetingLink: "https://teams.microsoft.com/l/meetup-join/investor",
+    ev("evt-investor", 0, "14:00", "15:00", "투자사 미팅 · Mark Chen", PARTNERS, {
+      meetingLink: "https://meet.google.com/inv-mark-chen",
       location: "강남 사무실",
     }),
     ev("evt-1on1", 0, "14:30", "15:00", "하은 님 1:1", WORK),
@@ -225,7 +229,7 @@ export function mockReceipt(now: number, empty = false): DailyReceipt {
         "EMAIL",
         "DECISION",
         "08:10",
-        "회사·Outlook 캘린더 충돌",
+        "회사·파트너스 캘린더 충돌",
       ),
     ],
     queued: [
@@ -257,7 +261,7 @@ export function mockReceipt(now: number, empty = false): DailyReceipt {
         "06:30",
         "구독 메일 · 읽지 않아도 됨",
       ),
-      item("r-silent-2", "쿠팡 광고", "EMAIL", "DECISION", "01:12", "광고"),
+      item("r-silent-2", "한끼배달 광고", "EMAIL", "DECISION", "01:12", "광고"),
     ],
     summary: {
       totalSeen: 48,
@@ -440,7 +444,7 @@ export function mockAttachmentMail(now: number): AttachmentMail[] {
     ),
     mail(
       "email-receipt",
-      "네이버페이 <no-reply@naverpay.example>",
+      "모아페이 <no-reply@moapay.example>",
       "10월 결제 내역 안내",
       2_880,
       "inbox-naver",
@@ -455,9 +459,9 @@ export function mockAttachmentMail(now: number): AttachmentMail[] {
           "invoice",
         ),
         att(
-          "att-receipt-coupang",
+          "att-receipt-delivery",
           "email-receipt",
-          "쿠팡이츠_영수증.png",
+          "한끼배달_영수증.png",
           "image/png",
           120_000,
           "배달 영수증 23,500원.",
@@ -574,11 +578,18 @@ export const MOCK_LINKED_CALENDARS: Record<
         displayName: "회사 캘린더",
         needsReconnect: false,
       },
+      {
+        id: "cal-partners",
+        email: "jisu@partners.example",
+        displayName: "파트너스 캘린더",
+        needsReconnect: false,
+      },
     ],
   },
-  outlook: {
-    accounts: [{ id: "cal-outlook", email: "jisu@partners.example", needsReconnect: false }],
-  },
+  // No Outlook account connected: Outlook is dark in production, so the
+  // fixtures (and every screenshot) show none. The route still answers, so the
+  // "add Outlook" option behaves as with OUTLOOK_INBOX_ENABLED on.
+  outlook: { accounts: [] },
   caldav: {
     accounts: [
       { id: "cal-icloud", email: "jisu@icloud.example", provider: "ICLOUD", needsReconnect: false },

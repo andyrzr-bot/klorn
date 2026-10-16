@@ -80,7 +80,7 @@ export const ko: Messages = {
   "welcome.headline.em": "한 곳에서",
   "welcome.headline.after": "차분하게.",
   "welcome.body":
-    "Gmail·회사 메일·Outlook·네이버·iCloud를 로그인 한 번으로. 중요한 것만 알리고, 이유를 보여드려요.",
+    "Gmail·회사 Google Workspace·네이버(베타)·iCloud(베타)를 한 곳에서. 중요한 것만 알리고, 이유를 보여드려요.",
   "welcome.card.label": "오늘 · 한 곳에서",
   "welcome.card.line": "답장이 필요한 메일 2개만 알려드려요",
   "welcome.apple": "Apple로 계속하기",
@@ -628,7 +628,7 @@ export const ko: Messages = {
   "accounts.calendar.name": "캘린더",
   "accounts.calendar.sub": "캘린더 · {email}",
   "accounts.add.title": "계정 추가",
-  "accounts.add.sub": "Gmail · Outlook · 네이버 · iCloud · 다른 메일",
+  "accounts.add.sub": "Gmail · Google Workspace · 네이버 · iCloud",
   "accounts.add.lede": "하나씩 연결해요. 언제든 계정별로 연결을 끊을 수 있어요.",
   "accounts.add.mail": "메일",
   "accounts.add.other": "캘린더 · 파일",

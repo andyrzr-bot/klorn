@@ -1,3 +1,4 @@
+import type { InboxOption } from "@klorn/contract";
 import { describe, expect, it } from "vitest";
 import { MOCK_INBOXES } from "../../api/mock/fixtures";
 import {
@@ -9,7 +10,16 @@ import {
   statusOf,
 } from "./model";
 
-const [primary, work, outlook, naver, icloud] = MOCK_INBOXES.inboxes;
+const [primary, work, , naver, icloud] = MOCK_INBOXES.inboxes;
+// The fixtures connect no Outlook account (dark in production); one for the model.
+const outlook: InboxOption = {
+  id: "inbox-outlook",
+  email: "jisu@partners.example",
+  kind: "linked",
+  needsReconnect: false,
+  provider: "OUTLOOK",
+  purpose: "work",
+};
 
 describe("accounts", () => {
   it("names accounts and marks Outlook, Naver and iCloud as beta", () => {

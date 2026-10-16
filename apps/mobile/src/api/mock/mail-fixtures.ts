@@ -51,13 +51,13 @@ const DESIGN_ROWS: MailRow[] = [
     tier: "MEETING",
     ago: 138,
     unread: true,
-    inbox: "inbox-outlook",
+    inbox: "inbox-partners",
     summary: "목 14:00 회사 일정과 겹침",
     needsReply: true,
   },
   {
     id: "email-att-info-1",
-    from: "쿠팡이츠 <no-reply@coupangeats.example>",
+    from: "한끼배달 <no-reply@hankki.example>",
     subject: "주문하신 음식이 배달 완료됐어요",
     tier: "INFO",
     ago: 153,
@@ -66,8 +66,8 @@ const DESIGN_ROWS: MailRow[] = [
     summary: "영수증 · 답장 불필요",
   },
   {
-    id: "email-musinsa-1",
-    from: "무신사 <news@musinsa.example>",
+    id: "email-otjang-1",
+    from: "옷장마켓 <news@otjang.example>",
     subject: "[광고] 가을 아우터 최대 70% — 오늘 자정까지",
     tier: "SILENT",
     ago: 300,
@@ -87,8 +87,8 @@ const DESIGN_ROWS: MailRow[] = [
     needsReply: true,
   },
   {
-    id: "email-naverpay",
-    from: "네이버페이 <payments@naver.example>",
+    id: "email-moapay",
+    from: "모아페이 <payments@moapay.example>",
     subject: "10월 결제 내역 안내",
     tier: "INFO",
     ago: 1224,
@@ -108,9 +108,9 @@ const DESIGN_ROWS: MailRow[] = [
     attachments: 2,
   },
   {
-    id: "email-apple-1",
-    from: "Apple <no_reply@email.apple.example>",
-    subject: "iCloud+ 구독이 갱신되었습니다",
+    id: "email-gureum-1",
+    from: "구름보관함 <no-reply@gureum.example>",
+    subject: "구름보관함 200GB 구독이 갱신되었습니다",
     tier: "INFO",
     ago: 3 * DAY + 420,
     unread: false,
@@ -132,7 +132,7 @@ const DESIGN_ROWS: MailRow[] = [
 
 const OLDER: Array<Omit<MailRow, "id" | "ago">> = [
   {
-    from: "토스 <noreply@toss.example>",
+    from: "새벽카드 <noreply@saebyeok.example>",
     subject: "9월 카드 사용 내역이 도착했어요",
     tier: "INFO",
     unread: false,
@@ -148,7 +148,7 @@ const OLDER: Array<Omit<MailRow, "id" | "ago">> = [
     summary: "화 10:00 비어 있음",
   },
   {
-    from: "GitHub <noreply@github.example>",
+    from: "빌드봇 <noreply@buildbot.example>",
     subject: "[klorn/app] CI passed on main",
     tier: "INFO",
     unread: false,
@@ -160,11 +160,11 @@ const OLDER: Array<Omit<MailRow, "id" | "ago">> = [
     subject: "견적서 검토 부탁드립니다",
     tier: "QUEUE",
     unread: false,
-    inbox: "inbox-outlook",
+    inbox: "inbox-partners",
     summary: "첨부 1개 · 이번 주 안에",
   },
   {
-    from: "대한항공 <noreply@koreanair.example>",
+    from: "누리항공 <noreply@nuriair.example>",
     subject: "예약이 확정되었습니다 — 11월 3일 ICN → NRT",
     tier: "INFO",
     unread: false,
@@ -232,10 +232,10 @@ export const TIER_REASONS: Record<string, string> = {
   "email-att-meet-1": "목 14:00 회사 일정과 겹쳐요. 금 15:00는 세 캘린더 모두 비어 있어요.",
   "email-att-info-1": "배달 완료 영수증이에요. 답장할 필요가 없어요.",
   "email-att-queue-1": "답장이 필요하지만 오늘 안에 급하지 않아요.",
-  "email-naverpay": "결제 내역 안내예요. 기록으로 보관해요.",
+  "email-moapay": "결제 내역 안내예요. 기록으로 보관해요.",
   "email-haeun-1": "금요일까지 리뷰 요청 — 오늘 읽어 두면 좋아요.",
   "email-minjun-1": "팀 투표에 답장이 필요해요.",
-  "email-musinsa-1": "광고 메일이에요. 기록만 하고 보이지 않게 해요.",
+  "email-otjang-1": "광고 메일이에요. 기록만 하고 보이지 않게 해요.",
 };
 
 const PUSH_HTML =
@@ -244,22 +244,22 @@ const PUSH_HTML =
   '<p>수정본은 첨부했고, 변경 이력은 <a href="https://docs.hanbitpartners.example/contract/v3">여기</a>에서도 보실 수 있어요.</p>' +
   "<p>확인 부탁드려요.<br>박서연 드림</p></div>";
 
-const COUPANG_HTML =
+const DELIVERY_HTML =
   '<table width="100%" bgcolor="#f4f5f7" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px">' +
   '<table width="100%" bgcolor="#ffffff" style="max-width:520px;border-radius:12px" cellpadding="24"><tr><td>' +
-  '<img src="https://img.coupangeats.example/logo.png" alt="쿠팡이츠" width="120" height="32">' +
+  '<img src="https://img.hankki.example/logo.png" alt="한끼배달" width="120" height="32">' +
   '<h2 style="color:#111;font-size:20px;margin:16px 0 8px">배달이 완료됐어요</h2>' +
   '<p style="color:#444;font-size:15px">주문번호 3108-2210 · 한식당 온기</p>' +
   '<table width="100%" style="border-top:1px solid #eee;margin-top:12px"><tr><td style="color:#444;padding:8px 0">비빔밥 외 1건</td>' +
   '<td align="right" style="color:#111;font-weight:bold">18,500원</td></tr></table>' +
-  '<p><a href="https://www.coupangeats.example/orders/3108-2210" style="color:#0073e9">주문 상세 보기</a></p>' +
-  '<img src="https://t.coupangeats.example/open.gif?u=1" width="1" height="1" alt="">' +
+  '<p><a href="https://www.hankki.example/orders/3108-2210" style="color:#c2410c">주문 상세 보기</a></p>' +
+  '<img src="https://t.hankki.example/open.gif?u=1" width="1" height="1" alt="">' +
   "</td></tr></table></td></tr></table>";
 
-const NAVERPAY_HTML =
-  '<div style="background-color:#ffffff;color:#222;font-size:14px"><h3 style="color:#03c75a">네이버페이 10월 결제 내역</h3>' +
+const MOAPAY_HTML =
+  '<div style="background-color:#ffffff;color:#222;font-size:14px"><h3 style="color:#6d28d9">모아페이 10월 결제 내역</h3>' +
   "<p>10월 1일 ~ 10월 15일 결제 4건, 합계 <b>86,300원</b>입니다.</p>" +
-  '<p><img src="https://static.naver.example/pay/summary-chart.png" alt="결제 요약 그래프" width="320" height="120"></p></div>';
+  '<p><img src="https://static.moapay.example/pay/summary-chart.png" alt="결제 요약 그래프" width="320" height="120"></p></div>';
 
 const PLAIN_BODIES: Record<string, string> = {
   "email-att-meet-1":
@@ -268,9 +268,9 @@ const PLAIN_BODIES: Record<string, string> = {
     "지수님 안녕하세요! 지난번 말씀드린 포트폴리오 초안을 정리해서 보내드려요. 시간 되실 때 피드백 부탁드려도 될까요? 급하지는 않아요 :)",
   "email-haeun-1":
     "지수님, 디자인 시스템 v2 리뷰 자료 공유드려요. 금요일 리뷰 전에 한 번 훑어봐 주시면 좋겠어요.",
-  "email-apple-1": "iCloud+ 50GB 구독이 갱신되었습니다. 다음 결제일은 2026년 11월 13일입니다.",
+  "email-gureum-1": "구름보관함 200GB 구독이 갱신되었습니다. 다음 결제일은 2026년 11월 13일입니다.",
   "email-minjun-1": "다음 주 워크숍 장소 투표 부탁드려요. 성수 / 판교 / 온라인 중 골라 주세요.",
-  "email-musinsa-1": "가을 아우터 최대 70% 할인 — 오늘 자정까지.",
+  "email-otjang-1": "가을 아우터 최대 70% 할인 — 오늘 자정까지.",
 };
 
 export function mockMailDetail(now: number, row: MailRow): EmailDetailWire {
@@ -293,9 +293,9 @@ export function mockMailDetail(now: number, row: MailRow): EmailDetailWire {
       row.id === "email-att-push-1"
         ? PUSH_HTML
         : row.id === "email-att-info-1"
-          ? COUPANG_HTML
-          : row.id === "email-naverpay"
-            ? NAVERPAY_HTML
+          ? DELIVERY_HTML
+          : row.id === "email-moapay"
+            ? MOAPAY_HTML
             : null,
     date: item.date,
     isRead: item.isRead,
@@ -462,22 +462,23 @@ export function mockReplyDraft(row: MailRow, intent: string | undefined): ReplyD
 
 const SUBS: Array<[string, string | null, string | null, number, number]> = [
   // sender, displayName, linkedInboxAccountId, count, read
-  ["news@musinsa.example", "무신사", null, 64, 1],
-  ["notifications@linkedin.example", "LinkedIn 알림", "inbox-work", 51, 3],
-  ["noreply@medium.example", "Medium Daily Digest", "inbox-naver", 32, 0],
-  ["ads@coupang.example", "쿠팡 광고", null, 30, 1],
-  ["benefit@toss.example", "토스 혜택", null, 28, 20],
-  ["news@29cm.example", "29CM", null, 24, 1],
-  ["digest@quora.example", "Quora Digest", "inbox-work", 22, 0],
-  ["promo@yes24.example", "YES24", "inbox-naver", 18, 1],
-  ["deal@gmarket.example", "G마켓 특가", null, 17, 0],
-  ["hello@notion.example", "Notion", "inbox-work", 15, 9],
-  ["letter@ohou.example", "오늘의집", null, 14, 1],
-  ["news@kurly.example", "마켓컬리", null, 12, 0],
-  ["weekly@brunch.example", "브런치 위클리", "inbox-naver", 11, 1],
-  ["event@starbucks.example", "스타벅스", null, 10, 0],
-  ["team@figma.example", "Figma", "inbox-work", 9, 6],
-  ["news@ridibooks.example", "리디", null, 8, 1],
+  // Fictional senders only (no real brand in a screenshot).
+  ["news@otjang.example", "옷장마켓", null, 64, 1],
+  ["notifications@careernote.example", "커리어노트 알림", "inbox-work", 51, 3],
+  ["noreply@geulmaru.example", "글마루 데일리", "inbox-naver", 32, 0],
+  ["ads@hankki.example", "한끼배달 광고", null, 30, 1],
+  ["benefit@saebyeok.example", "새벽카드 혜택", null, 28, 20],
+  ["news@modernshop.example", "모던편집숍", null, 24, 1],
+  ["digest@jilmun.example", "질문광장 다이제스트", "inbox-work", 22, 0],
+  ["promo@ieumbooks.example", "책방이음", "inbox-naver", 18, 1],
+  ["deal@oneulmarket.example", "오늘마켓 특가", null, 17, 0],
+  ["hello@memopan.example", "메모판", "inbox-work", 15, 9],
+  ["letter@woorijip.example", "우리집꾸미기", null, 14, 1],
+  ["news@saebyeokjang.example", "새벽장보기", null, 12, 0],
+  ["weekly@geulbat.example", "글밭 위클리", "inbox-naver", 11, 1],
+  ["event@ongicoffee.example", "온기커피", null, 10, 0],
+  ["team@drawingboard.example", "드로잉보드", "inbox-work", 9, 6],
+  ["news@chaeksup.example", "책숲", null, 8, 1],
 ];
 
 const ACCOUNT_LABELS: Record<string, string> = {

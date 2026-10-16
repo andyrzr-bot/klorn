@@ -82,7 +82,7 @@ export const fr: Messages = {
   "welcome.headline.em": "au même endroit",
   "welcome.headline.after": "en toute sérénité.",
   "welcome.body":
-    "Gmail, mail professionnel, Outlook, Naver et iCloud avec une seule connexion. Seul l’important vous parvient, et nous vous disons pourquoi.",
+    "Gmail, le Google Workspace de votre entreprise, Naver (bêta) et iCloud (bêta) au même endroit. Seul l’important vous parvient, et nous vous disons pourquoi.",
   "welcome.card.label": "Aujourd’hui · au même endroit",
   "welcome.card.line": "Nous ne signalons que les 2 e-mails qui attendent une réponse",
   "welcome.apple": "Continuer avec Apple",
@@ -648,7 +648,7 @@ export const fr: Messages = {
   "accounts.calendar.name": "Agenda",
   "accounts.calendar.sub": "Agenda · {email}",
   "accounts.add.title": "Ajouter un compte",
-  "accounts.add.sub": "Gmail, Outlook, Naver, iCloud ou une autre messagerie",
+  "accounts.add.sub": "Gmail, Google Workspace, Naver ou iCloud",
   "accounts.add.lede": "Un à la fois. Vous pourrez déconnecter chacun plus tard.",
   "accounts.add.mail": "E-mail",
   "accounts.add.other": "Agendas et fichiers",

@@ -80,7 +80,7 @@ export const zh: Messages = {
   "welcome.headline.em": "集中一处",
   "welcome.headline.after": "从容处理。",
   "welcome.body":
-    "Gmail、工作邮箱、Outlook、Naver 和 iCloud，一次登录全部搞定。只提醒重要的事，并告诉你原因。",
+    "Gmail、公司的 Google Workspace、Naver（测试版）和 iCloud（测试版）集中一处。只提醒重要的事，并告诉你原因。",
   "welcome.card.label": "今天 · 集中一处",
   "welcome.card.line": "只提醒你需要回复的 2 封邮件",
   "welcome.apple": "通过 Apple 继续",
@@ -617,7 +617,7 @@ export const zh: Messages = {
   "accounts.calendar.name": "日历",
   "accounts.calendar.sub": "日历 · {email}",
   "accounts.add.title": "添加账户",
-  "accounts.add.sub": "Gmail · Outlook · Naver · iCloud · 其他邮箱",
+  "accounts.add.sub": "Gmail · Google Workspace · Naver · iCloud",
   "accounts.add.lede": "一次连接一个。之后可以随时单独断开。",
   "accounts.add.mail": "邮件",
   "accounts.add.other": "日历 · 文件",

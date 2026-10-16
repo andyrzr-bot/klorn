@@ -342,7 +342,7 @@ export function handleHub(req: HubRequest): Response | null {
   }
   if (pathname === "/api/auth/outlook/linked-inboxes") {
     if (off) return NOT_FOUND();
-    return json(200, { accounts: [{ id: "inbox-outlook", email: "jisu@partners.example" }] });
+    return json(200, { accounts: [] });
   }
   const imap = pathname.match(/^\/api\/(naver|icloud|generic)-imap\/(status|connect|disconnect)$/);
   if (imap?.[1]) {

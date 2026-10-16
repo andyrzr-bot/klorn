@@ -80,7 +80,7 @@ export const ja: Messages = {
   "welcome.headline.em": "ひとつの場所で",
   "welcome.headline.after": "落ち着いて。",
   "welcome.body":
-    "Gmail・会社のメール・Outlook・NAVER・iCloud を一度のログインで。大事なものだけを知らせ、その理由も示します。",
+    "Gmail・会社の Google Workspace・NAVER（ベータ）・iCloud（ベータ）をひとつの場所で。大事なものだけを知らせ、その理由も示します。",
   "welcome.card.label": "今日 · ひとつの場所で",
   "welcome.card.line": "返信が必要なメール 2 件だけをお知らせします",
   "welcome.apple": "Apple で続ける",
@@ -637,7 +637,7 @@ export const ja: Messages = {
   "accounts.calendar.name": "カレンダー",
   "accounts.calendar.sub": "カレンダー · {email}",
   "accounts.add.title": "アカウントを追加",
-  "accounts.add.sub": "Gmail · Outlook · NAVER · iCloud · その他のメール",
+  "accounts.add.sub": "Gmail · Google Workspace · NAVER · iCloud",
   "accounts.add.lede": "ひとつずつ接続します。あとでいつでも個別に解除できます。",
   "accounts.add.mail": "メール",
   "accounts.add.other": "カレンダー · ファイル",

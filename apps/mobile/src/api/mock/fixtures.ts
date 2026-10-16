@@ -51,11 +51,11 @@ export const MOCK_INBOXES: InboxesResponse = {
       purpose: "work",
     },
     {
-      id: "inbox-outlook",
+      id: "inbox-partners",
       email: "jisu@partners.example",
       kind: "linked",
       needsReconnect: false,
-      provider: "OUTLOOK",
+      provider: "GOOGLE",
       purpose: "work",
     },
     {
@@ -129,10 +129,10 @@ function attention(
       replyState: email.needsReply ? "needsReply" : null,
       draftReady: email.needsReply ?? false,
       source: {
-        provider: email.accountId === "inbox-outlook" ? "OUTLOOK" : "GOOGLE",
+        provider: "GOOGLE",
         accountId: email.accountId ?? null,
         label:
-          email.accountId === "inbox-outlook" ? "jisu@partners.example" : "jisu@hanbit.example",
+          email.accountId === "inbox-partners" ? "jisu@partners.example" : "jisu@hanbit.example",
       },
       unread: true,
       hasAttachment: false,
@@ -172,12 +172,12 @@ export function mockFirewall(now: number, empty = false): FirewallResponse {
         "att-meet-1",
         "MEETING",
         "목 14:00 투자사 미팅이 겹쳐요",
-        "회사·Outlook 캘린더 충돌 · 금 15:00 제안",
+        "회사·파트너스 캘린더 충돌 · 금 15:00 제안",
         {
           subject: "Re: 투자 미팅 목요일 → 금요일?",
           from: "Mark Chen <mark@capital.example>",
           ago: 138,
-          accountId: "inbox-outlook",
+          accountId: "inbox-partners",
         },
       ),
     );
@@ -197,9 +197,9 @@ export function mockFirewall(now: number, empty = false): FirewallResponse {
       ),
     );
     tiers.INFO.push(
-      attention(now, "att-info-1", "INFO", "쿠팡이츠 배달 완료", "영수증 · 답장 불필요", {
+      attention(now, "att-info-1", "INFO", "한끼배달 배달 완료", "영수증 · 답장 불필요", {
         subject: "주문하신 음식이 배달 완료됐어요",
-        from: "쿠팡이츠 <no-reply@coupangeats.example>",
+        from: "한끼배달 <no-reply@hankki.example>",
         ago: 153,
       }),
     );
@@ -252,15 +252,15 @@ export function mockEvents(now: number, empty = false): CalendarEventWire[] {
       ...at(212, 60),
       location: "강남 사무실",
       allDay: false,
-      provider: "OUTLOOK",
-      sourceLabel: "Outlook",
+      provider: "GOOGLE",
+      sourceLabel: "파트너스 캘린더",
     },
     {
       id: "evt-1on1",
       title: "1:1 — 이하은",
       ...at(362, 30),
       location: null,
-      meetingLink: "https://zoom.us/j/123456789",
+      meetingLink: "https://meet.google.com/one-onon-eha",
       allDay: false,
       provider: "GOOGLE",
       sourceLabel: "회사 캘린더",

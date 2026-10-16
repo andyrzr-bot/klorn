@@ -79,12 +79,16 @@ function Legal() {
   );
 }
 
+/**
+ * The accounts production can connect (the landing's list): Gmail, a company
+ * Google Workspace, and Naver / iCloud in beta. Never a provider that is dark
+ * in production (Outlook) — App Store 2.3 accurate metadata.
+ */
 const CHIPS = [
   { l: "G", color: "var(--source-gmail)", name: "Gmail", x: 8, y: 8, r: -4 },
-  { l: "W", color: "var(--source-work)", name: "Workspace", x: 170, y: 0, r: 3 },
-  { l: "O", color: "var(--source-outlook)", name: "Outlook", x: 230, y: 60, r: -2 },
-  { l: "N", color: "var(--source-naver)", name: "NAVER", x: 0, y: 68, r: 2 },
-  { l: "i", color: "var(--source-icloud)", name: "iCloud", x: 108, y: 50, r: -1 },
+  { l: "W", color: "var(--source-work)", name: "Workspace", x: 176, y: 0, r: 3 },
+  { l: "N", color: "var(--source-naver)", name: "NAVER", x: 0, y: 66, r: 2 },
+  { l: "i", color: "var(--source-icloud)", name: "iCloud", x: 200, y: 58, r: -2 },
 ];
 
 function Illustration() {

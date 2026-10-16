@@ -82,7 +82,7 @@ export const de: Messages = {
   "welcome.headline.em": "an einem Ort",
   "welcome.headline.after": "– in Ruhe.",
   "welcome.body":
-    "Gmail, Arbeitsmail, Outlook, Naver und iCloud mit einer Anmeldung. Nur Wichtiges kommt durch, und wir zeigen dir, warum.",
+    "Gmail, das Google Workspace deiner Firma, Naver (Beta) und iCloud (Beta) an einem Ort. Nur Wichtiges kommt durch, und wir zeigen dir, warum.",
   "welcome.card.label": "Heute · an einem Ort",
   "welcome.card.line": "Wir melden nur die 2 Mails, die eine Antwort brauchen",
   "welcome.apple": "Mit Apple fortfahren",
@@ -653,7 +653,7 @@ export const de: Messages = {
   "accounts.calendar.name": "Kalender",
   "accounts.calendar.sub": "Kalender · {email}",
   "accounts.add.title": "Konto hinzufügen",
-  "accounts.add.sub": "Gmail, Outlook, Naver, iCloud oder andere Mail",
+  "accounts.add.sub": "Gmail, Google Workspace, Naver oder iCloud",
   "accounts.add.lede": "Eins nach dem anderen. Du kannst jedes später wieder trennen.",
   "accounts.add.mail": "Mail",
   "accounts.add.other": "Kalender und Dateien",
