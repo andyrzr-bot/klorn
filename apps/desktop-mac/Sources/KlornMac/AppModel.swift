@@ -23,58 +23,28 @@ final class AppModel {
     private(set) var loadOffline = false
     private(set) var isLoadingQueue = false
 
-    /// Called with newly-arrived PUSH items (never the first-load baseline).
-    /// The AppDelegate wires this to the HUD; if unset, PUSH surfacing is a no-op.
+    /// Called with newly-arrived PUSH items (never the first-sync baseline).
+    /// The AppDelegate wires this to `PushAlerter`; if unset, it is a no-op.
     var onNewPush: (([FirewallItem]) -> Void)?
 
     /// User preferences (persisted). Observed by the Preferences panel and read
     /// by the controller before posting an OS banner.
     let settings = AppSettings()
 
-    /// True while the Settings scene's window is on screen. Part of the
-    /// activation-policy decision (Cmd+Tab compromise): an open Settings
-    /// window keeps the app .regular even with the bar collapsed.
-    var settingsWindowOpen = false {
-        didSet {
-            guard settingsWindowOpen != oldValue else { return }
-            onWindowPresenceChanged?()
-        }
-    }
-    /// True while the standard main window (M2, `macMainWindow`) is open.
-    /// Same rule as Settings: an open window keeps the app .regular.
-    var mainWindowOpen = false {
-        didSet {
-            guard mainWindowOpen != oldValue else { return }
-            onWindowPresenceChanged?()
-        }
-    }
-    /// True while the compose window (M5) is on screen. It
-    /// counts like the main window: an open window keeps the app .regular.
-    var composeWindowOpen = false {
-        didSet {
-            guard composeWindowOpen != oldValue else { return }
-            onWindowPresenceChanged?()
-        }
-    }
-    /// True while the first-launch onboarding window (M6) is on screen. A
-    /// window the user has to act in must be reachable from the Dock.
-    var onboardingWindowOpen = false {
-        didSet {
-            guard onboardingWindowOpen != oldValue else { return }
-            onWindowPresenceChanged?()
-        }
-    }
-    /// Wired by the AppDelegate to re-apply the activation policy when a
-    /// window (Settings, main, compose, onboarding) opens or closes.
-    @ObservationIgnored var onWindowPresenceChanged: (() -> Void)?
+    /// True while the Settings scene's window is on screen (written by its
+    /// window tracker).
+    var settingsWindowOpen = false
+    /// True while the standard main window is open.
+    var mainWindowOpen = false
+    /// True while the compose window (M5) is on screen.
+    var composeWindowOpen = false
+    /// True while the first-launch onboarding window (M6) is on screen: a
+    /// Dock click or ⌥⌘K brings it forward instead of the main window.
+    var onboardingWindowOpen = false
     /// Wired by the AppDelegate to the compose window (M5): fires when the
     /// composer is asked for (again) or put away.
     @ObservationIgnored var onComposePresentationChanged: (() -> Void)?
 
-    /// A full-view request fell back to the expanded panel because the user
-    /// stored `macMainWindow` OFF: the panel says so once, with a way to
-    /// Settings. Written by TopBarController; cleared when the bar rests.
-    var mainWindowOffHint = false
     /// Whether the full view (the main window) is up, so the app menus
     /// enable only what the UI can act on.
     var isFullViewOpen: Bool { mainWindowOpen }
@@ -158,14 +128,14 @@ final class AppModel {
 
     /// What the full view's list column shows. Model state rather than view
     /// state so any surface can open the full view already pointed at the right
-    /// thing — a tier count in the compact panel, or an urgent-mail card.
+    /// thing — a lane count, the Go menu, or a banner.
     /// The mail-first default (shell 2026-08-26): people read a mailbox top
     /// to bottom — the lanes ride on the rows as chips and remain one click
     /// away as categories, but navigation no longer starts lane-first.
     var listMode: ListMode = .inbox {
         // The main window (M4b) follows every write, same value included:
         // a deep link to the list mode already set must still bring its
-        // section forward. Unused while `macMainWindow` is off.
+        // section forward.
         //
         // Every write must therefore be USER INTENT (a click, a menu
         // command, a deep link the user followed). A background writer
@@ -175,17 +145,15 @@ final class AppModel {
             mainNav = NavRules.following(listMode, from: mainNav)
             // Leaving Mail takes the reader off screen; drop its selection
             // so nothing invisible stays selected (main window only).
-            if NavRules.clearsSelection(
-                macMainWindow: settings.macMainWindow, section: mainNav.section)
-            {
+            if NavRules.clearsSelection(section: mainNav.section) {
                 clearSelection()
             }
         }
     }
-    /// Whether a reading pane is on screen for the Message menu: always in
-    /// the bar's full view, only in Mail in the main window.
+    /// Whether a reading pane is on screen for the Message menu: only in
+    /// Mail in the main window.
     var readerVisible: Bool {
-        NavRules.readerVisible(macMainWindow: settings.macMainWindow, section: mainNav.section)
+        NavRules.readerVisible(section: mainNav.section)
     }
     /// Where the main window is (M4b): section, Assistant pane, last mail facet.
     var mainNav = MainNav()
@@ -217,12 +185,25 @@ final class AppModel {
     /// Refresh cadence so new PUSH mail surfaces a notification even with the
     /// window closed (also keeps the free-tier API warm).
     static let pollIntervalSeconds: Double = 60
-    private var seenPush: Set<String> = []
+    /// Which PUSH mail has been announced, per account, across launches.
+    /// Loaded per reconcile from `pushLedgerStore` (see `PushLedger`).
+    @ObservationIgnored let pushLedgerStore: any PushLedgerStoring
     /// AttentionItem ids the user dismissed locally; hidden until the server's
     /// async reconcile drops them from the queue (then pruned here).
     private var dismissed: Set<String> = []
-    private var baselineEstablished = false
     private var didRequestNotifyAuth = false
+    /// The notification center. A seam: the self-check injects a fake, so
+    /// it never posts a banner or raises a permission prompt.
+    @ObservationIgnored var pushNotifier: any PushNotifying = SystemPushNotifier()
+    /// Whether macOS lets Klorn post banners; Settings ▸ Notifications shows
+    /// a one-line hint when it is `.denied`.
+    private(set) var notificationPermission: NotificationPermission = .notDetermined
+    /// The user has been shown a window they opened (the main window
+    /// activated). Gates the permission prompt: a login launch never sets it.
+    @ObservationIgnored var windowShownByUser = false
+    /// A banner tapped before the first sync (cold launch): its item opens
+    /// as soon as a queue arrives (`applyPendingReveal`).
+    @ObservationIgnored var pendingRevealItemID: String?
     private var pollTask: Task<Void, Never>?
     private var realtime: RealtimeClient?
     /// Error from the last add-account attempt; cleared on the next attempt.
@@ -231,6 +212,30 @@ final class AppModel {
     /// Bounded watcher that picks up the newly linked inbox after the browser
     /// handoff, without waiting for the 60 s poll tick.
     private var linkWatchTask: Task<Void, Never>?
+    /// A link hand-off (`klorn://link-complete`) and when it arrived.
+    struct PendingLinkHandoff: Equatable {
+        let handle: String
+        let arrivedAt: Date
+    }
+    /// The server keeps a parked link 5 minutes; a queued hand-off older
+    /// than that could only answer 404, so it is dropped instead.
+    nonisolated static let linkHandoffTTL: TimeInterval = 5 * 60
+    /// A hand-off this soon after a link started here is ours to report. A
+    /// 404 outside it (a stray link, or one the web started) stays silent.
+    nonisolated static let linkExpectedWindow: TimeInterval = 10 * 60
+    /// A hand-off that arrived with no session to finish it under (a cold
+    /// launch while signed out, mid sign-in, or a 401). The next sign-in
+    /// completes it; the server refuses it there unless that account started it.
+    @ObservationIgnored private var pendingLinkHandoff: PendingLinkHandoff?
+    /// The last hand-off taken. The hand-off page opens the deep link twice
+    /// (its refresh, then its "Open Klorn" button); the repeat would answer
+    /// 404 and paint a false "expired" over a link that landed. Cleared when
+    /// the server refused the request before reading the handle (401, 429).
+    @ObservationIgnored private var lastLinkHandle: String?
+    /// When "Add account" or "Reconnect" last opened a consent from this app.
+    @ObservationIgnored private var linkStartedAt: Date?
+    /// The hand-off clock. A seam so the self-check can age a queued handle.
+    @ObservationIgnored var linkClock: @MainActor () -> Date = { Date() }
 
     private let api: APIClient
     /// Where the session token lives. Every token read and write in the model
@@ -274,8 +279,19 @@ final class AppModel {
 
     /// `api` defaults to a client that reads its bearer token from `tokenStore`,
     /// as does the device-calendar bridge — one injected store covers them all.
-    init(tokenStore: any TokenStore = AppModel.productionTokenStore(), api: APIClient? = nil) {
+    init(
+        tokenStore: any TokenStore = AppModel.productionTokenStore(), api: APIClient? = nil,
+        pushLedgerStore: (any PushLedgerStoring)? = nil
+    ) {
         let api = api ?? APIClient(token: { tokenStore.load() })
+        // The shipped app (Keychain token) persists the ledger; a harness
+        // model with an injected token store never touches UserDefaults.
+        let persists = tokenStore is KeychainTokenStore
+        self.pushLedgerStore = pushLedgerStore
+            ?? (persists ? UserDefaultsPushLedgerStore() : InMemoryPushLedgerStore())
+        self.meetingAlertStore = persists
+            ? UserDefaultsPushLedgerStore(key: UserDefaultsPushLedgerStore.meetingKey)
+            : InMemoryPushLedgerStore()
         self.api = api
         self.tokenStore = tokenStore
         self.deviceCalendars = DeviceCalendarBridge(
@@ -639,6 +655,7 @@ final class AppModel {
         guard isCurrent(session) else { return }
         switch outcome {
         case .success:
+            linkStartedAt = linkClock()
             startLinkWatch()
         case .failure(.needsPro):
             linkAccountError = L("error.needsPro")
@@ -662,6 +679,7 @@ final class AppModel {
         guard isCurrent(session) else { return }
         switch outcome {
         case .success:
+            linkStartedAt = linkClock()
             startReconnectWatch()
         case .failure(.unauthorized):
             sessionRejected()
@@ -715,6 +733,112 @@ final class AppModel {
                 }
             }
         }
+    }
+
+    /// Finish an account link the browser handed back (`klorn://link-complete`).
+    /// The OAuth callback only parked the consent; it is attached here with
+    /// this app's own session, so a consent another Klorn account started
+    /// never lands on this one (the server answers 409 and stores nothing).
+    func completeLink(handle: String) async {
+        await completeLink(PendingLinkHandoff(handle: handle, arrivedAt: linkClock()), fromQueue: false)
+    }
+
+    private func completeLink(_ handoff: PendingLinkHandoff, fromQueue: Bool) async {
+        guard AuthFlow.isLinkHandle(handoff.handle), handoff.handle != lastLinkHandle else { return }
+        guard phase == .signedIn else {
+            pendingLinkHandoff = handoff
+            return
+        }
+        lastLinkHandle = handoff.handle
+        let session = sessionGeneration
+        let startedHere = linkStartedAt.map {
+            linkClock().timeIntervalSince($0) < Self.linkExpectedWindow
+        } == true
+        // A link started here has its watch to spot (and ask about) the new
+        // mailbox. A cold or queued one notes what exists first instead.
+        let baseline = startedHere && !fromQueue ? nil : await linkBaseline(session: session)
+        guard isCurrent(session),
+              let outcome = await postLinkComplete(handoff, session: session),
+              isCurrent(session)
+        else { return }
+        // A 404 for a link nobody here was waiting for is not ours to report.
+        if outcome == .expired, !startedHere, !fromQueue { return }
+        await applyLinkCompletion(outcome, baseline: baseline, session: session)
+    }
+
+    /// The mailbox ids before a link lands; nil when the list can't be read
+    /// (then the new one can't be told apart, and nothing is asked).
+    private func linkBaseline(session: Int) async -> Set<String>? {
+        if inboxes.isEmpty { await refreshInboxes() }
+        guard isCurrent(session), !inboxes.isEmpty else { return nil }
+        return Set(inboxes.compactMap(\.id))
+    }
+
+    /// POST the hand-off with this session. nil: nothing left to do here (the
+    /// session ended, or it was rejected and the handle waits for the next).
+    private func postLinkComplete(_ handoff: PendingLinkHandoff, session: Int) async -> LinkCompletion? {
+        do {
+            let body = try JSONEncoder().encode(["handle": handoff.handle])
+            let reply = try await api.data(
+                "/api/auth/link/complete", method: "POST", body: body,
+                contentType: "application/json")
+            return AuthFlow.linkCompletion(reply: reply)
+        } catch _ where !isCurrent(session) {
+            return nil
+        } catch APIError.unauthorized {
+            sessionRejected()
+            // Refused before the handle was read, so it is unspent. Queued
+            // after the sign-out (which clears the queue), it is retried by
+            // the next sign-in.
+            pendingLinkHandoff = handoff
+            lastLinkHandle = nil
+            return nil
+        } catch let APIError.http(status, _) {
+            // 429 is refused before the handle is read: a redelivery may retry.
+            if status == 429 { lastLinkHandle = nil }
+            return AuthFlow.linkCompletion(status: status)
+        } catch {
+            // 5xx or no answer: the server may have spent it. Not retried.
+            return .failed
+        }
+    }
+
+    /// A landed link refreshes the accounts now. A link watch, if one runs,
+    /// spots the new inbox against its own baseline and asks its purpose;
+    /// with a `baseline` (cold or queued), this asks it. Anything else says
+    /// why on the accounts pane and ends the watch: no account is coming.
+    private func applyLinkCompletion(
+        _ outcome: LinkCompletion, baseline: Set<String>?, session: Int
+    ) async {
+        let message: String
+        switch outcome {
+        case .linked:
+            linkAccountError = nil
+            await refreshInboxes()
+            guard isCurrent(session) else { return }
+            await loadQueue()
+            guard isCurrent(session), let baseline,
+                  let linked = Self.newlyLinkedInbox(baseline: baseline, now: inboxes)
+            else { return }
+            presentPurposePrompt(forLinked: linked)
+            return
+        case .needsPro: message = L("error.needsPro")
+        case .mismatch: message = L("account.link.mismatch")
+        case .expired: message = L("account.link.expired")
+        case .failed: message = L("account.link.failed")
+        }
+        linkWatchTask?.cancel()
+        linkWatchTask = nil
+        linkAccountError = message
+    }
+
+    /// A sign-in landed: finish the hand-off that was waiting for a session.
+    private func completePendingLink() {
+        guard let handoff = pendingLinkHandoff else { return }
+        pendingLinkHandoff = nil
+        // Past the server's TTL it could only answer 404: drop it unsent.
+        guard linkClock().timeIntervalSince(handoff.arrivedAt) < Self.linkHandoffTTL else { return }
+        Task { await completeLink(handoff, fromQueue: true) }
     }
 
     /// The linked inbox that appeared since the link flow started, if any.
@@ -873,6 +997,7 @@ final class AppModel {
         // sign-in whose first load fails recovers by itself when the network
         // is back. The socket waits for `ensureActive()`.
         startPolling()
+        completePendingLink()
     }
 
     /// A request of the current session was answered 401. Only a live
@@ -1028,9 +1153,8 @@ final class AppModel {
         }
     }
 
-    /// Outcome of fetching the 3 quick-reply drafts for the PushCard. Its own
-    /// type (not replyError) because the card owns its state independently of
-    /// the reading pane.
+    /// Outcome of fetching the 3 quick-reply drafts for the reading pane. Its
+    /// own type (not replyError): drafts and a send error are separate states.
     enum ReplyOptionsFetch: Sendable {
         case ready(ReplyOptionsResponse)
         case needsPro
@@ -1093,25 +1217,8 @@ final class AppModel {
         }
     }
 
-    /// Load an email's detail for the card's expanded view — Klorn's AI summary
-    /// lives there, not on the firewall wire. Plain GET, never `markRead`: an
-    /// unattended card must not silently mark mail as read. Best-effort — the
-    /// expanded view falls back to the snippet when this returns nil.
-    func fetchEmailDetail(_ item: FirewallItem, session: Int? = nil) async -> EmailDetail? {
-        let session = session ?? sessionGeneration
-        guard isCurrent(session), let emailDbId = item.email?.emailDbId else { return nil }
-        do {
-            let detail = try await api.get("/api/email/\(emailDbId)", as: EmailDetail.self)
-            return isCurrent(session) ? detail : nil
-        } catch {
-            Log.app.debug("card detail fetch failed: \(String(describing: error), privacy: .private)")
-            return nil
-        }
-    }
-
-    /// Whether the composer is presented: an overlay on the bar's full view,
-    /// its own window while `macMainWindow` is on (M5). Asking again while
-    /// it is up still notifies, so the window comes forward.
+    /// Whether the composer is presented: its own window (M5). Asking again
+    /// while it is up still notifies, so the window comes forward.
     var showCompose = false {
         didSet {
             if showCompose || oldValue { onComposePresentationChanged?() }
@@ -1263,9 +1370,8 @@ final class AppModel {
 
     /// Send a threaded reply to an email's sender (POST /api/email/:id/reply).
     /// Returns nil on success or a user-facing error message. Deliberately does
-    /// NOT touch the shared `replyError` slot: the PushCard and the reading-pane
-    /// composer can both be mid-send for DIFFERENT emails at once, and a shared
-    /// slot would let one surface clear or overwrite the other's live error.
+    /// NOT touch the shared `replyError` slot itself; `reply(_:body:)` publishes
+    /// the outcome for the reading-pane composer.
     /// A 403 means the account isn't entitled (Pro) — surfaced, NOT a sign-out.
     /// `session`: the session the sending surface belongs to. A reply from a
     /// surface whose session has ended is refused before any request: the
@@ -1340,7 +1446,7 @@ final class AppModel {
             clearEventDraft(messageId)
             chatMessages.append(ChatMessage(
                 role: .assistant, text: L("calendar.addedConfirm", eventDraftLabel(draft))))
-            Task { await refreshToday() }  // the TODAY column should show it now
+            Task { await refreshToday() }  // Today should show it now
         } catch _ where !isCurrent(session) {
             return
         } catch APIError.unauthorized {
@@ -2174,11 +2280,11 @@ final class AppModel {
         linkAccountError = nil
         realtime?.stop()
         realtime = nil
-        seenPush = []
+        pushLedgerStore.clear()
         dismissed = []
         clearSelection()
-        baselineEstablished = false
         didRequestNotifyAuth = false
+        pendingRevealItemID = nil
         // Read before the Keychain is cleared: the device-calendar removals owed at
         // sign-out are sent with this session's token.
         let sessionToken = tokenStore.load()
@@ -2192,14 +2298,13 @@ final class AppModel {
         // Cross-account hygiene: every per-account surface must reset, or the
         // next sign-in briefly shows the previous account's data.
         today = nil
-        weekAhead = nil
         usage = nil
         briefing = nil
         briefingStructure = nil
         inboxes = []
         selectedInbox = "all"
         UserDefaults.standard.removeObject(forKey: Self.selectedInboxKey)
-        shownMeetingIds = []
+        meetingAlertStore.clear()
         // The device-calendar opt-in belongs to the account that gave it.
         deviceCalendars.signOut(token: sessionToken)
         // An import in flight belongs to the account that started it.
@@ -2318,6 +2423,10 @@ final class AppModel {
             text("imapError", \.imapError),
             flag("isConnectingImap", \.isConnectingImap),
             flag("isLinkingAccount", \.isLinkingAccount),
+            field(
+                "pendingLinkHandoff", \.pendingLinkHandoff, nil,
+                dirty: PendingLinkHandoff(handle: "x", arrivedAt: Date(timeIntervalSince1970: 0))),
+            field("linkStartedAt", \.linkStartedAt, nil, dirty: Date(timeIntervalSince1970: 0)),
             field("companyDomains", \.companyDomains, [], dirty: ["x.example"]),
             text("companyDomainsError", \.companyDomainsError),
             text("triagePriorities", \.triagePriorities),
@@ -2338,19 +2447,22 @@ final class AppModel {
         for field in Self.accountFields() { field.dirty?(self) }
     }
 
-    /// Today's calendar (expanded panel's TODAY column). Best-effort: a
+    /// Today's calendar (Today screen and the meeting banner). Best-effort: a
     /// calendar hiccup must never block the mail queue, so failures just keep
     /// the previous value.
     private(set) var today: TodaySummary?
 
-    /// Meeting-prep interrupt: fires once per event when its start enters the
-    /// lead window. The AppDelegate wires this to the meeting card; a false
-    /// return means "slot busy — offer it again on the next tick".
+    /// Meeting "starting soon" interrupt: fires once per event when its start
+    /// enters the lead window. The AppDelegate wires this to `PushAlerter`
+    /// (a macOS banner; the floating meeting card was removed 2026-10-15). A
+    /// false return means "not handled — offer it again on the next tick".
     var onMeetingSoon: ((CalendarEventWire) -> Bool)?
     static let meetingLeadMinutes = 10
-    private var shownMeetingIds: Set<String> = []
+    /// Which meetings have been announced, per account, across launches —
+    /// the same ledger shape as PUSH (`PushLedger`), its own key.
+    @ObservationIgnored let meetingAlertStore: any PushLedgerStoring
 
-    /// Today's daily-briefing preview (TODAY column). Best-effort like the rest.
+    /// Today's daily-briefing preview (Today and Assistant). Best-effort like the rest.
     private(set) var briefing: String?
     private(set) var briefingStructure: BriefingStructure?
 
@@ -2389,31 +2501,6 @@ final class AppModel {
         }
     }
 
-    /// True while a user-initiated update check is in flight, and the result
-    /// of the last one ("up to date" / failure) — the background check is
-    /// silent by design, but a button the user pressed must answer.
-    private(set) var updateCheckInFlight = false
-    private(set) var updateCheckResult: String?
-
-    /// Explicit "check for updates" — ignores the interval leash entirely,
-    /// because the user asked. The full window only ever showed an update row
-    /// when one happened to be known already; there was no way to ASK
-    /// (founder, 2026-08-10).
-    func checkForUpdateNow() async {
-        guard !updateCheckInFlight else { return }
-        updateCheckInFlight = true
-        updateCheckResult = nil
-        defer { updateCheckInFlight = false }
-        lastUpdateCheck = Date()
-        if case .updateAvailable(let version) = await updateCheck() {
-            updateAvailable = version
-            updateCheckResult = nil  // the update row itself is the answer
-        } else {
-            updateAvailable = nil
-            updateCheckResult = L("update.upToDate")
-        }
-    }
-
     /// Per-account readiness, on demand. "왜 메일이 안 와" was answered by
     /// guesswork three times running; this makes the app state the facts.
     private(set) var diagnostics: [ReadinessCheck] = []
@@ -2440,9 +2527,9 @@ final class AppModel {
         }
     }
 
-    /// Called when the expanded panel opens — the moment the user is actually
-    /// looking at the ACCOUNT column where the update row lives.
-    func checkForUpdateOnPanelOpen() {
+    /// Called when the main window opens — the moment the user is actually
+    /// looking at the app (the update row is in Settings ▸ General).
+    func checkForUpdateOnWindowOpen() {
         Task {
             await checkForUpdateIfDue(
                 intervalSeconds: Self.updateCheckPanelIntervalMinutes * 60)
@@ -2470,43 +2557,25 @@ final class AppModel {
         } catch {
             Log.app.debug("today summary fetch failed: \(String(describing: error), privacy: .private)")
         }
-        // The meeting card below is planned from this session's calendar only.
+        // The meeting banner below is planned from this session's calendar only.
         guard isCurrent(session) else { return }
         // Replan on every refresh tick (poll + WS wake — the same cadence that
-        // keeps the TODAY column fresh keeps the lead window honest).
-        // Gated on the user's "Meetings" category: this card is an interrupt,
-        // and turning the category off used to change nothing here.
+        // keeps Today fresh keeps the lead window honest).
+        // Gated on the user's "Meetings" category: this banner is an interrupt.
+        let owner = SessionIdentity.userId(fromToken: tokenStore.load())
+        let announced = PushLedger.resolve(stored: meetingAlertStore.load(), owner: owner)
         if automation.allowsInterrupt(for: .meeting),
            let upcoming = today?.upcoming,
-           let due = meetingCardPlan(
+           let due = meetingAlertPlan(
                now: Date(), events: upcoming,
-               leadMinutes: Self.meetingLeadMinutes, shown: shownMeetingIds),
+               leadMinutes: Self.meetingLeadMinutes, shown: Set(announced.notified)),
            onMeetingSoon?(due) == true
         {
-            shownMeetingIds.insert(due.id)
+            meetingAlertStore.save(announced.recording(due.id))
         }
     }
 
-    /// The raw 7-day-ahead event window (tomorrow onward) behind the UPCOMING
-    /// section. nil until first load; best-effort like the TODAY summary.
-    private(set) var weekAhead: [CalendarEventWire]?
-
-    /// GET /api/calendar?days=8 — the same list endpoint (and params) the web
-    /// calendar page uses. days=8 from today 00:00 covers tomorrow → +7 days;
-    /// today's rows are filtered out by the pure grouping.
-    private func refreshWeekAhead() async {
-        let session = sessionGeneration
-        do {
-            let resp: CalendarListResponse = try await api.get(
-                "/api/calendar?days=8", as: CalendarListResponse.self)
-            guard isCurrent(session) else { return }
-            weekAhead = resp.events
-        } catch {
-            Log.app.debug("week-ahead fetch failed: \(String(describing: error), privacy: .private)")
-        }
-    }
-
-    /// Daily AI quota for the ACCOUNT gauge. Best-effort on the same tick.
+    /// Daily AI quota for Settings ▸ Accounts. Best-effort on the same tick.
     private(set) var usage: BillingStatusWire.Usage?
 
     private func refreshUsage() async {
@@ -2635,19 +2704,6 @@ final class AppModel {
         }
     }
 
-    /// GET /api/calendar/:id/prep-pack for the meeting card. Best-effort.
-    func fetchPrepPack(eventId: String, session: Int? = nil) async -> MeetingPrepPack? {
-        let session = session ?? sessionGeneration
-        guard isCurrent(session) else { return nil }
-        do {
-            let pack = try await api.get("/api/calendar/\(eventId)/prep-pack", as: MeetingPrepPack.self)
-            return isCurrent(session) ? pack : nil
-        } catch {
-            Log.app.debug("prep pack fetch failed: \(String(describing: error), privacy: .private)")
-            return nil
-        }
-    }
-
     func loadQueue() async {
         let session = sessionGeneration
         isLoadingQueue = true
@@ -2655,7 +2711,6 @@ final class AppModel {
         // Piggyback on the same cadence as the queue (poll + WS wake) without
         // serializing the fetches.
         Task { await refreshToday() }
-        Task { await refreshWeekAhead() }
         Task { await refreshInboxes() }
         Task { await refreshUsage() }
         Task { await refreshBriefing() }
@@ -2685,7 +2740,11 @@ final class AppModel {
             guard isCurrent(session) else { return }
             loadError = nil
             cancelledLoadRetried = false
-            reconcilePush()
+            applyPendingReveal()
+            if let pushItems = await bannerPushItems(fetched: fetched, selection: selectionAtFetch, session: session) {
+                reconcilePush(pushItems)
+            }
+            guard isCurrent(session) else { return }
             ensureActive()
         } catch _ where !isCurrent(session) {
             return
@@ -2696,33 +2755,80 @@ final class AppModel {
         }
     }
 
-    /// Surface PUSH items new since the last load (the first load is a silent
-    /// baseline). Routed to `onNewPush` (the HUD); the HUD falls back to an OS
-    /// banner when it can't draw a panel.
-    private func reconcilePush() {
-        guard let queue else { return }
-        let plan = planPushNotifications(
-            seen: seenPush,
-            baselineEstablished: baselineEstablished,
-            pushItems: queue.items(for: .push))
+    /// Surface PUSH items not announced before (the first sync for an account
+    /// is a silent baseline; the record persists across launches). Routed to
+    /// `onNewPush`, which the AppDelegate wires to `PushAlerter` (banners).
+    private func reconcilePush(_ pushItems: [FirewallItem]) {
+        let owner = SessionIdentity.userId(fromToken: tokenStore.load())
+        let ledger = PushLedger.resolve(stored: pushLedgerStore.load(), owner: owner)
+        let plan = ledger.plan(pushItems: pushItems)
         // Respect the user's "Urgent mail" category. Seen-tracking still runs on
         // the muted path so re-enabling the category doesn't dump a backlog of
         // interrupts for mail that arrived while it was off.
         if !plan.toNotify.isEmpty, automation.allowsInterrupt(for: .emailUrgent) {
             onNewPush?(plan.toNotify)
         }
-        seenPush = plan.seen
-        baselineEstablished = true
+        if plan.next != ledger { pushLedgerStore.save(plan.next) }
     }
 
-    /// Once signed in: request notification permission (once) and start the
+    /// The PUSH lane across every inbox, for banners (`PushBannerSource`).
+    /// nil when the extra read failed or the session ended: nothing is marked
+    /// seen, so the next tick announces it instead.
+    func bannerPushItems(
+        fetched: FirewallResponse, selection: String, session: Int
+    ) async -> [FirewallItem]? {
+        guard PushBannerSource.needsUnscopedFetch(selection: selection) else {
+            return fetched.removingIDs(dismissed).items(for: .push)
+        }
+        do {
+            let all = try await api.get(firewallPath(selected: "all"), as: FirewallResponse.self)
+            guard isCurrent(session) else { return nil }
+            queueCache["all"] = all
+            return all.removingIDs(dismissed).items(for: .push)
+        } catch {
+            Log.app.debug("all-inbox PUSH read failed: \(String(describing: error), privacy: .private)")
+            return nil
+        }
+    }
+
+    /// An item by id, from the list on screen or the all-inbox snapshot.
+    func knownItem(id: String) -> FirewallItem? {
+        queue?.item(id: id) ?? queueCache["all"]?.item(id: id)
+    }
+
+    /// Open the item a cold-launch banner tap asked for, once a queue is in.
+    /// Cleared either way: a tap must not jump the window later on.
+    private func applyPendingReveal() {
+        guard let id = pendingRevealItemID else { return }
+        pendingRevealItemID = nil
+        guard let item = knownItem(id: id) else { return }
+        revealInMail(item)
+        Task { await select(item) }
+    }
+
+    /// Re-read the permission (the user may have changed it in System
+    /// Settings since). Called when Settings ▸ Notifications shows.
+    func refreshNotificationPermission() async {
+        notificationPermission = await pushNotifier.permission()
+    }
+
+    /// Ask macOS for banner permission once per session, under
+    /// `NotificationPermissionRules` (signed in + a window the user opened).
+    func requestNotificationPermissionIfNeeded() async {
+        guard NotificationPermissionRules.shouldRequest(
+            signedIn: phase == .signedIn, alreadyRequested: didRequestNotifyAuth,
+            shownByUser: windowShownByUser)
+        else { return }
+        didRequestNotifyAuth = true
+        notificationPermission = await pushNotifier.requestAuthorization()
+    }
+
+    /// Once signed in: request notification permission (when allowed) and start the
     /// background refresh loop. Idempotent.
     private func ensureActive() {
         guard phase == .signedIn else { return }
-        if !didRequestNotifyAuth {
-            didRequestNotifyAuth = true
-            Task { await PushNotifier.requestAuthorization() }
-        }
+        // Asks only once a user-opened window was shown — never at login.
+        Task { await requestNotificationPermissionIfNeeded() }
         if pollTask == nil { startPolling() }
         startRealtime()
     }
@@ -2851,7 +2957,7 @@ final class AppModel {
         actionError = nil
     }
 
-    /// Try again, from a state view, the banner or the pill's chip. One
+    /// Try again, from a state view or the refresh banner. One
     /// retry at a time: clicks while a load is in flight do nothing.
     func retryLoad() async {
         guard SurfaceStateRules.mayRetry(isLoading: isLoadingQueue) else { return }

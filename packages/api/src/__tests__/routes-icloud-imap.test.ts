@@ -14,6 +14,7 @@ const state = vi.hoisted(() => ({ plan: "PRO", role: "USER" }));
 
 const db = vi.hoisted(() => ({
   findMany: vi.fn(async () => []),
+  findFirst: vi.fn(async () => null),
   findUnique: vi.fn(async () => null),
   count: vi.fn(async () => 0),
   upsert: vi.fn(async () => ({ id: "row-1" })),
@@ -26,6 +27,8 @@ vi.mock("../db.js", () => {
       findUnique: vi.fn(async () => ({ id: "user-1", plan: state.plan, role: state.role })),
       update: vi.fn(async () => ({ id: "user-1" })),
     },
+    // A primary Google token: the user already has their first (free) mailbox.
+    userToken: { findFirst: vi.fn(async () => ({ id: "google-token" })) },
     linkedInboxAccount: db,
     device: {
       findUnique: vi.fn(async () => ({ id: "device-1" })),
@@ -37,6 +40,8 @@ vi.mock("../db.js", () => {
   return { prisma, db: prisma };
 });
 vi.mock("../crypto-tokens.js", () => ({ encryptToken: vi.fn(() => "cipher") }));
+const startFirstImapSync = vi.hoisted(() => vi.fn((..._args: unknown[]) => true));
+vi.mock("../mail/imap-first-sync.js", () => ({ startFirstImapSync }));
 vi.mock("../mail/imap-sync.js", () => ({
   verifyImapCredentials: vi.fn(async () => ({ ok: true })),
 }));
@@ -152,7 +157,18 @@ describe("flag ON — generalized connect route, provider ICLOUD", () => {
       payload: { email: "me@icloud.com", password: "app-specific-pw" },
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ ok: true, email: "me@icloud.com", host: "imap.mail.me.com:993" });
+    expect(res.json()).toEqual({
+      ok: true,
+      email: "me@icloud.com",
+      host: "imap.mail.me.com:993",
+      firstSync: true,
+    });
+    // The first poll starts now, for exactly the row just saved — not in up to 5 min.
+    expect(startFirstImapSync).toHaveBeenCalledWith(
+      "user-1",
+      expect.objectContaining({ provider: "ICLOUD" }),
+      "row-1",
+    );
     expect(db.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -206,7 +222,7 @@ describe("flag ON — generalized connect route, provider ICLOUD", () => {
     await app.close();
   });
 
-  it("POST /connect still enforces the entitlement gate (FREE → 403)", async () => {
+  it("POST /connect refuses a SECOND mailbox on FREE (403)", async () => {
     state.plan = "FREE";
     process.env.PAYWALL_ENABLED = "true";
     try {
@@ -219,6 +235,7 @@ describe("flag ON — generalized connect route, provider ICLOUD", () => {
       });
       expect(res.statusCode).toBe(403);
       expect(res.json().code).toBe("ENTITLEMENT_REQUIRED");
+      expect(startFirstImapSync).not.toHaveBeenCalled();
       await app.close();
     } finally {
       delete process.env.PAYWALL_ENABLED;

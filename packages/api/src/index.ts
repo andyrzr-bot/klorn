@@ -56,6 +56,7 @@ import { emailRoutes } from "./routes/email.js";
 import { feedbackRoutes } from "./routes/feedback.js";
 import { firewallRoutes } from "./routes/firewall.js";
 import { gmailPushRoutes } from "./routes/gmail-push.js";
+import { googleDriveLinkRoutes, googleDriveRoutesEnabled } from "./routes/google-drive-link.js";
 import { imapConnectRoutes } from "./routes/imap-connect.js";
 import { inboxRoutes } from "./routes/inbox.js";
 import {
@@ -63,6 +64,7 @@ import {
   klornDriveRoutesEnabled,
   warnIfKlornDriveQuotaMissing,
 } from "./routes/klorn-drive.js";
+import { linkCompleteRoutes } from "./routes/link-complete.js";
 import { mcpRoutes } from "./routes/mcp.js";
 import { memoryRoutes } from "./routes/memory.js";
 import { notificationRoutes } from "./routes/notifications.js";
@@ -278,6 +280,11 @@ await app.register(webhookRoutes, { prefix: "/api/webhook" });
 await app.register(chatRoutes, { prefix: "/api/chat" });
 await app.register(chatConversationRoutes, { prefix: "/api/chat" });
 await app.register(authRoutes, { prefix: "/api/auth" });
+// POST /api/auth/link/complete: finishes every account-link OAuth flow (Google
+// connect/calendar/inbox, Outlook inbox/calendar) for the session that started
+// it. Its Outlook flows re-check their flags at completion (defaults: the same
+// OUTLOOK_INBOX_ENABLED / OUTLOOK_CALENDAR_ENABLED gates as the routes below).
+await app.register(linkCompleteRoutes(), { prefix: "/api/auth" });
 await app.register(briefingRoutes, { prefix: "/api/briefing" });
 await app.register(notificationRoutes, { prefix: "/api/notifications" });
 await app.register(opsRoutes, { prefix: "/api/ops" });
@@ -332,6 +339,11 @@ await app.register(driveRoutes({ gate: driveEnabled }), { prefix: "/api/drive" }
 // The Klorn drive (step D3): upload, folders, download, rename/move, delete —
 // dark until DRIVE_ENABLED, KLORN_DRIVE_ENABLED and OBJECT_STORAGE_ENABLED are on.
 await app.register(klornDriveRoutes({ gate: klornDriveRoutesEnabled }), { prefix: "/api/drive" });
+// Google Drive link and unlink (step D5b) — dark until DRIVE_ENABLED and
+// GOOGLE_DRIVE_ENABLED are both on. The consent's callback is routes/auth.ts's.
+await app.register(googleDriveLinkRoutes({ gate: googleDriveRoutesEnabled }), {
+  prefix: "/api/drive/google",
+});
 // Which account types this deployment can connect, for the first run's provider
 // grid (productization plan P8) — dark until ONBOARDING_V2 (the default 404 while off).
 await app.register(providersAvailableRoutes, { prefix: "/api/providers" });

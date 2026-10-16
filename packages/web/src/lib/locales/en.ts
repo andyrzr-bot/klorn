@@ -78,6 +78,38 @@ const en: Record<string, string> = {
   "files.trail.all": "All files",
   "files.folderEmpty.title": "This folder is empty",
   "files.folderEmpty.body": "Files you put in this folder show up here.",
+  "files.google.title": "Google Drive",
+  "files.google.body":
+    "Pick files from Google Drive to list and search them here. Klorn only sees the files you pick, and never changes them.",
+  "files.google.connect": "Connect Google Drive",
+  "files.google.connect.error": "Couldn't start Google sign-in. Try again.",
+  "files.google.needsReconnect": "Access stopped working. Reconnect to add files.",
+  "files.google.reconnect": "Reconnect",
+  "files.google.reconnect.label": "Reconnect {email}",
+  "files.google.add": "Add from Google Drive",
+  "files.google.add.label": "Add from Google Drive ({email})",
+  "files.google.disconnect": "Disconnect",
+  "files.google.disconnect.label": "Disconnect {email}",
+  "files.google.disconnect.title": "Disconnect Google Drive?",
+  "files.google.disconnect.message":
+    "The files added from {email} are removed from Klorn. Nothing changes in your Google Drive. To remove Klorn's access, use your Google Account settings.",
+  "files.google.disconnect.confirm": "Disconnect",
+  "files.google.disconnect.done": "Google Drive disconnected.",
+  "files.google.disconnect.error": "Couldn't disconnect. Try again.",
+  "files.google.pick.added": "Files added from Google Drive: {count}.",
+  "files.google.pick.skipped":
+    "Not added: {count}. Folders, shortcuts and files Google doesn't share with Klorn can't be added.",
+  "files.google.pick.cap": "Not added: {count}. One Google account can add up to 500 files.",
+  "files.google.pick.reconnect": "Reconnect this Google account to add files.",
+  "files.google.pick.notConfigured": "Adding from Google Drive isn't set up yet.",
+  "files.google.pick.error": "Couldn't add files from Google Drive. Try again.",
+  "files.google.link.success": "Google Drive connected.",
+  "files.google.link.failed": "Couldn't connect Google Drive. Try again.",
+  "files.google.link.unverified":
+    "Google hasn't verified that email address, so it wasn't connected.",
+  "files.google.link.scopeMissing":
+    "Klorn needs access to the files you pick. Connect again and leave that box ticked.",
+  "files.google.link.limit": "You've connected the most Google accounts for Drive (5).",
   "today.files.title": "Recent files",
   "today.files.open": "Open Files",
   "today.files.none": "No files yet.",
@@ -1533,6 +1565,13 @@ const en: Record<string, string> = {
   "mailV2.shown": "{shown} of {total}",
   "mailV2.demo": "This is demo mail.",
   "mailV2.demo.connect": "Connect an account to see your own",
+  "mailV2.noSource": "No mail account is connected yet.",
+  "mailAccount.proGate.title": "Connecting a second mail account is a Pro feature.",
+  "mailAccount.proGate.body":
+    "Free covers one mail account (Gmail, iCloud Mail or Naver Mail). Upgrade to run the firewall across more than one.",
+  "mailAccount.proGate.upgrade": "Upgrade",
+  "imapConnect.firstSync.started": "Fetching your mail now. It shows up in Mail shortly.",
+  "imapConnect.firstSync.delayed": "First mail from this account can take up to ~5 minutes.",
   "mailV2.archive.done": "Archived",
   "mailV2.archive.doneMany": "{count} archived",
   "mailV2.delete.done": "Deleted",
@@ -1705,7 +1744,6 @@ const en: Record<string, string> = {
     "Klorn sorts mail into 5 lanes: PUSH, MEETING, QUEUE, INFO and SILENT. A lane is a label. Sorting never sends, archives or deletes mail.",
   "onboardingV2.connect.skip": "Skip for now",
   "onboardingV2.connect.continueHint": "Connect at least one account to continue.",
-  "onboardingV2.connect.needsPlan": "Your plan doesn't include adding this account.",
   "onboardingV2.connect.failed": "Couldn't start the connection. Nothing was changed. Try again.",
   "onboardingV2.tile.connect": "Connect",
   "onboardingV2.tile.add": "Add another account",
@@ -1790,6 +1828,16 @@ const en: Record<string, string> = {
   "onboardingV2.finish.addAccount": "Add another account",
   "onboardingV2.finish.openToday": "Open Today",
   "onboardingV2.finish.openHome": "Open Klorn",
+  // Account-link completion (/link/complete)
+  "linkComplete.working": "Finishing the connection...",
+  "linkComplete.signIn": "Sign in to Klorn in this browser, or start again from the app.",
+  "linkComplete.mismatch":
+    "This connection was started from a different Klorn account than the one signed in here, so nothing was connected. Start again from the account you want to connect.",
+  "linkComplete.expired":
+    "This connection link has expired or was already used. Start again from Settings.",
+  "linkComplete.failed": "Couldn't finish the connection. Try again.",
+  "linkComplete.signInToContinue": "Sign in to continue",
+  "linkComplete.continue": "Continue",
 };
 
 export default en;

@@ -78,6 +78,38 @@ const ko: Record<string, string> = {
   "files.trail.all": "모든 파일",
   "files.folderEmpty.title": "빈 폴더입니다",
   "files.folderEmpty.body": "이 폴더에 넣은 파일이 여기에 표시됩니다.",
+  "files.google.title": "Google Drive",
+  "files.google.body":
+    "Google Drive에서 고른 파일을 여기서 보고 검색합니다. Klorn은 고른 파일만 보며, 파일을 바꾸지 않습니다.",
+  "files.google.connect": "Google Drive 연결",
+  "files.google.connect.error": "Google 로그인을 시작하지 못했습니다. 다시 시도하세요.",
+  "files.google.needsReconnect": "접근이 끊겼습니다. 파일을 추가하려면 다시 연결하세요.",
+  "files.google.reconnect": "다시 연결",
+  "files.google.reconnect.label": "다시 연결 ({email})",
+  "files.google.add": "Google Drive에서 추가",
+  "files.google.add.label": "Google Drive에서 추가 ({email})",
+  "files.google.disconnect": "연결 해제",
+  "files.google.disconnect.label": "{email} 연결 해제",
+  "files.google.disconnect.title": "Google Drive 연결을 해제할까요?",
+  "files.google.disconnect.message":
+    "{email}에서 추가한 파일이 Klorn에서 제거됩니다. Google Drive의 파일은 그대로입니다. Klorn의 접근 권한은 Google 계정 설정에서 삭제할 수 있습니다.",
+  "files.google.disconnect.confirm": "연결 해제",
+  "files.google.disconnect.done": "Google Drive 연결을 해제했습니다.",
+  "files.google.disconnect.error": "연결을 해제하지 못했습니다. 다시 시도하세요.",
+  "files.google.pick.added": "Google Drive에서 추가한 파일: {count}개",
+  "files.google.pick.skipped":
+    "추가하지 못함: {count}개. 폴더, 바로가기, Google이 Klorn에 공유하지 않는 파일은 추가할 수 없습니다.",
+  "files.google.pick.cap":
+    "추가하지 못함: {count}개. Google 계정 하나당 파일 500개까지 추가할 수 있습니다.",
+  "files.google.pick.reconnect": "파일을 추가하려면 이 Google 계정을 다시 연결하세요.",
+  "files.google.pick.notConfigured": "Google Drive에서 추가하는 기능이 아직 설정되지 않았습니다.",
+  "files.google.pick.error": "Google Drive에서 파일을 추가하지 못했습니다. 다시 시도하세요.",
+  "files.google.link.success": "Google Drive를 연결했습니다.",
+  "files.google.link.failed": "Google Drive를 연결하지 못했습니다. 다시 시도하세요.",
+  "files.google.link.unverified": "Google이 확인하지 않은 이메일 주소라 연결하지 않았습니다.",
+  "files.google.link.scopeMissing":
+    "Klorn이 고른 파일에 접근하려면 권한이 필요합니다. 다시 연결하고 해당 항목을 체크한 채로 두세요.",
+  "files.google.link.limit": "Drive용 Google 계정은 최대 5개까지 연결할 수 있습니다.",
   "today.files.title": "최근 파일",
   "today.files.open": "파일 열기",
   "today.files.none": "아직 파일이 없습니다.",
@@ -1518,6 +1550,14 @@ const ko: Record<string, string> = {
   "mailV2.shown": "{total}개 중 {shown}개",
   "mailV2.demo": "데모 메일입니다.",
   "mailV2.demo.connect": "계정을 연결하면 내 메일이 보입니다",
+  "mailV2.noSource": "아직 연결된 메일 계정이 없습니다.",
+  "mailAccount.proGate.title": "두 번째 메일 계정 연결은 Pro 기능입니다.",
+  "mailAccount.proGate.body":
+    "Free에는 메일 계정 하나(Gmail, iCloud Mail 또는 Naver Mail)가 포함됩니다. 여러 계정에 방화벽을 적용하려면 업그레이드하세요.",
+  "mailAccount.proGate.upgrade": "업그레이드",
+  "imapConnect.firstSync.started": "지금 메일을 가져오는 중입니다. 곧 메일함에 표시됩니다.",
+  "imapConnect.firstSync.delayed":
+    "이 계정의 첫 메일이 표시되기까지 최대 5분 정도 걸릴 수 있습니다.",
   "mailV2.archive.done": "보관했습니다",
   "mailV2.archive.doneMany": "{count}개 보관했습니다",
   "mailV2.delete.done": "삭제했습니다",
@@ -1691,7 +1731,6 @@ const ko: Record<string, string> = {
     "Klorn은 메일을 PUSH, MEETING, QUEUE, INFO, SILENT 5개 레인으로 분류합니다. 레인은 라벨일 뿐이며, 분류만으로 메일이 발송·보관·삭제되지 않습니다.",
   "onboardingV2.connect.skip": "나중에 하기",
   "onboardingV2.connect.continueHint": "계속하려면 계정을 하나 이상 연결하세요.",
-  "onboardingV2.connect.needsPlan": "현재 요금제로는 이 계정을 추가할 수 없습니다.",
   "onboardingV2.connect.failed":
     "연결을 시작하지 못했습니다. 변경된 것은 없습니다. 다시 시도해 주세요.",
   "onboardingV2.tile.connect": "연결",
@@ -1778,6 +1817,16 @@ const ko: Record<string, string> = {
   "onboardingV2.finish.addAccount": "계정 하나 더 추가",
   "onboardingV2.finish.openToday": "오늘 열기",
   "onboardingV2.finish.openHome": "Klorn 열기",
+  // Account-link completion (/link/complete)
+  "linkComplete.working": "연결을 마무리하는 중...",
+  "linkComplete.signIn": "이 브라우저에서 Klorn에 로그인하거나, 앱에서 다시 시작하세요.",
+  "linkComplete.mismatch":
+    "이 연결은 여기에 로그인된 계정과 다른 Klorn 계정에서 시작되어 아무것도 연결되지 않았습니다. 연결하려는 계정에서 다시 시작하세요.",
+  "linkComplete.expired":
+    "이 연결 링크는 만료되었거나 이미 사용되었습니다. 설정에서 다시 시작하세요.",
+  "linkComplete.failed": "연결을 마무리하지 못했습니다. 다시 시도하세요.",
+  "linkComplete.signInToContinue": "로그인하고 계속하기",
+  "linkComplete.continue": "계속",
 };
 
 export default ko;

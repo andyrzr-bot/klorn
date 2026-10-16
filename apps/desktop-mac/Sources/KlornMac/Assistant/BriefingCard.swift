@@ -1,9 +1,8 @@
 import SwiftUI
 
-/// BRIEFING preview card — the day's AI briefing. One view shared by the
-/// compact panel's TodayColumn and the full-mode sidebar so both surfaces
-/// render the same card (dogfood 2026-07-23). Clicking opens the full view,
-/// which is where the day is actually worked.
+/// BRIEFING preview card — the day's AI briefing, shown in the main
+/// window's Assistant section (it also sat in the expanded panel until the
+/// panel was removed, 2026-10-15).
 struct BriefingCard: View {
     let briefing: String?
     let structure: BriefingStructure?
@@ -111,8 +110,8 @@ private struct BriefingSegmentsRow: View {
     let segments: [BriefingStructure.Segment]
 
     var body: some View {
-        // Columns where they fit (expanded panel); the 220pt full-mode
-        // sidebar can't hold three columns, so it stacks instead.
+        // Columns where they fit; a narrow column (220pt) can't hold three,
+        // so it stacks instead.
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .top, spacing: 0) {
                 ForEach(Array(segments.enumerated()), id: \.offset) { i, seg in
