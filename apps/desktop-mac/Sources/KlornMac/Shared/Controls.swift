@@ -4,8 +4,8 @@ import SwiftUI
 struct LogoRing: View {
     var size: CGFloat = 16
     var body: some View {
-        // The K mark — the app icon in miniature, so pill, panel, menu bar,
-        // and Dock all say the same thing: Klorn. Ink on the light panel,
+        // The K mark — the app icon in miniature, so the window and the
+        // Dock say the same thing: Klorn. Ink on the light panel,
         // matching the B&W brand icon (founder direction 2026-07-20: no orange).
         Text("K")
             .font(.system(size: size * 0.82, weight: .heavy, design: .rounded))
@@ -102,29 +102,6 @@ struct SubtleTextButton: View {
     }
 }
 
-/// Sidebar nav row chrome: the same selection language as list rows — accent
-/// leading bar + the surface ladder's selected rung; hover uses the hover rung.
-/// One modifier so every nav row (tiers, Commitments, Assistant) stays in sync.
-struct SidebarRowChrome: ViewModifier {
-    let selected: Bool
-    @State private var hovering = false
-
-    func body(content: Content) -> some View {
-        content
-            .padding(.horizontal, 12).padding(.vertical, 9)
-            .background(alignment: .leading) {
-                if selected {
-                    RoundedRectangle(cornerRadius: 1.5).fill(Theme.accent)
-                        .frame(width: 3).padding(.vertical, 5)
-                }
-            }
-            .background(
-                selected ? Theme.surfaceSelected : hovering ? Theme.surfaceHover : .clear,
-                in: RoundedRectangle(cornerRadius: 8))
-            .onHover { hovering = $0 }
-    }
-}
-
 /// Stand-in for a `Menu` while the offscreen renderer runs. Menus are
 /// AppKit-backed and ImageRenderer paints them as a "restricted" placeholder
 /// glyph, which would otherwise end up in the screenshots the landing page
@@ -140,55 +117,3 @@ struct OffscreenMenuLabel: View {
     }
 }
 
-/// Stand-in for a segmented `Picker` while the offscreen renderer runs, for
-/// the same reason as `OffscreenMenuLabel`: the control is AppKit-backed.
-struct OffscreenSegmentedLabel: View {
-    let titles: [String]
-    let selected: String
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(titles, id: \.self) { title in
-                Text(title)
-                    .font(.caption.weight(title == selected ? .semibold : .regular))
-                    .foregroundStyle(title == selected ? Theme.text : Theme.textDim)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity).padding(.vertical, 3)
-                    .background(
-                        title == selected ? Theme.surfaceSelected : .clear,
-                        in: RoundedRectangle(cornerRadius: 5))
-            }
-        }
-        .padding(2)
-        .background(Theme.surfaceRaised, in: RoundedRectangle(cornerRadius: 7))
-        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Theme.line))
-    }
-}
-
-/// Sun/moon appearance toggle (founder 2026-08-27: switchable from the top
-/// right). Shows the mode a CLICK gives you — the universal toggle idiom —
-/// and writes an explicit choice over "system" (the Preferences picker still
-/// offers system-follow for those who want it back).
-struct AppearanceToggle: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var isDark: Bool {
-        switch model.settings.appearance {
-        case .dark: true
-        case .light: false
-        case .system: colorScheme == .dark
-        }
-    }
-
-    var body: some View {
-        Button {
-            model.settings.appearance = isDark ? .light : .dark
-        } label: {
-            Image(systemName: isDark ? "sun.max" : "moon")
-                .font(.callout).iconTarget()
-        }
-        .buttonStyle(.plain).hoverDim()
-        .help(isDark ? L("appearance.toLight") : L("appearance.toDark"))
-        .accessibilityLabel(isDark ? L("appearance.toLight") : L("appearance.toDark"))
-    }
-}

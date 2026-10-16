@@ -4,7 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../lib/auth";
-import { ASSISTANT_ROUTES, assistantHref, TODAY_HOME } from "../lib/home";
+import {
+  ASSISTANT_ROUTES,
+  assistantHref,
+  FILES_HOME,
+  showFilesNav,
+  TODAY_HOME,
+  withFiles,
+} from "../lib/home";
 import { useT } from "../lib/i18n";
 import { NavIcon, type NavIconType } from "./nav-icons";
 
@@ -33,6 +40,8 @@ const UNIFIED_TABS: Tab[] = [
   { href: assistantHref(), labelKey: "nav.assistant", icon: "chat", routes: ASSISTANT_ROUTES },
 ];
 
+const FILES_TAB: Tab = { href: FILES_HOME, labelKey: "nav.files", icon: "files" };
+
 // Routes the account sheet owns — the account tab reads as "active" on these so
 // the bottom bar still reflects where you are after tapping through the sheet.
 const ACCOUNT_ROUTES = ["/settings", "/admin"];
@@ -46,7 +55,7 @@ export default function BottomTabs() {
   // parent re-render (AuthProvider hands a fresh context value each render).
   const closeAccount = useCallback(() => setAccountOpen(false), []);
   const unified = user?.unifiedHome === true;
-  const tabs = unified ? UNIFIED_TABS : TABS;
+  const tabs = unified ? withFiles(UNIFIED_TABS, FILES_TAB, showFilesNav(user)) : TABS;
   // UNIFIED_HOME (P10): tab labels move off the retired 10px size to the
   // caption role (12px); the legacy bar is left as it was.
   const labelSize = unified ? "text-caption" : "text-[10px]";
@@ -65,10 +74,12 @@ export default function BottomTabs() {
   return (
     <>
       <nav
-        aria-label="Primary navigation"
+        aria-label={t("bottomTabs.nav")}
         className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t border-line bg-surface-panel/92 pb-safe shadow-[0_-16px_44px_rgba(0,0,0,0.35)] backdrop-blur-xl"
       >
-        <ul className="grid grid-cols-5">
+        {/* One column per tab plus the account button: the legacy bar and the
+            unified bar without Files hold 5 items, the unified bar with Files 6. */}
+        <ul className={tabs.length > 4 ? "grid grid-cols-6" : "grid grid-cols-5"}>
           {tabs.map((tab) => {
             const active = (tab.routes ?? [tab.href]).some((route) => isActive(pathname, route));
             return (
@@ -165,7 +176,7 @@ function AccountSheet({ onClose, initials }: { onClose: () => void; initials: st
       {/* Backdrop */}
       <button
         type="button"
-        aria-label="Close account menu"
+        aria-label={t("bottomTabs.closeAccount")}
         onClick={onClose}
         className="absolute inset-0 bg-black/60"
       />
@@ -174,7 +185,7 @@ function AccountSheet({ onClose, initials }: { onClose: () => void; initials: st
         ref={sheetRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Account and settings"
+        aria-label={t("bottomTabs.account")}
         tabIndex={-1}
         className="absolute inset-x-0 bottom-0 animate-slide-up rounded-t-2xl border-t border-line bg-surface-panel pb-safe shadow-2xl shadow-slate-900/15 focus:outline-none"
       >

@@ -23,6 +23,11 @@ model User {
   /// PROACTIVE_DRAFT_DAILY_CAP a hard bound.
   proactiveDraftDay         String?
   proactiveDraftCount       Int                        @default(0)
+  /// Automatic one-click unsubscribes: today's per-user slot counter
+  /// (mail/unsubscribe-quota.ts). Same conditional-update pattern as
+  /// proactiveDraftDay/Count — AUTO_UNSUBSCRIBE_USER_DAILY_CAP is a hard bound.
+  autoUnsubscribeDay        String?
+  autoUnsubscribeCount      Int                        @default(0)
   passwordHash              String?
   name                      String?
   role                      UserRole                   @default(USER)
@@ -102,12 +107,15 @@ model User {
   identities                UserIdentity[]
   linkedCalendarAccounts    LinkedCalendarAccount[]
   linkedInboxAccounts       LinkedInboxAccount[]
+  linkedDriveAccounts       LinkedDriveAccount[]
   tasks                     Task[]
   notes                     Note[]
   reminders                 Reminder[]
   contacts                  Contact[]
   calendarEvents            CalendarEvent[]
   driveFiles                DriveFile[]
+  driveFileSummaries        DriveFileSummary[]
+  driveSummaryUsage         DriveSummaryUsage[]
   automationConfig          AutomationConfig?
   agentLogs                 AgentLog[]
   notifications             Notification[]
@@ -748,14 +756,26 @@ enum DriveProvider {
 // drive/drive-read.ts). Row-level security is enabled in the migration, with the
 // two policies every per-user table has.
 model DriveFile {
-  id               String        @id @default(uuid())
+  id               String              @id @default(uuid())
   userId           String
-  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   provider         DriveProvider
   // Which source of that provider: 'klorn' for the user's Klorn drive, the
   // connector's account id for GOOGLE and ONEDRIVE (D5, D6). Part of the unique
   // below, so the same upstream id can exist once per source.
   sourceKey        String
+  // D5a: the LinkedDriveAccount a GOOGLE or ONEDRIVE row came from, so unlinking
+  // the account deletes its rows in the database itself (and a write still in
+  // flight fails the foreign key instead of leaving an orphan). NULL exactly for
+  // KLORN rows, and equal to sourceKey when set (the migration's two CHECKs).
+  // drive-rows.ts derives it from the source on create and never updates it.
+  // The foreign key is composite, (sourceAccountId, userId, provider) to the
+  // account's (id, userId, provider): the database itself refuses a row that
+  // names another user's account or an account of another provider. MATCH
+  // SIMPLE, so a KLORN row (NULL sourceAccountId) is not checked. A connector
+  // still loads the account by (id, userId, provider) before it writes.
+  sourceAccountId  String?
+  sourceAccount    LinkedDriveAccount? @relation(fields: [sourceAccountId, userId, provider], references: [id, userId, provider], onDelete: Cascade)
   // The id in the source (Drive file id, Graph item id, the id D3 mints for a
   // Klorn file). Required: every row is addressable, and parentExternalId always
   // has something to name.
@@ -764,7 +784,7 @@ model DriveFile {
   // it). Cleaned and capped at the writer; wrapped before any LLM sees it.
   name             String
   mimeType         String?
-  isFolder         Boolean       @default(false)
+  isFolder         Boolean             @default(false)
   // BigInt: a drive file passes 2 GiB. Never negative (the migration's CHECK).
   // Never returned raw (JSON.stringify throws on a BigInt); drive/drive-read.ts
   // maps it to a number.
@@ -791,9 +811,12 @@ model DriveFile {
   // a content fingerprint. D4, D5 and D6 compare it to see whether a file
   // changed. Never interpreted here, never on the wire.
   etag             String?
-  trashed          Boolean       @default(false)
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  trashed          Boolean             @default(false)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  // Back-relation only, no column: a file's summary state lives in its own
+  // table (D4), never on this row.
+  summary          DriveFileSummary?
 
   // Named, so the client's key is `driveFileIdentity` and not the generated
   // name CalendarEvent's unique already has (its guard test greps for that one).
@@ -808,6 +831,123 @@ model DriveFile {
   // folder walks (cycle check, recursive delete) by parent. For KLORN a NULL
   // parent is the root, because D3 only writes a parent that exists.
   @@index([userId, provider, parentExternalId, modifiedAt, id])
+  // The cascade from LinkedDriveAccount and the unlink both look one account's
+  // rows up by it, with no userId to lead with (C2's reason for
+  // CalendarEvent.sourceAccountId). It also serves the composite foreign key's
+  // lookup: the account id is a UUID, so the leading column alone is selective.
+  @@index([sourceAccountId])
+}
+
+// A Google Drive (D5) or OneDrive (D6) account linked for its files (step D5 of
+// docs/providers/unified-platform-plan.md). Its own table, not
+// LinkedCalendarAccount and not UserToken, so unlinking a drive unlinks nothing
+// else. Written by drive/linked-drive-accounts.ts only (D5b); until then nothing
+// but the user purge and the key-rotation sweep touches it
+// (drive-file-guard.test.ts). Row-level security is enabled in the migration,
+// with the two policies every per-user table has.
+//   - provider: no default, so every writer states it; never KLORN (the
+//     migration's CHECK: the Klorn drive has no account).
+//   - email: the account's address as the provider verified it, trimmed and
+//     lower-cased by the link flow (the migration's CHECK: email =
+//     lower(btrim(email))); the label and, with provider, the dedup key.
+//   - accessToken / refreshToken: encryptToken ciphers under the
+//     TOKEN_ENCRYPTION_KEYS ring, never plain text; covered by the key-rotation
+//     sweep (scripts/reencrypt-tokens.ts). Both required: a grant without a
+//     refresh token is refused before anything is stored.
+//   - grantedScopes: the scopes the token response granted, space-delimited as
+//     OAuth returns them (RFC 6749 section 3.3).
+//   - needsReconnect: set when the grant is revoked or a token cannot be
+//     decrypted; refresh stops and the rows stay until the user unlinks.
+//   - lastRefreshedAt: the last metadata refresh of this account's rows; NULL =
+//     never.
+model LinkedDriveAccount {
+  id              String        @id @default(uuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider        DriveProvider
+  email           String
+  accessToken     String
+  refreshToken    String
+  expiresAt       DateTime?
+  grantedScopes   String
+  needsReconnect  Boolean       @default(false)
+  lastRefreshedAt DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  // The rows indexed from this account; deleted with it (ON DELETE CASCADE).
+  files           DriveFile[]
+
+  @@unique([userId, provider, email])
+  // The target of DriveFile's composite foreign key, which proves a file's
+  // account is of the same user and provider. Redundant as a key (id is unique).
+  @@unique([id, userId, provider])
+}
+
+enum DriveSummaryStatus {
+  PENDING
+  DONE
+  FAILED
+  SKIPPED
+}
+
+// The summary of one drive file (step D4 of
+// docs/providers/unified-platform-plan.md), one row per file, kept apart from
+// DriveFile so the metadata index stays metadata only. Written by
+// drive/summary-store.ts only. `summary` is model output about attacker-supplied
+// text: capped (the migration's CHECK), shown as data, never fed back to a model
+// as instructions. The extracted text itself is never stored.
+//   - status: PENDING (queued, or deferred by a cap: `error` says which),
+//     DONE, FAILED (gave up; `error` is the code), SKIPPED (folder, unsupported
+//     type, too large, no text).
+//   - sourceEtag: the file's `etag` this row is for. A different etag on the
+//     file re-queues it.
+//   - costMicroCents: the estimated provider cost of the summary call, in
+//     0.0001 cent units like GlobalCostLedger.microCents.
+//   - error: a code only (the migration's CHECK), never a provider message.
+//   - attempts: counted at each claim, given back by a deferral, so only
+//     content errors and runs that never finish spend it; outageStreak: outages
+//     in a row (their backoff); nextAttemptAt: due time, or a live lease's end;
+//     runsDayKey / runsToday: model calls for this file on that UTC day.
+model DriveFileSummary {
+  id             String             @id @default(uuid())
+  driveFileId    String             @unique
+  driveFile      DriveFile          @relation(fields: [driveFileId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status         DriveSummaryStatus @default(PENDING)
+  summary        String?
+  sourceEtag     String?
+  model          String?
+  costMicroCents Int                @default(0)
+  error          String?
+  attempts       Int                @default(0)
+  outageStreak   Int                @default(0)
+  nextAttemptAt  DateTime           @default(now())
+  runsDayKey     String?
+  runsToday      Int                @default(0)
+  summarizedAt   DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  // The job: due PENDING rows, oldest due first.
+  @@index([status, nextAttemptAt])
+  // The summary search: one user's DONE rows, newest summary first.
+  @@index([userId, status, summarizedAt])
+}
+
+// Summary calls per user per UTC day (step D4): the per-user daily count cap.
+// A ledger of its own so deleting a file does not give its count back.
+model DriveSummaryUsage {
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dayKey    String // "YYYY-MM-DD" in UTC
+  count     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, dayKey])
+  // The job's prune of past days.
+  @@index([dayKey])
 }
 
 // The objects of an account still to be deleted from object storage (step D3 of
@@ -2354,4 +2494,15 @@ model AnalyticsEvent {
   @@index([event, createdAt])
   @@index([userId, event, createdAt])
   @@index([createdAt])
+}
+
+/// Fleet-wide daily counters for automatic one-click unsubscribes
+/// (mail/unsubscribe-quota.ts): "host:<domain>" per target domain and
+/// "global". No user data — the per-user count lives on User. System-only
+/// under RLS (bypass policy, no tenant line).
+model UnsubscribeQuota {
+  key       String   @id
+  day       String
+  count     Int      @default(0)
+  updatedAt DateTime @updatedAt
 }

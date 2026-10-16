@@ -205,21 +205,10 @@ enum PreviewRender {
         shot("briefing", size: CGSize(width: 380, height: 260), align: .top) {
             BriefingCardRenderProbe()
         }
-        // The narrowest real embedding (full-mode sidebar is 220pt wide) —
-        // the card must survive it, not just the roomy probe.
+        // The narrowest real embedding (a 220pt-wide sidebar column) — the
+        // card must survive it, not just the roomy probe.
         shot("briefing-narrow", size: CGSize(width: 220, height: 340), align: .top) {
             BriefingCardRenderProbe()
-        }
-        shot("full", size: TopBarMetrics.size(for: .full)) {
-            TopBarRoot(state: .full, actions: actions)
-        }
-        shot("expanded", size: TopBarMetrics.size(for: .expanded)) {
-            TopBarRoot(state: .expanded, actions: actions)
-        }
-        shot("collapsed", size: CGSize(
-            width: TopBarMetrics.size(for: .collapsed).width + 80,
-            height: TopBarMetrics.size(for: .collapsed).height + 40)) {
-            TopBarRoot(state: .collapsed, actions: actions)
         }
         // ImageRenderer draws nothing inside a ScrollView, so the mail rows —
         // the densest and most design-critical surface in the app — are composed
@@ -260,15 +249,7 @@ enum PreviewRender {
                 actions: actions, initialScope: .week,
                 initialAnchor: ISO8601DateFormatter().date(from: "2026-07-29T03:00:00Z") ?? Date())
         }
-        // The mail level of the two-level sidebar — Back / Compose / folders /
-        // categories. Shot with the level flipped, then restored so the full
-        // shot above stays the ROOT (first-open) state.
-        model.sidebarLevel = .mail
-        shot("full-mail", size: TopBarMetrics.size(for: .full)) {
-            FullView(actions: actions)
-        }
-        model.sidebarLevel = .root
-        // The reading pane on its own. Shrinking the whole 1400pt window into a
+        // The reading pane on its own. Shrinking the whole window into a
         // landing-page card renders the app's body text at under 7px; this fits
         // the same card at over 100%, so it can actually be read.
         shot("reading", size: CGSize(width: tourW, height: 430), align: .top) {
@@ -344,13 +325,12 @@ enum PreviewRender {
 
     /// No-op actions: the renderer never interacts, and a fixture must not be
     /// able to fire a real network call.
-    static func previewActions() -> TopBarActions {
-        TopBarActions(
-            onExpand: {}, onExpandFull: {}, onRestore: {}, onCollapse: {}, onClose: {},
+    static func previewActions() -> ShellActions {
+        ShellActions(
             onSignIn: {}, onSignOut: {},
             onOpenInApp: { _ in }, onOpenTier: { _ in }, onOpenFull: {}, onOpenProposals: {},
             onDismiss: { _ in }, onSnooze: { _, _ in }, onSetTier: { _, _ in },
             onPinSender: { _, _ in }, onUnpinSender: { _ in },
-            onSelect: { _ in }, onOpenPreferences: {}, onHideBar: {}, onQuit: {})
+            onSelect: { _ in }, onOpenPreferences: {}, onQuit: {})
     }
 }

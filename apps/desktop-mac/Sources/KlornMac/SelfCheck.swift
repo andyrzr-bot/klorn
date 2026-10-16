@@ -185,18 +185,7 @@ func runSelfChecks() async -> Bool {
                      tier: .push, tierReason: nil, priority: 0, surfacedAt: "",
                      email: nil, href: nil, hashStale: nil)
     }
-    let base0 = planPushNotifications(seen: [], baselineEstablished: false,
-                                      pushItems: [push("a"), push("b")])
-    check("first load = silent baseline", base0.toNotify.isEmpty && base0.seen == ["a", "b"])
-
-    let next = planPushNotifications(seen: ["a", "b"], baselineEstablished: true,
-                                     pushItems: [push("a"), push("b"), push("c")])
-    check("notifies only the new PUSH item",
-          next.toNotify.map(\.id) == ["c"] && next.seen == ["a", "b", "c"])
-
-    let none = planPushNotifications(seen: ["a", "b"], baselineEstablished: true,
-                                     pushItems: [push("a"), push("b")])
-    check("no new PUSH = no notifications", none.toNotify.isEmpty)
+    // Planning + persistence live in SelfCheckNoPill.swift (PushLedger).
 
     // Notification identity round-trips, so a banner tap can find its item.
     // Without this the OS banner is a dead end: it interrupts you and then has
@@ -213,43 +202,19 @@ func runSelfChecks() async -> Bool {
           PushNotifier.itemID(fromNotificationIdentifier: "other-app-1") == nil)
 
     // Tap routing: a known item opens in the reading pane; one that has since
-    // left the queue still shows the bar (a tap must never be a no-op); a
-    // foreign banner is left alone.
+    // left the queue still opens the main window (a tap must never be a
+    // no-op); a foreign banner is left alone.
     check("tapping a live item opens it",
           PushNotifier.tapAction(identifier: "klorn-push-i1", isKnownItem: { $0 == "i1" })
               == .open(itemID: "i1"))
-    check("tapping a vanished item falls back to expanding the bar",
+    check("tapping a vanished item falls back to opening the main window",
           PushNotifier.tapAction(identifier: "klorn-push-gone", isKnownItem: { _ in false })
-              == .expand)
+              == .openApp)
     check("tapping another app's notification is ignored",
           PushNotifier.tapAction(identifier: "someone-else", isKnownItem: { _ in true })
               == .ignore)
 
-    print("PushCard:")
-    // Keymap — only an explicit arm gives the card the keyboard, and these are
-    // the only keys it may consume (1/2/3 send, Return open, Esc dismiss).
-    check("key 1 sends option 0", PushCardKeymap.action(chars: "1", keyCode: 18) == .send(0))
-    check("key 2 sends option 1", PushCardKeymap.action(chars: "2", keyCode: 19) == .send(1))
-    check("key 3 sends option 2", PushCardKeymap.action(chars: "3", keyCode: 20) == .send(2))
-    check("return opens on web", PushCardKeymap.action(chars: "\r", keyCode: 36) == .open)
-    check("esc dismisses", PushCardKeymap.action(chars: nil, keyCode: 53) == .dismiss)
-    check("key 4 is not consumed", PushCardKeymap.action(chars: "4", keyCode: 21) == nil)
-    check("letters are not consumed", PushCardKeymap.action(chars: "a", keyCode: 0) == nil)
-
-    // Card queue — FIFO, deduped by id, one card at a time.
-    var cardQueue = PushCardQueue()
-    cardQueue.enqueue([push("a"), push("b")])
-    check("queue presents first item", cardQueue.current?.id == "a" && cardQueue.pendingCount == 1)
-    cardQueue.enqueue([push("b"), push("c")])
-    check("queue dedups by id", cardQueue.items.map(\.id) == ["a", "b", "c"])
-    cardQueue.advance()
-    check("advance moves to next", cardQueue.current?.id == "b" && cardQueue.pendingCount == 1)
-    cardQueue.advance()
-    cardQueue.advance()
-    check("advance past end empties", cardQueue.current == nil && cardQueue.pendingCount == 0)
-    cardQueue.advance()  // must not trap on empty
-    check("advance on empty is safe", cardQueue.current == nil)
-
+    print("Reply options:")
     // Reply options — wire shape from POST /api/email/:id/reply-options
     // (packages/contract reply-options.ts): exactly 3 drafts, fixed tone order.
     let optJSON = """
@@ -270,144 +235,22 @@ func runSelfChecks() async -> Bool {
     check("unknown tone label falls back",
           ReplyOption(tone: "urgent", body: "x").toneLabel == "Urgent")
 
-    // Layout metrics + morph math (reference-video parity: present-morph,
-    // click-to-expand). All pure so the harness can pin the geometry.
-    check("compact size", PushCardMetrics.size(for: .compact) == PushCardMetrics.compact)
-    check("expanded size", PushCardMetrics.size(for: .expanded) == PushCardMetrics.expanded)
-    check("expanded is strictly larger",
-          PushCardMetrics.expanded.width > PushCardMetrics.compact.width
-          && PushCardMetrics.expanded.height > PushCardMetrics.compact.height)
-    let morphTarget = NSRect(x: 100, y: 100, width: 460, height: 360)
-    let morphStart = PushCardMetrics.presentStartFrame(target: morphTarget)
-    check("present-morph starts hugging the top edge",
-          morphStart.maxY == morphTarget.maxY && morphStart.height < morphTarget.height)
-    check("present-morph start stays horizontally centered",
-          abs(morphStart.midX - morphTarget.midX) < 0.5)
-    let screen = NSRect(x: 0, y: 0, width: 1512, height: 950)
-    let compactFrame = PushCardController.cardFrame(
-        size: PushCardMetrics.compact, visible: screen)
-    let expandedFrame = PushCardController.cardFrame(
-        size: PushCardMetrics.expanded, visible: screen)
-    check("card pinned top-center below the pill",
-          compactFrame.midX == screen.midX
-          && compactFrame.maxY == screen.maxY - PushCardController.topOffset)
-    check("expand keeps the top edge anchored (grows downward)",
-          expandedFrame.maxY == compactFrame.maxY && expandedFrame.midX == compactFrame.midX)
-
-    // Expanded-view detail text: Klorn summary first, snippet fallback, nil when empty.
-    check("detail prefers Klorn summary", cardDetailText(summary: "S", snippet: "sn") == "S")
-    check("detail falls back to snippet", cardDetailText(summary: "", snippet: "sn") == "sn")
-    check("detail nil when both empty", cardDetailText(summary: nil, snippet: " ") == nil)
-
-    print("Top bar window fit:")
-    // Small-display fit: full was a hardcoded 1400×860 that clipped on 13"
-    // screens, and the frame math never consulted the screen (2026-08-05).
-    let smallScreen = NSRect(x: 0, y: 0, width: 1280, height: 775)
-    let fittedFull = TopBarMetrics.fittedSize(
-        ideal: TopBarMetrics.full, visible: smallScreen.size, floor: TopBarMetrics.fullMin)
-    check("full shrinks to fit a small display",
-          fittedFull.width <= smallScreen.width - TopBarMetrics.screenMargin * 2
-          && fittedFull.height <= smallScreen.height - TopBarMetrics.screenMargin * 2)
-    check("screen clamp beats the floor — no off-screen window on tiny displays",
-          {
-              let s = TopBarMetrics.fittedSize(
-                  ideal: TopBarMetrics.full, visible: NSSize(width: 640, height: 400),
-                  floor: TopBarMetrics.fullMin)
-              return s.width <= 640 - TopBarMetrics.screenMargin * 2
-                  && s.height <= 400 - TopBarMetrics.screenMargin * 2
-          }())
-    check("floor still lifts a too-small ideal on a roomy display",
-          TopBarMetrics.fittedSize(
-              ideal: NSSize(width: 300, height: 300), visible: NSSize(width: 1512, height: 950),
-              floor: TopBarMetrics.fullMin) == TopBarMetrics.fullMin)
-    check("large displays keep the ideal size",
-          TopBarMetrics.fittedSize(
-              ideal: TopBarMetrics.full, visible: NSSize(width: 1512, height: 950),
-              floor: TopBarMetrics.fullMin) == TopBarMetrics.full)
-    let fittedFrame = TopBarMetrics.pinnedFrame(size: fittedFull, visible: smallScreen, topMargin: 8)
-    check("pinned frame stays fully on screen", smallScreen.contains(fittedFrame))
-    check("pinned frame is top-centered",
-          abs(fittedFrame.midX - smallScreen.midX) < 0.5
-          && fittedFrame.maxY == smallScreen.maxY - 8)
+    print("Window fit:")
     check("GitHub items get a source caption; mail items keep their sender line",
           sourceBadgeLabel("GITHUB") != nil && sourceBadgeLabel("GITHUB") != ""
           && sourceBadgeLabel("EMAIL") == nil && sourceBadgeLabel("PENDING_ACTION") == nil)
-    check("full panel is user-resizable",
-          TopBarController.styleMask(focusable: true).contains(.resizable))
-    // The AppKit-level clamp is the last line of defense: whatever sets the
-    // frame, the top edge stays reachable and the size fits the screen.
+    // The clamp every window shares: whatever sets the frame, the top edge
+    // stays reachable and the size fits the screen.
     let vis = NSRect(x: 0, y: 0, width: 1440, height: 875)
     check("clamp pulls a top-lodged frame back under the menu bar",
-          KeyablePanel.clamped(NSRect(x: 100, y: 400, width: 800, height: 600), into: vis)
+          WindowGeometry.clamped(NSRect(x: 100, y: 400, width: 800, height: 600), into: vis)
               == NSRect(x: 100, y: 275, width: 800, height: 600))
     check("clamp shrinks an oversized frame to the visible area",
-          KeyablePanel.clamped(NSRect(x: 0, y: -100, width: 2000, height: 1200), into: vis)
+          WindowGeometry.clamped(NSRect(x: 0, y: -100, width: 2000, height: 1200), into: vis)
               == NSRect(x: 0, y: 0, width: 1440, height: 875))
     check("clamp leaves a healthy frame untouched",
-          KeyablePanel.clamped(NSRect(x: 100, y: 100, width: 800, height: 600), into: vis)
+          WindowGeometry.clamped(NSRect(x: 100, y: 100, width: 800, height: 600), into: vis)
               == NSRect(x: 100, y: 100, width: 800, height: 600))
-    check("a top-clipped frame counts as lost (unreachable grab area)",
-          TopBarController.isFrameLost(
-              frame: NSRect(x: 100, y: 500, width: 800, height: 600),
-              visible: NSRect(x: 0, y: 0, width: 1440, height: 875))
-          && !TopBarController.isFrameLost(
-              frame: NSRect(x: 100, y: 100, width: 800, height: 600),
-              visible: NSRect(x: 0, y: 0, width: 1440, height: 875))
-          && TopBarController.isFrameLost(
-              frame: NSRect(x: 5_000, y: 100, width: 800, height: 600),
-              visible: NSRect(x: 0, y: 0, width: 1440, height: 875)))
-    check("same-state re-render never reframes (snap-back fix)",
-          !TopBarController.shouldSetFrame(
-              renderedState: .full, state: .full, panelVisible: true, frameLost: false))
-    check("state morph, first show, and a lost frame each reframe",
-          TopBarController.shouldSetFrame(
-              renderedState: .collapsed, state: .full, panelVisible: true, frameLost: false)
-          && TopBarController.shouldSetFrame(
-              renderedState: .full, state: .full, panelVisible: false, frameLost: false)
-          && TopBarController.shouldSetFrame(
-              renderedState: .full, state: .full, panelVisible: true, frameLost: true))
-    check("drag floor is screen-clamped on small displays",
-          TopBarMetrics.fittedSize(
-              ideal: TopBarMetrics.fullMin, visible: NSSize(width: 800, height: 500)).width
-              <= 800 - TopBarMetrics.screenMargin * 2)
-    // Cmd+Tab needs a real managed window, not a floating utility overlay
-    // (dogfood 2026-08-18: the full view was unswitchable while it was a
-    // floating .canJoinAllSpaces panel).
-    check("pill is the only utility overlay; expanded/full are real windows",
-          TopBarController.isUtilityWindow(focusable: false)
-          && !TopBarController.isUtilityWindow(focusable: true))
-    check("pill panel stays fixed and non-activating",
-          !TopBarController.styleMask(focusable: false).contains(.resizable)
-          && TopBarController.styleMask(focusable: false).contains(.nonactivatingPanel))
-    // Expanded joined the key-able/resizable family (Cmd+Tab needs a window
-    // that can raise; 1140pt clipped narrow displays — 2026-08-15).
-    check("expanded uses the full-family style, with its own smaller floor",
-          TopBarController.minSize(for: .expanded) == TopBarMetrics.expandedMin
-          && TopBarController.minSize(for: .full) == TopBarMetrics.fullMin
-          && TopBarMetrics.expandedMin.width < TopBarMetrics.fullMin.width)
-    check("expanded shrinks to fit a narrow display",
-          {
-              let s = TopBarMetrics.fittedSize(
-                  ideal: TopBarMetrics.expanded, visible: NSSize(width: 1024, height: 640),
-                  floor: TopBarMetrics.expandedMin)
-              return s.width <= 1024 - TopBarMetrics.screenMargin * 2
-          }())
-    check("stored expanded size below its floor is lifted",
-          AppSettings.resolveFullWindowSize(
-              ["width": 100.0, "height": 100.0], floor: TopBarMetrics.expandedMin)
-              == TopBarMetrics.expandedMin)
-    check("stored size below the floor is lifted",
-          AppSettings.resolveFullWindowSize(
-              ["width": 100.0, "height": 100.0], floor: TopBarMetrics.fullMin)
-              == TopBarMetrics.fullMin)
-    check("malformed stored size resolves nil",
-          AppSettings.resolveFullWindowSize("junk", floor: TopBarMetrics.fullMin) == nil)
-    check("valid stored size round-trips",
-          AppSettings.resolveFullWindowSize(
-              ["width": 1200.0, "height": 700.0], floor: TopBarMetrics.fullMin)
-              == NSSize(width: 1200, height: 700))
-    check("first launch fires exactly once",
-          AppSettings.isFirstLaunch(nil) && !AppSettings.isFirstLaunch(true))
 
     print("Link inbox:")
     check("link URL parses from the start response",
@@ -542,46 +385,19 @@ func runSelfChecks() async -> Bool {
     check("pong flag latches", pongBox.isMarked)
 
     print("Accessibility:")
-    check("reduce motion disables the panel morph",
-          !TopBarController.shouldAnimateFrame(reduceMotion: true))
-    check("normal motion keeps the panel morph",
-          TopBarController.shouldAnimateFrame(reduceMotion: false))
     check("reduce transparency → opaque panel",
           Theme.panelOpacity(reduceTransparency: true) == 1.0)
     check("normal transparency keeps the translucent panel",
           Theme.panelOpacity(reduceTransparency: false) == Theme.panelDefaultOpacity)
-    check("push announcement (singular)",
-          TopBarController.pushAnnouncement(newCount: 1) == "1 new message needs you")
-    check("push announcement (plural)",
-          TopBarController.pushAnnouncement(newCount: 3) == "3 new messages need you")
+    check("push announcement is localized and carries the count",
+          L("push.announce") != "push.announce"
+          && PushAlerter.pushAnnouncement(newCount: 3).contains("3"))
 
     print("Settings:")
     check("notifications default ON when unset", AppSettings.resolveNotifications(nil))
     check("notifications honor stored false", !AppSettings.resolveNotifications(false))
     check("notifications honor stored true", AppSettings.resolveNotifications(true))
     check("notifications ignore non-bool", AppSettings.resolveNotifications("nope"))
-    check("pill default ON when unset", AppSettings.resolvePillVisible(nil))
-    check("pill honors stored false", !AppSettings.resolvePillVisible(false))
-    check("pill honors stored true", AppSettings.resolvePillVisible(true))
-    check("pill ignores non-bool", AppSettings.resolvePillVisible(3))
-
-    // Hidden-pill mode: the collapsed pill draws only when visible-mode is on
-    // or a bigger state is open (hiding must never eat the expanded panel).
-    check("collapsed pill draws when visible", TopBarController.shouldDraw(state: .collapsed, pillVisible: true))
-    check("collapsed pill hides when hidden-mode", !TopBarController.shouldDraw(state: .collapsed, pillVisible: false))
-    check("expanded panel draws even in hidden-mode", TopBarController.shouldDraw(state: .expanded, pillVisible: false))
-    check("full view draws even in hidden-mode", TopBarController.shouldDraw(state: .full, pillVisible: false))
-
-    print("Card chime:")
-    // The arrival sound plays once per NEW batch, only when alerts are on,
-    // and never for an empty diff (a reload with nothing new must be silent).
-    check("chimes for new PUSH when alerts on",
-          PushCardController.shouldChime(newCount: 2, alertsEnabled: true))
-    check("silent when alerts off",
-          !PushCardController.shouldChime(newCount: 2, alertsEnabled: false))
-    check("silent when nothing new",
-          !PushCardController.shouldChime(newCount: 0, alertsEnabled: true))
-
     print("Briefing:")
     // The TODAY column shows a one-line preview of the day's briefing note:
     // markdown bold stripped, whitespace collapsed, capped; nil when empty.
@@ -958,35 +774,7 @@ func runSelfChecks() async -> Bool {
     }
 
 
-    print("Upcoming agenda:")
-    // 7-day grouping for the UPCOMING section: today excluded (the TODAY rows
-    // own it), window ends 7 days after tomorrow's start, malformed ISO drops
-    // the event. Calendar + locale injected so labels are deterministic.
-    var agendaCal = Calendar(identifier: .gregorian)
-    agendaCal.timeZone = TimeZone(identifier: "UTC")!
-    agendaCal.locale = Locale(identifier: "en_US_POSIX")
-    // Wed 2026-07-22 09:00 UTC → tomorrow = Thu Jul 23, window ends Jul 30 00:00.
-    let agendaNow = ISO8601DateFormatter().date(from: "2026-07-22T09:00:00Z")!
-    func agendaEvent(_ id: String, _ startISO: String) -> CalendarEventWire {
-        CalendarEventWire(id: id, title: id, startTime: startISO, endTime: startISO,
-                          location: nil, meetingLink: nil, allDay: false)
-    }
-    let agenda = upcomingAgenda(now: agendaNow, events: [
-        agendaEvent("today", "2026-07-22T15:00:00.000Z"),        // today → excluded
-        agendaEvent("tmrw2", "2026-07-23T10:00:00.000Z"),
-        agendaEvent("tmrw1", "2026-07-23T08:00:00.000Z"),        // out of order on purpose
-        agendaEvent("sat", "2026-07-25T09:00:00Z"),              // no-millis ISO tolerated
-        agendaEvent("beyond", "2026-07-30T09:00:00.000Z"),       // day 8 → excluded
-        agendaEvent("bad", "not-a-date"),                        // malformed → dropped
-    ], calendar: agendaCal)
-    check("agenda keeps only tomorrow → +7 days",
-          agenda.flatMap(\.events).map(\.id) == ["tmrw1", "tmrw2", "sat"])
-    check("agenda groups by day, first labeled Tomorrow",
-          agenda.count == 2 && agenda[0].label == L("calendar.tomorrow") && agenda[0].events.count == 2)
-    check("agenda later day gets its weekday name", agenda[1].label == "Saturday")
-    check("agenda sorts within a day", agenda[0].events.map(\.id) == ["tmrw1", "tmrw2"])
-    check("agenda empty input → empty",
-          upcomingAgenda(now: agendaNow, events: [], calendar: agendaCal).isEmpty)
+    print("Calendar list:")
     // GET /api/calendar list envelope ({events}) decodes the wire subset.
     let calListJSON = """
     {"events":[{"id":"u1","title":"Offsite","description":null,"startTime":"2026-07-23T01:00:00.000Z",
@@ -999,17 +787,6 @@ func runSelfChecks() async -> Bool {
     } else {
         check("calendar list wire decodes", false)
     }
-
-    print("Card body:")
-    // The expanded card shows the email body inline; whitespace-only bodies
-    // collapse to nil (no empty scroll box), real text is trimmed and passed
-    // through, and an over-long body is capped so one card can't grow unbounded.
-    check("body text passes real content",
-          cardBodyText("Hi,\n\nCan we move to 3pm?\n") == "Hi,\n\nCan we move to 3pm?")
-    check("blank body → nil", cardBodyText("   \n  ") == nil)
-    check("nil body → nil", cardBodyText(nil) == nil)
-    let long = String(repeating: "a", count: 5000)
-    check("over-long body is capped", (cardBodyText(long)?.count ?? 0) <= 4000)
 
     print("Text hygiene:")
     check("decodes the live-observed apostrophe entity",
@@ -1079,14 +856,6 @@ func runSelfChecks() async -> Bool {
                                      from: Data(#"{"reply":"ok"}"#.utf8)))?.eventDraft == nil)
 
     print("Agent activity:")
-    func totals(_ e: Int, _ p: Int, _ r: Int) -> TodayActions.Totals {
-        TodayActions.Totals(executed: e, rejected: r, pending: p, urgent: 0)
-    }
-    check("all-zero day hides the block", agentActivityLine(totals(0, 0, 0)) == nil)
-    check("executed only", agentActivityLine(totals(2, 0, 0)) == "2 done")
-    check("pending only", agentActivityLine(totals(0, 1, 0)) == "1 awaiting approval")
-    check("combined keeps done · pending · declined order",
-          agentActivityLine(totals(2, 1, 3)) == "2 done · 1 awaiting approval · 3 declined")
     let taJSON = """
     {"executed":[],"rejected":[],"urgent":[],"sinceUtc":"2026-07-19T00:00:00Z",
     "pending":[{"id":"p1","toolName":"send_email","summary":"[확인 필요] send_email",
@@ -1159,11 +928,6 @@ func runSelfChecks() async -> Bool {
     }
 
     print("Sections & mode:")
-    check("today section height clamps junk and keeps sane values",
-          AppSettings.resolveTodaySectionHeight("junk") == 240
-          && AppSettings.resolveTodaySectionHeight(50.0) == 120
-          && AppSettings.resolveTodaySectionHeight(9_999.0) == 520
-          && AppSettings.resolveTodaySectionHeight(300.0) == 300)
     check("unknown attention mode decodes as BASIC (fail-closed)",
           AttentionMode(rawValue: "WEIRD") == nil
           && (AttentionMode(rawValue: "AUTO") ?? .basic) == .auto)
@@ -1192,10 +956,6 @@ func runSelfChecks() async -> Bool {
           Tier.sidebarLanes(counts: { [.info: 4, .silent: 91][$0] ?? 0 })
               == Tier.SidebarLanes(
                   primary: [.push, .queue], filed: [.info, .silent], filedTotal: 95))
-    check("section height resolvers clamp junk",
-          AppSettings.resolveInboxSectionHeight("junk") == 620
-          && AppSettings.resolveInboxSectionHeight(10.0) == 180
-          && AppSettings.resolveUpcomingSectionHeight(9_999.0) == 600)
     check("guide teaches the five live lanes",
           Tier.coreOrder == [.push, .meeting, .queue, .info, .silent])
     // A v1 server's summary (no MEETING/INFO keys) must still decode.
@@ -1359,31 +1119,13 @@ func runSelfChecks() async -> Bool {
     check("unbundled run never defers",
           !Entry.shouldDeferToExistingInstance(bundleID: nil, otherInstanceCount: 2))
 
-    print("Summon cycle:")
-    // ⌥⌘K steps UP one size per press — pill, expanded, full — and from full
-    // it dismisses back to rest. Never jumps straight to the big panel.
-    check("nothing on screen → show the pill",
-          TopBarController.summonAction(isVisible: false, state: .collapsed) == .showPill)
-    check("pill → expand",
-          TopBarController.summonAction(isVisible: true, state: .collapsed) == .expand)
-    check("expanded → full",
-          TopBarController.summonAction(isVisible: true, state: .expanded) == .expandFull)
-    check("full → dismiss",
-          TopBarController.summonAction(isVisible: true, state: .full) == .dismissToRest)
-    // A summon draws the pill even in hidden-pill mode (pillVisible=false):
-    // the summon is explicit intent, the setting only governs the resting pill.
-    check("summon draws the pill in hidden mode",
-          TopBarController.shouldDraw(state: .collapsed, pillVisible: false || true))
-    check("resting hidden mode still hides the pill",
-          !TopBarController.shouldDraw(state: .collapsed, pillVisible: false))
-
-    print("Card snooze:")
-    // The card's snooze menu offers the same four options as the reading pane
-    // (one source of truth), each with a concrete future resurface time.
+    print("Snooze options:")
+    // The snooze menus offer the same four options everywhere, each with a
+    // concrete future resurface time.
     check("snooze menu = all four options",
-          PushCardSnooze.options.map(\.rawValue) == ["oneHour", "thisEvening", "tomorrow", "nextWeek"])
+          SnoozeOption.allCases.map(\.rawValue) == ["oneHour", "thisEvening", "tomorrow", "nextWeek"])
     check("snooze menu labels are human",
-          PushCardSnooze.options.map(\.label)
+          SnoozeOption.allCases.map(\.label)
               == [L("snooze.oneHour"), L("snooze.thisEvening"), L("snooze.tomorrow"), L("snooze.nextWeek")])
     check("snooze resurfaces in the future",
           SnoozeOption.oneHour.resurface(from: noonJan1, calendar: cal) > noonJan1)
@@ -1406,7 +1148,7 @@ func runSelfChecks() async -> Bool {
     check("show-all label counts the whole queue", showAllLabel(pendingCount: 2) == "Show all 3")
     check("show-all hidden with an empty queue", showAllLabel(pendingCount: 0) == nil)
 
-    print("Meeting card:")
+    print("Meeting banner plan:")
     // Lead-window planner: surface the FIRST upcoming event whose start is
     // within leadMinutes, once per event id — never one that already started,
     // never twice, never outside the window.
@@ -1423,47 +1165,30 @@ func runSelfChecks() async -> Bool {
     }
     let planNow = ISO8601DateFormatter().date(from: "2026-07-16T09:00:00Z")!
     check("inside the lead window → surfaces",
-          meetingCardPlan(now: planNow, events: [event("m1", minutesAway: 8)],
+          meetingAlertPlan(now: planNow, events: [event("m1", minutesAway: 8)],
                           leadMinutes: 10, shown: [])?.id == "m1")
     check("too early → nil",
-          meetingCardPlan(now: planNow, events: [event("m2", minutesAway: 45)],
+          meetingAlertPlan(now: planNow, events: [event("m2", minutesAway: 45)],
                           leadMinutes: 10, shown: []) == nil)
     check("already started → nil",
-          meetingCardPlan(now: planNow, events: [event("m3", minutesAway: -5)],
+          meetingAlertPlan(now: planNow, events: [event("m3", minutesAway: -5)],
                           leadMinutes: 10, shown: []) == nil)
     check("already shown → nil",
-          meetingCardPlan(now: planNow, events: [event("m4", minutesAway: 8)],
+          meetingAlertPlan(now: planNow, events: [event("m4", minutesAway: 8)],
                           leadMinutes: 10, shown: ["m4"]) == nil)
     check("earliest qualifying event wins",
-          meetingCardPlan(now: planNow, events: [event("m6", minutesAway: 9), event("m5", minutesAway: 4)],
+          meetingAlertPlan(now: planNow, events: [event("m6", minutesAway: 9), event("m5", minutesAway: 4)],
                           leadMinutes: 10, shown: [])?.id == "m5")
     check("all-day events never interrupt", {
         var allDay = event("m7", minutesAway: 5)
         allDay = CalendarEventWire(id: allDay.id, title: allDay.title, startTime: allDay.startTime,
                                    endTime: allDay.endTime, location: nil, meetingLink: nil, allDay: true)
-        return meetingCardPlan(now: planNow, events: [allDay], leadMinutes: 10, shown: []) == nil
+        return meetingAlertPlan(now: planNow, events: [allDay], leadMinutes: 10, shown: []) == nil
     }())
 
-    // Readiness display mapping is fixed vocabulary (server enum).
-    check("readiness labels", readinessLabel("ready") == "Ready"
-          && readinessLabel("watch") == "Watch"
-          && readinessLabel("needs_review") == L("meeting.needsReview")
-          && readinessLabel("???") == "Prep")
-
-    // Prep-pack wire decode (subset the card renders).
-    let packJSON = """
-    {"generatedAt":"2026-07-16T08:55:00.000Z","event":{"id":"m1","title":"Board sync",
-    "description":null,"startTime":"2026-07-16T09:10:00.000Z","endTime":"2026-07-16T10:00:00.000Z",
-    "location":"Zoom","meetingLink":"https://zoom.us/j/1"},"readiness":"watch",
-    "checklist":["Skim the term sheet","Reply to Alex"],"relatedEmails":[],
-    "openTasks":[],"openCommitments":[]}
-    """
-    if let pack = try? JSONDecoder().decode(MeetingPrepPack.self, from: Data(packJSON.utf8)) {
-        check("MeetingPrepPack decodes", pack.readiness == "watch"
-              && pack.checklist.count == 2 && pack.event.meetingLink != nil)
-    } else {
-        check("MeetingPrepPack decodes", false)
-    }
+    check("start times parse with or without fractional seconds",
+          meetingStart("2026-07-16T09:10:00.000Z") != nil && meetingStart("2026-07-16T09:10:00Z") != nil
+          && meetingStart("nope") == nil)
 
     print("Meeting links:")
     // meetingLink is invite data anyone can set. Only an absolute https URL with
@@ -1530,31 +1255,17 @@ func runSelfChecks() async -> Bool {
     check("malformed tag → unknown", UpdateCheck.compare(current: "0.2.2", latestTag: "v1") == .unknown)
     check("dev build → unknown", UpdateCheck.compare(current: "dev", latestTag: "desktop-v9.9.9") == .unknown)
 
-    print("Status item:")
-    check("status line — signed out",
-          StatusItemController.statusLine(signedIn: false, pushCount: 9) == L("bar.menuBar.signedOut"))
-    check("status line — clear inbox",
-          StatusItemController.statusLine(signedIn: true, pushCount: 0) == L("bar.menuBar.clear"))
-    check("status line — push count",
-          StatusItemController.statusLine(signedIn: true, pushCount: 3) == L("bar.menuBar.push", 3))
-    // Exactly one anchor at a time: the pill OR the menu-bar icon, never both,
-    // never neither — hiding the pill is what makes the icon appear.
-    check("menu-bar icon appears when the pill is hidden",
-          StatusItemController.shouldShow(pillVisible: false))
-    check("menu-bar icon absent while the pill is visible",
-          !StatusItemController.shouldShow(pillVisible: true))
-    // Restart is a support tool: hidden until Option turns Quit into it.
-    // Restart is a support tool: listed only when the menu opens with Option
-    // held. Pure flag check (the harness blocks the main thread, so it never
-    // builds AppKit menus).
-    check("Restart is listed only with Option held",
+    print("Support tools:")
+    // Restart is a support tool: listed only when the App & support
+    // disclosure (Settings ▸ General) is Option-clicked. Pure flag check.
+    check("Restart is revealed only with Option held",
           MaintenanceDisclosure.isRevealGesture([.option])
           && MaintenanceDisclosure.isRevealGesture([.option, .command])
           && !MaintenanceDisclosure.isRevealGesture([])
           && !MaintenanceDisclosure.isRevealGesture([.command]))
     check("accessibility action reveals support tools",
           MaintenanceDisclosure.revealed == .init(expanded: true, supportTools: true))
-    // Same rule in the sidebars: a plain click never shows Restart /
+    // A plain click never shows Restart /
     // connection status; an Option-click does, and collapsing hides them.
     let closed = MaintenanceDisclosure.State(expanded: false, supportTools: false)
     let plain = MaintenanceDisclosure.toggled(closed, optionHeld: false)
@@ -1613,22 +1324,6 @@ func runSelfChecks() async -> Bool {
     check("plain text untouched", String(chatMarkdown("hello").characters) == "hello")
     check("newlines preserved", String(chatMarkdown("a\nb").characters) == "a\nb")
 
-    print("Glass mask:")
-    // The stretchable blur mask must stay non-degenerate on EVERY surface:
-    // capInsets summing to ≥ the masked dimension breaks NSImage stretching
-    // and the square blur backdrop bleeds past the corner (pill capsule,
-    // dogfood zoom 2026-07-20).
-    for state in [BarState.collapsed, .expanded, .full] {
-        let mask = NSImage.roundedCornerMask(radius: TopBarMetrics.corner(for: state))
-        let minSide = min(TopBarMetrics.size(for: state).width, TopBarMetrics.size(for: state).height)
-        check("mask caps fit \(state) surface",
-              mask.capInsets.top + mask.capInsets.bottom < minSide
-              && mask.capInsets.left + mask.capInsets.right < minSide)
-    }
-    let cardMask = NSImage.roundedCornerMask(radius: PushCardMetrics.corner)
-    check("mask caps fit PushCard",
-          cardMask.capInsets.top + cardMask.capInsets.bottom < PushCardMetrics.compact.height)
-
     print("Automation settings:")
     // Decoding must survive an older desktop build meeting a newer server (and
     // vice versa): every field absent has to land on the server's own defaults,
@@ -1685,7 +1380,7 @@ func runSelfChecks() async -> Bool {
     check("urgent mail off leaves meetings alone",
           mutedMail.allowsInterrupt(for: .meeting))
     let mutedMeeting = AutomationSettings(notifyMeeting: false)
-    check("meetings off suppresses the meeting card",
+    check("meetings off suppresses the meeting banner",
           !mutedMeeting.allowsInterrupt(for: .meeting))
     check("meetings off leaves urgent mail alone",
           mutedMeeting.allowsInterrupt(for: .emailUrgent))
@@ -1731,32 +1426,9 @@ func runSelfChecks() async -> Bool {
           == (start: "22:00", end: "08:00"))
 
     print("Activation policy:")
-    // Resting must stay out of Cmd+Tab and the Dock — an ambient firewall that
-    // shows up in the app switcher is no longer ambient. Everything the user
-    // deliberately opened must be in it, or there is no way to switch back.
-    check("collapsed stays out of Cmd+Tab",
-          TopBarController.activationPolicy(for: .collapsed) == .accessory)
-    check("expanded joins Cmd+Tab",
-          TopBarController.activationPolicy(for: .expanded) == .regular)
-    check("full joins Cmd+Tab",
-          TopBarController.activationPolicy(for: .full) == .regular)
-
-    // Opt-in escape hatch: people who expect Cmd+Tab to reach every running app
-    // can have that, without changing what Klorn is by default. The default
-    // stays ambient — the checks above are the showInDock=false path.
-    check("the default is unchanged: resting is still ambient",
-          TopBarController.activationPolicy(for: .collapsed, showInDock: false) == .accessory)
-    check("showInDock puts the resting app in Cmd+Tab and the Dock",
-          TopBarController.activationPolicy(for: .collapsed, showInDock: true) == .regular)
-    check("showInDock does not change an already-open panel",
-          TopBarController.activationPolicy(for: .expanded, showInDock: true) == .regular
-          && TopBarController.activationPolicy(for: .full, showInDock: true) == .regular)
-    check("show-in-Dock defaults to off when nothing is stored",
-          !AppSettings.resolveShowInDock(nil))
-    check("show-in-Dock honors a stored true",
-          AppSettings.resolveShowInDock(true))
-    check("show-in-Dock ignores a non-bool",
-          !AppSettings.resolveShowInDock("yes"))
+    // Klorn is a standard app since the 2026-10-15 founder decision: always
+    // in the Dock and Cmd+Tab. Pinned in SelfCheckNoPill.swift as well.
+    check("activation policy is always .regular", AppRules.activationPolicy == .regular)
 
     print("One way out:")
     // Both panels offered sign-out twice: once in the header, once under the
@@ -1772,15 +1444,14 @@ func runSelfChecks() async -> Bool {
               let text = try? String(contentsOf: url, encoding: .utf8) else { return total }
         return total + text.components(separatedBy: "actions.onSignOut()").count - 1
     }
-    // One per surface that has an account area: the expanded panel's account
-    // column and the full sidebar (via actions), plus the Settings window's
-    // Accounts tab, which has no TopBarActions and calls the model directly.
-    // None in a header.
+    // The Settings window's Accounts tab is the one account area left (the
+    // expanded panel's account column went with the panel, 2026-10-15); it
+    // calls the model directly, so no shell action signs out. None in a header.
     let settingsSignOut = (try? String(
         contentsOf: sourceDir.appendingPathComponent("PreferencesView.swift"), encoding: .utf8))
         .map { $0.components(separatedBy: "model.signOut()").count - 1 } ?? 0
     check("sign-out is offered once per surface, not twice",
-          signOutCallSites == 2 && settingsSignOut == 1)
+          signOutCallSites == 0 && settingsSignOut == 1)
     let headerSignOut = swiftFiles.contains { url in
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return false }
         return text.contains("Button(L(\"auth.signOut\")")
@@ -1839,6 +1510,9 @@ func runSelfChecks() async -> Bool {
     print("Device calendars (C6):")
     for (name, ok) in await deviceCalendarSelfChecks(sourceDir: sourceDir) { check(name, ok) }
 
+    print("Drive import (D7):")
+    for (name, ok) in await driveImportSelfChecks(sourceDir: sourceDir) { check(name, ok) }
+
     print("Token store:")
     for (name, ok) in tokenStoreSelfChecks(sourceDir: sourceDir) { check("token store — \(name)", ok) }
 
@@ -1847,6 +1521,14 @@ func runSelfChecks() async -> Bool {
 
     print("Compose window and sheets (M5):")
     for (name, ok) in await windowSelfChecks(sourceDir: sourceDir) { check(name, ok) }
+    print("M8 follow-ups:")
+    for (name, ok) in await m8SelfChecks(sourceDir: sourceDir) { check(name, ok) }
+    print("No pill — standard app + PUSH banners (2026-10-15):")
+    for (name, ok) in await noPillSelfChecks(sourceDir: sourceDir) { check(name, ok) }
+    print("Files and team free-time (P12):")
+    for (name, ok) in await filesSelfChecks(sourceDir: sourceDir) { check(name, ok) }
+    print("Account-link hand-off (link binding):")
+    for (name, ok) in await linkHandoffSelfChecks(sourceDir: sourceDir) { check(name, ok) }
 
     print("States and first launch (M6):")
     for (name, ok) in await stateSelfChecks(sourceDir: sourceDir) { check(name, ok) }
@@ -1879,19 +1561,18 @@ func runSelfChecks() async -> Bool {
     // language and screen that owns the bad key, so it must be checked here
     // rather than found in dogfood.
     check("integer formats render", [
-        L("bar.push", 3), L("bar.more", 2), L("commitments.a11y", 4),
-        L("aiUsage.a11y", 7, 20), L("bar.menuBar.push", 9),
+        L("commitments.a11y", 4), L("aiUsage.a11y", 7, 20), L("push.announce", 9),
         L("engagement.repliedTimes", 5), L("waiting.days", 3), L("waiting.hint", 2),
         L("deviceCalendars.count", 3),
     ].allSatisfy { $0.contains(where: \.isNumber) })
     check("string formats render", [
-        L("today.a11y", "x"), L("briefing.a11y", "x"), L("commitments.markDone.a11y", "x"),
+        L("briefing.a11y", "x"), L("commitments.markDone.a11y", "x"),
         L("commitments.dismiss.a11y", "x"), L("calendar.join.a11y", "x"),
         L("calendar.proposed.a11y", "x"), L("mail.filterByInbox.a11y", "x"),
         L("mail.inbox.a11y", "x"), L("mail.searchResult.a11y", "x", "y"),
         L("mail.snooze.a11y", "x"), L("mail.dismiss.a11y", "x"),
         L("mail.changeTier.a11y", "x", "y"), L("mail.moveTo", "x", "y"), L("mail.whyTier", "x", "y"),
-        L("reading.replyTo", "x"), L("push.sendReply.a11y", "x", "y"),
+        L("reading.replyTo", "x"),
         L("prefs.updates.get", "x"), L("prefs.updates.upToDate", "x"),
         L("prefs.shortcut.change.a11y", "x"), L("prefs.infoRow.a11y", "x", "y"),
         L("engagement.combined.a11y", "x", "y"), L("proposals.row.a11y", "x", "y"),
@@ -2176,10 +1857,10 @@ func runSelfChecks() async -> Bool {
     // and windowDidResize re-clamps whatever still resizes it.
     let hostSizingPinned = lineOffenders { $0.contains("host.sizingOptions = []") }
     check("SwiftUI content size never drives the window frame",
-          hostSizingPinned.contains("TopBarController.swift"))
-    let resizeHookPresent = lineOffenders { $0.contains("func windowDidResize") }
-    check("windowDidResize re-clamp hook is wired",
-          resizeHookPresent.contains("TopBarController.swift"))
+          hostSizingPinned.contains("MainWindow.swift"))
+    let screenClamped = lineOffenders { $0.contains("WindowGeometry.clamped(window.frame, into: visible)") }
+    check("the main and compose windows are clamped on screen when they open",
+          screenClamped.contains("MainWindow.swift") && screenClamped.contains("ComposeWindow.swift"))
 
     // Overflow must never eat the header: the root pins content to the TOP
     // (a centered NSHostingView/ZStack clipped the header first when the
@@ -2188,12 +1869,11 @@ func runSelfChecks() async -> Bool {
         $0.contains("maxHeight: .infinity, alignment: .top")
     }
     check("root content pins to the top (overflow clips at the bottom)",
-          rootTopPinned.contains("TopBarRoot.swift"))
-    let sidebarScrolls = lineOffenders {
-        $0.contains("minHeight: geo.size.height, alignment: .top")
-    }
+          rootTopPinned.contains("MainWindow.swift"))
     check("sidebar scrolls instead of clipping when the window is short",
-          sidebarScrolls.contains("Sidebar.swift"))
+          (swiftFiles.first { $0.lastPathComponent == "NavSidebar.swift" }
+              .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? "")
+              .contains("OffscreenFriendlyScroll {"))
 
     // Mail HTML is authored against a white page; the reading surface must
     // pin one regardless of app theme (dark mode ghost-text recording,
@@ -2229,8 +1909,6 @@ func runSelfChecks() async -> Bool {
     check("Settings window fits the smallest supported display",
           SettingsMetrics.height + SettingsMetrics.chromeHeight
               <= SettingsMetrics.smallestVisibleHeight)
-    check("an open Settings window keeps the app in Cmd+Tab",
-          TopBarController.activationPolicy(for: .collapsed, settingsOpen: true) == .regular)
     check("only a real close clears the Settings-open flag",
           !SettingsWindowEvent.willClose.openState(current: true)
           && SettingsWindowEvent.becameKey.openState(current: false)
@@ -2243,8 +1921,6 @@ func runSelfChecks() async -> Bool {
           lineOffenders { $0.contains("com_apple_SwiftUI_Settings_window") }.isEmpty
           && !lineOffenders { $0.contains(".onDisappear { model.settingsWindowOpen") }
               .contains("SettingsWindow.swift"))
-    check("closing Settings returns the resting app to ambient",
-          TopBarController.activationPolicy(for: .collapsed, settingsOpen: false) == .accessory)
     // Source pins: the overlay path is gone and the scene is real.
     check("Preferences is no longer an in-window overlay",
           lineOffenders { $0.contains("showPreferences") }.isEmpty
@@ -2359,86 +2035,36 @@ func runSelfChecks() async -> Bool {
           && !ListMode.proposals.isMailFamily && !ListMode.calendar.isMailFamily)
 
     print("Main window (M2):")
-    check("macMainWindow defaults OFF and reads only a stored Bool",
-          !AppSettings.resolveMacMainWindow(nil)
-          && AppSettings.resolveMacMainWindow(true)
-          && !AppSettings.resolveMacMainWindow(false)
-          && !AppSettings.resolveMacMainWindow("YES"))
-    check("flag on: only the full state routes to the main window",
-          TopBarController.routesToMainWindow(.full, macMainWindow: true)
-          && !TopBarController.routesToMainWindow(.expanded, macMainWindow: true)
-          && !TopBarController.routesToMainWindow(.collapsed, macMainWindow: true))
-    check("flag off: nothing routes to the main window",
-          [BarState.collapsed, .expanded, .full]
-              .allSatisfy { !TopBarController.routesToMainWindow($0, macMainWindow: false) })
-    check("an open main window makes the app regular (Dock + Cmd+Tab)",
-          TopBarController.activationPolicy(for: .collapsed, mainWindowOpen: true) == .regular)
-    check("closing the main window returns the resting app to ambient",
-          TopBarController.activationPolicy(for: .collapsed, mainWindowOpen: false) == .accessory)
-    check("closing the main window while Settings is open stays regular",
-          TopBarController.activationPolicy(
-              for: .collapsed, settingsOpen: true, mainWindowOpen: false) == .regular
-          && TopBarController.activationPolicy(
-              for: .collapsed, settingsOpen: false, mainWindowOpen: true) == .regular)
-    check("main window closed: policy is exactly the pre-M2 rule",
-          [BarState.collapsed, .expanded, .full].allSatisfy { state in
-              [false, true].allSatisfy { dock in
-                  [false, true].allSatisfy { settings in
-                      TopBarController.activationPolicy(
-                          for: state, showInDock: dock, settingsOpen: settings, mainWindowOpen: false)
-                          == TopBarController.activationPolicy(
-                              for: state, showInDock: dock, settingsOpen: settings)
-                  }
-              }
-          })
-    check("mail surface is key: bar only in its full state, main window only while open",
-          MenuRules.mailSurfaceIsKey(
-              barPanelIsKey: true, barFullOpen: true, mainWindowIsKey: false, mainWindowOpen: false)
-          && MenuRules.mailSurfaceIsKey(
-              barPanelIsKey: false, barFullOpen: false, mainWindowIsKey: true, mainWindowOpen: true)
-          && !MenuRules.mailSurfaceIsKey(
-              barPanelIsKey: true, barFullOpen: false, mainWindowIsKey: false, mainWindowOpen: false)
-          && !MenuRules.mailSurfaceIsKey(
-              barPanelIsKey: false, barFullOpen: false, mainWindowIsKey: true, mainWindowOpen: false)
-          && !MenuRules.mailSurfaceIsKey(
-              barPanelIsKey: false, barFullOpen: true, mainWindowIsKey: false, mainWindowOpen: true))
+    check("mail surface is key: only the main window, only while open",
+          MenuRules.mailSurfaceIsKey(mainWindowIsKey: true, mainWindowOpen: true)
+          && !MenuRules.mailSurfaceIsKey(mainWindowIsKey: true, mainWindowOpen: false)
+          && !MenuRules.mailSurfaceIsKey(mainWindowIsKey: false, mainWindowOpen: true)
+          && !MenuRules.mailSurfaceIsKey(mainWindowIsKey: false, mainWindowOpen: false))
     var mainKey = signedInFull
-    mainKey.mailSurfaceIsKey = MenuRules.mailSurfaceIsKey(
-        barPanelIsKey: false, barFullOpen: false, mainWindowIsKey: true, mainWindowOpen: true)
+    mainKey.mailSurfaceIsKey = MenuRules.mailSurfaceIsKey(mainWindowIsKey: true, mainWindowOpen: true)
     check("message commands work against a key main window",
           MenuRules.isEnabled(.reply, in: mainKey) && MenuRules.isEnabled(.dismiss, in: mainKey)
           && MenuRules.isEnabled(.moveTo(.push), in: mainKey))
-    check("flag off: an open request never creates the main window",
-          !MainWindowRules.mayOpen(macMainWindow: false) && MainWindowRules.mayOpen(macMainWindow: true))
-    check("beta toggle: hidden until Option, visible while on",
-          !MainWindowRules.showsBetaToggle(optionHeld: false, macMainWindow: false)
-          && MainWindowRules.showsBetaToggle(optionHeld: true, macMainWindow: false)
-          && MainWindowRules.showsBetaToggle(optionHeld: false, macMainWindow: true))
     let titleBarHeight: CGFloat = 28
     check("main window floor holds the full view and fits the smallest display",
-          MainWindowRules.minSize == TopBarMetrics.fullMin
+          MainWindowRules.minSize == NSSize(width: 880, height: 520)
           && MainWindowRules.minSize.height + titleBarHeight <= SettingsMetrics.smallestVisibleHeight
           && MainWindowRules.defaultSize.width >= MainWindowRules.minSize.width
           && MainWindowRules.defaultSize.height >= MainWindowRules.minSize.height
           && MainWindowRules.defaultSize.width <= 1280
           && MainWindowRules.defaultSize.height + titleBarHeight <= SettingsMetrics.smallestVisibleHeight)
-    check("main-window strings are localized",
-          ["prefs.mainWindow", "prefs.mainWindow.detail"].allSatisfy { L($0) != $0 })
     let mainWindowSource = swiftFiles.first { $0.lastPathComponent == "MainWindow.swift" }
         .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
-    // The window part of the file, up to the Settings toggle (whose key
-    // monitor legitimately uses view lifecycle).
-    let windowPart = mainWindowSource.components(separatedBy: "struct MainWindowBetaToggle").first ?? ""
-    let openBody = windowPart.components(separatedBy: "func open() {").dropFirst().first?
+    let windowPart = mainWindowSource
+    let openBody = windowPart.components(separatedBy: "func open(activate: Bool) {").dropFirst().first?
         .components(separatedBy: "func close()").first ?? ""
     check("no SwiftUI Window scene: nothing is instantiated at launch",
           lineOffenders { $0.contains("Window(\"") || $0.contains("WindowGroup") }.isEmpty)
-    check("the main window is created lazily, only past the flag guard in open()",
+    check("the main window is created lazily, in open() only",
           windowPart.components(separatedBy: "NSWindow(").count == 2
           && windowPart.components(separatedBy: "makeWindow()").count == 3  // decl + one call
           && openBody.contains("makeWindow()")
-          && (openBody.range(of: "mayOpen(")?.lowerBound ?? openBody.endIndex)
-              < (openBody.range(of: "makeWindow()")?.lowerBound ?? openBody.startIndex))
+          && !windowPart.contains("mayOpen("))
     check("the main window is reused and remembers its frame",
           windowPart.contains("isReleasedWhenClosed = false")
           && windowPart.contains("setFrameAutosaveName(MainWindowRules.frameAutosaveName)")
@@ -2458,10 +2084,10 @@ func runSelfChecks() async -> Bool {
         .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
     check("closing the main window never quits the app",
           appSource.contains("func applicationShouldTerminateAfterLastWindowClosed")
-          && appSource.contains("-> Bool {\n        false\n    }"))
-    check("BarState.full still exists until M8",
-          lineOffenders { $0.contains("enum BarState { case collapsed, expanded, full }") }
-              .contains("TopBarRoot.swift"))
+          && appSource.contains("-> Bool {\n        AppRules.terminatesAfterLastWindowClosed\n    }")
+          && !AppRules.terminatesAfterLastWindowClosed)
+    check("no bar state remains (pill and panel removed 2026-10-15)",
+          lineOffenders { $0.contains("enum BarState") || $0.contains("setState(.full)") }.isEmpty)
 
     print("Mail list keyboard (M3):")
     // Every combination of the inputs the decision reads, for every key.
@@ -2629,7 +2255,13 @@ func runSelfChecks() async -> Bool {
         swiftFiles.first { $0.lastPathComponent == name }
             .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
     }
-    let fullViewSource = source(named: "FullView.swift")
+    // "Get update" must install in place; the release page is only
+    // SelfUpdate's fallback (0.4.80105 shipped a button that just opened it).
+    let prefsSource = source(named: "PreferencesView.swift")
+    check("Settings update button runs SelfUpdate",
+          prefsSource.contains("SelfUpdate.run(version: version)")
+          && !prefsSource.contains("UpdateCheck.openReleasePage()"))
+    let mailSectionSource = source(named: "MailSection.swift")
     // FullList's own source: the struct is the only declaration in its file.
     let fullListFile = source(named: "FullList.swift")
     let fullListSource = fullListFile.components(separatedBy: "struct FullList: View").dropFirst().first ?? ""
@@ -2646,9 +2278,9 @@ func runSelfChecks() async -> Bool {
           lineOffenders { $0.contains("List(selection:") }.isEmpty
           && fullListSource.contains("ScrollViewReader") && fullListSource.contains("LazyVStack(")
           && fullListSource.contains("proxy.scrollTo("))
-    check("the key zone is per window: owned by FullView, not the shared model",
+    check("the key zone is per window: owned by MailSection, not the shared model",
           lineOffenders { $0.contains("mailKeyZone") }.isEmpty
-          && fullViewSource.contains("@State private var keyZone: MailKeyZone")
+          && mailSectionSource.contains("@State private var keyZone: MailKeyZone")
           && fullListSource.contains("@Binding var keyZone: MailKeyZone"))
     let listKeysSource = swiftFiles.first { $0.lastPathComponent == "ListKeys.swift" }
         .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""

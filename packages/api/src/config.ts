@@ -241,8 +241,8 @@ export function bulkUnsubscribeEnabled(): boolean {
 // off: every /api/drive route answers Fastify's default 404 (darkRouteGate), and
 // every reader hides every DriveFile row (drive/drive-scope.ts), whatever a
 // connector's own flag says. On, a row is visible only while its provider's
-// connector flag is on too (DRIVE_PROVIDER_ENABLED); D2 ships no connector, so
-// the list is empty until D3, D5 or D6 registers one. Read at request time
+// connector flag is on too (DRIVE_PROVIDER_ENABLED): KLORN (D3) and GOOGLE (D5)
+// are registered, ONEDRIVE (D6) is not yet. Read at request time
 // with the same lenient truthy parse, so a flip needs no redeploy.
 export function driveEnabled(): boolean {
   return ["true", "1", "yes", "on"].includes(
@@ -261,6 +261,46 @@ export function driveEnabled(): boolean {
 export function klornDriveEnabled(): boolean {
   return ["true", "1", "yes", "on"].includes(
     (process.env.KLORN_DRIVE_ENABLED ?? "").trim().toLowerCase(),
+  );
+}
+// The Google Drive connector — step D5 of docs/providers/unified-platform-plan.md
+// (D5b: link and unlink a Google account for its picked files, drive.file only).
+// OFF by default (repo doctrine), and flipping it waits on Google's verification
+// of drive.file (the plan's "Before the flip"). It is live only while
+// DRIVE_ENABLED is on too (drive/drive-scope.ts): until then the
+// /api/drive/google routes answer Fastify's default 404 (darkRouteGate), every
+// GOOGLE row is hidden from the drive, and a link callback still in flight
+// stores nothing and exchanges no code. Read at request time with the same
+// lenient truthy parse, so a flip needs no redeploy.
+export function googleDriveEnabled(): boolean {
+  return ["true", "1", "yes", "on"].includes(
+    (process.env.GOOGLE_DRIVE_ENABLED ?? "").trim().toLowerCase(),
+  );
+}
+
+// The Google Picker's two public values (D5c): the browser API key, restricted
+// in the Cloud console to the web origin's referrers and the Picker API, and the
+// Cloud project NUMBER (`setAppId`, which ties picked files to this project's
+// drive.file grant). Neither is a secret, but both stay server-side: POST
+// /api/drive/google/accounts/:id/picker-session hands them out, so a web bundle
+// built without the Picker holds neither. Either unset answers 503
+// `picker-not-configured`. Read at request time.
+export function googlePickerConfig(): { developerKey: string; appId: string } | null {
+  const developerKey = (process.env.GOOGLE_PICKER_API_KEY ?? "").trim();
+  const appId = (process.env.GOOGLE_CLOUD_PROJECT_NUMBER ?? "").trim();
+  return developerKey !== "" && appId !== "" ? { developerKey, appId } : null;
+}
+// Drive file summaries and summary search — step D4 of
+// docs/providers/unified-platform-plan.md. OFF by default (repo doctrine). It
+// acts only while DRIVE_ENABLED is on too, and only on files whose provider is
+// visible (for a Klorn file: KLORN_DRIVE_ENABLED and OBJECT_STORAGE_ENABLED).
+// While off: no upload enqueues a summary, the summary job claims nothing, POST
+// /api/drive/files/:id/summarize answers Fastify's default 404, the file
+// response carries no `summary` and the search matches names only. Read at
+// request and job time with the same lenient truthy parse.
+export function driveSummariesEnabled(): boolean {
+  return ["true", "1", "yes", "on"].includes(
+    (process.env.DRIVE_SUMMARIES_ENABLED ?? "").trim().toLowerCase(),
   );
 }
 // IMAP flag actions (read, unread, star) for Naver and iCloud — step B1 of
@@ -327,6 +367,20 @@ export function linkedCalendarSyncEnabled(): boolean {
 export function calendarCancellationSyncEnabled(): boolean {
   return ["true", "1", "yes", "on"].includes(
     (process.env.CALENDAR_CANCELLATION_SYNC_ENABLED ?? "").trim().toLowerCase(),
+  );
+}
+// Google invitations the user declined. OFF by default (repo doctrine). While
+// unset/false a sync writes a row for a declined invitation like any event. When
+// on, a sync writes no row for it and removes the row an earlier sync wrote,
+// resolving its open attention items (the same removal as C2b's), so the briefing,
+// the reminders and the conflict checks stop showing meetings the user said no to.
+// Rows only: a live Google read (listEvents callers) still returns them. Google
+// only: Outlook and CalDAV do not report the user's answer yet. Read at sync time
+// with the same lenient truthy parse. Turning it off lets the next sync write the
+// rows again.
+export function calendarHideDeclinedEnabled(): boolean {
+  return ["true", "1", "yes", "on"].includes(
+    (process.env.CALENDAR_HIDE_DECLINED_ENABLED ?? "").trim().toLowerCase(),
   );
 }
 // Archive, trash and their inverses for Naver and iCloud over IMAP MOVE — step B2

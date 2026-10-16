@@ -6,10 +6,10 @@ import SwiftUI
 enum MainWindowRules {
     /// NSWindow frame autosave name: position and size survive relaunch.
     static let frameAutosaveName = "KlornMainWindow"
-    /// The shell's floor (sidebar 220 + list 420 + a readable reading pane;
-    /// the same numbers as the bar's full view), so the window can never be
-    /// dragged into clipping it.
-    static let minSize = TopBarMetrics.fullMin
+    /// The shell's floor (sidebar 220 + list 420 + a readable ~240pt reading
+    /// pane), so the window can never be dragged into clipping it. 880 keeps
+    /// edge-drag alive on fitted sizes ("can't shrink it", 2026-08-07).
+    static let minSize = NSSize(width: 880, height: 520)
     /// First-open size before any autosaved frame exists. Fits a 1280×800
     /// display's visible area (minus menu bar, Dock and title bar).
     static let defaultSize = NSSize(width: 1180, height: 640)
@@ -34,25 +34,13 @@ enum MainWindowRules {
     static func contentSize(usable: NSSize, titlebarInset: CGFloat) -> NSSize {
         NSSize(width: usable.width, height: usable.height + titlebarInset)
     }
-
-    /// Whether an open request may create (or show) the window. With the
-    /// flag off no window object is ever made, so flag-off is unchanged.
-    static func mayOpen(macMainWindow: Bool) -> Bool {
-        macMainWindow
-    }
-
-    /// Settings ▸ General shows the beta toggle while Option is held, and
-    /// always once it is on, so it can be turned back off.
-    static func showsBetaToggle(optionHeld: Bool, macMainWindow: Bool) -> Bool {
-        optionHeld || macMainWindow
-    }
 }
 
 /// The main window's content: the five-item shell (M4b). Actions come from
-/// the bar controller, which owns every full-view action today.
+/// the window router (`WindowRouter.makeActions()`).
 struct MainWindowRoot: View {
     let model: AppModel
-    let actions: TopBarActions
+    let actions: ShellActions
     /// Tells the controller the sheet the model wants has changed (M5).
     var onSheetChange: () -> Void = {}
 
@@ -68,17 +56,18 @@ struct MainWindowRoot: View {
 }
 
 /// Owns the standard main window: a plain AppKit NSWindow hosting the full
-/// view, created lazily on the first open request while `macMainWindow` is
-/// on and reused afterwards. There is no SwiftUI `Window` scene, so nothing
-/// is instantiated at launch and the flag-off app never has this window.
+/// view, created lazily on the first open request and reused afterwards.
+/// Since the pill and the expanded panel were removed (founder decision
+/// 2026-10-15) it is Klorn's only main surface. Closing it (⌘W, red button)
+/// keeps the app running — the poll loop and the PUSH banners live on.
 ///
 /// Open/closed and key state come from the window's own delegate callbacks
 /// (shown → open, willClose → closed), never from view lifecycle.
 @MainActor
-final class MainWindowController: NSObject, NSWindowDelegate {
+final class MainWindowController: NSObject, NSWindowDelegate, MainWindowPresenting {
     private let model: AppModel
-    /// FullView actions for the window; wired by the AppDelegate to the bar.
-    var actionsProvider: (() -> TopBarActions?)?
+    /// The shell's actions for the window; wired by the AppDelegate to the router.
+    var actionsProvider: (() -> ShellActions?)?
     private(set) var window: NSWindow?
     /// The attached sheet (M5) and which one it is.
     private var sheetWindow: NSWindow?
@@ -88,18 +77,35 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         self.model = model
     }
 
-    /// Open the main window, or bring the open one forward.
-    func open() {
-        guard MainWindowRules.mayOpen(macMainWindow: model.settings.macMainWindow) else { return }
+    /// The window is on screen, key, and Klorn is the active app — what
+    /// ⌥⌘K treats as "already frontmost" (it hides the app then).
+    var isFrontmost: Bool {
+        guard let window else { return false }
+        return NSApp.isActive && window.isVisible && window.isKeyWindow && !window.isMiniaturized
+    }
+
+    /// Open the main window, or bring the open one forward. `activate`
+    /// false (a launch at login) shows it without taking focus.
+    func open(activate: Bool) {
         guard let window = window ?? makeWindow() else {
-            Log.app.error("main window: no full-view actions to host")
+            Log.app.error("main window: no shell actions to host")
             return
         }
-        // Explicit user command, so take focus outright (cooperative
-        // activate() is refused when not tied to the current input event).
-        NSApp.activate(ignoringOtherApps: true)
         if window.isMiniaturized { window.deminiaturize(nil) }
-        window.makeKeyAndOrderFront(nil)
+        if activate {
+            // Explicit user command, so take focus outright (cooperative
+            // activate() is refused when not tied to the current input event).
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            // The user opened Klorn: now the banner permission may be asked
+            // (a login launch's unfocused window never gets here).
+            model.windowShownByUser = true
+            Task { await model.requestNotificationPermissionIfNeeded() }
+        } else {
+            window.orderFront(nil)
+        }
+        // Fresh-release discovery when the user is looking (15-min debounce).
+        model.checkForUpdateOnWindowOpen()
         model.mainWindowOpen = true
         model.mainWindowIsKey = window.isKeyWindow
         // A sheet asked for while the window was closed shows now.
@@ -132,7 +138,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         window.beginSheet(sheet)
     }
 
-    /// Close the main window (header ✕ / "Smaller"); willClose does the rest.
+    /// Close the main window; willClose does the rest.
     func close() {
         window?.close()
     }
@@ -201,7 +207,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     /// not leave the title bar unreachable (clipping lessons, 2026-08-20).
     private func clampOnScreen(_ window: NSWindow) {
         guard let visible = (window.screen ?? NSScreen.main)?.visibleFrame else { return }
-        let clamped = KeyablePanel.clamped(window.frame, into: visible)
+        let clamped = WindowGeometry.clamped(window.frame, into: visible)
         if clamped != window.frame { window.setFrame(clamped, display: true) }
     }
 }
@@ -213,43 +219,5 @@ private final class SheetWindow: NSWindow {
 
     override func cancelOperation(_ sender: Any?) {
         onCancel?()
-    }
-}
-
-/// Settings ▸ General: the hidden switch for the main-window beta. Revealed
-/// while Option is held (the macOS convention for advanced items), and kept
-/// visible once on so it can be turned back off. The same switch is
-/// `defaults write ai.klorn.desktop macMainWindow -bool YES`.
-struct MainWindowBetaToggle: View {
-    @Bindable var settings: AppSettings
-    @State private var optionHeld = NSEvent.modifierFlags.contains(.option)
-    @State private var monitor: Any?
-
-    var body: some View {
-        Group {
-            if MainWindowRules.showsBetaToggle(
-                optionHeld: optionHeld, macMainWindow: settings.macMainWindow)
-            {
-                Toggle(isOn: $settings.macMainWindow) {
-                    Text(L("prefs.mainWindow")).foregroundStyle(Theme.text)
-                }
-                .toggleStyle(.switch).tint(Theme.accent)
-                Text(L("prefs.mainWindow.detail"))
-                    .font(.caption).foregroundStyle(Theme.textDim)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        // A key-modifier monitor, not window tracking: view lifecycle is
-        // the right scope for it.
-        .onAppear {
-            monitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
-                optionHeld = event.modifierFlags.contains(.option)
-                return event
-            }
-        }
-        .onDisappear {
-            if let monitor { NSEvent.removeMonitor(monitor) }
-            monitor = nil
-        }
     }
 }

@@ -3,10 +3,11 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useAuth } from "../lib/auth";
-import { ASSISTANT_CHAT, landingStep, TODAY_HOME, takeLegacyLanding } from "../lib/home";
+import { ASSISTANT_CHAT, homePath, landingStep, TODAY_HOME, takeLegacyLanding } from "../lib/home";
 import { useT } from "../lib/i18n";
 import AssistantDock from "./assistant-dock";
 import BottomTabs from "./bottom-tabs";
+import IosInstallHint from "./ios-install-hint";
 import Sidebar from "./sidebar";
 
 const NO_SIDEBAR_ROUTES = [
@@ -29,6 +30,7 @@ const APP_SHELL_ROUTES = [
   "/calendar",
   "/chat",
   "/email",
+  "/files",
   "/graph",
   "/inbox",
   "/settings",
@@ -53,6 +55,7 @@ function currentSectionLabelKey(pathname: string, unified: boolean): string {
   if (pathname === "/graph" || pathname.startsWith("/graph/")) return "nav.graph";
   if (pathname === "/email" || pathname.startsWith("/email/")) return "nav.mail";
   if (pathname === "/calendar" || pathname.startsWith("/calendar/")) return "nav.calendar";
+  if (pathname === "/files" || pathname.startsWith("/files/")) return "nav.files";
   if (pathname === "/briefing" || pathname.startsWith("/briefing/")) return "nav.briefing";
   if (pathname === "/chat" || pathname.startsWith("/chat/")) return "nav.assistant";
   if (pathname === "/billing" || pathname.startsWith("/billing/")) return "nav.billing";
@@ -89,7 +92,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   if (loading) {
-    return <SessionTransition label="Checking session" />;
+    return <SessionTransition label={t("appShell.checkingSession")} />;
   }
 
   if (!user) {
@@ -105,7 +108,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         href="#main"
         className="sr-only rounded-md bg-accent-solid px-4 py-2 text-sm font-semibold text-accent-solid-ink focus-visible:not-sr-only focus-visible:absolute focus-visible:left-4 focus-visible:top-4 focus-visible:z-50"
       >
-        Skip to content
+        {t("appShell.skipToContent")}
       </a>
       <Sidebar />
       <div className="relative flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -128,6 +131,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           tabIndex={-1}
           className="relative z-10 flex-1 overflow-y-auto pb-[calc(62px+env(safe-area-inset-bottom))] md:pb-safe focus:outline-none"
         >
+          {/* Inline, so it pushes content down rather than covering it; only on
+              the home screen and Settings, where installing is on-topic. */}
+          {(pathname === homePath(user) || pathname.startsWith("/settings")) && <IosInstallHint />}
           {children}
         </main>
         <BottomTabs />

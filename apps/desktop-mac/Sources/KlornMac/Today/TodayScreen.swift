@@ -6,7 +6,7 @@ import SwiftUI
 /// nothing of its own.
 struct TodayScreen: View {
     @Environment(AppModel.self) private var model
-    let actions: TopBarActions
+    let actions: ShellActions
     /// Injectable so the offscreen renderer shows a fixed date.
     var now = Date()
 
@@ -65,6 +65,11 @@ struct TodayScreen: View {
             .frame(maxWidth: .infinity, alignment: .topLeading)
             VStack(alignment: .leading, spacing: Theme.s4) {
                 TodayCalendarPanel()
+                // P12: each only with its server flag (and, for free time, a saved team).
+                if FreeTimeRules.visible(teamMode: model.clientFlags.teamMode, teamCount: model.teams.count) {
+                    TodayFreeTimePanel(renderNow: Theme.isRenderingOffscreen ? now : nil)
+                }
+                if model.clientFlags.files { TodayRecentFilesPanel() }
                 TodayAssistantPanel()
             }
             .frame(width: Self.sideColumnWidth)

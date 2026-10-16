@@ -1,10 +1,10 @@
 import Foundation
 
 /// The main window's primary navigation (productization plan §1, macOS M4b).
-/// Files joins this list only once a drive source exists (FD-7); there is
-/// none yet, so it has no case.
+/// Files is listed only while the server reports a drive source (FD-7,
+/// `ClientFlags.files`); `FilesRules.sections(files:)` is the visible list.
 enum NavSection: String, CaseIterable, Identifiable, Sendable {
-    case today, mail, calendar, assistant
+    case today, mail, calendar, files, assistant
 
     var id: String { rawValue }
 
@@ -15,6 +15,7 @@ enum NavSection: String, CaseIterable, Identifiable, Sendable {
         case .today: "sun.max"
         case .mail: "envelope"
         case .calendar: "calendar"
+        case .files: "folder"
         // A conversation, not a sparkle (FeatureIcon's rule).
         case .assistant: "bubble.left"
         }
@@ -82,7 +83,7 @@ enum NavRules {
     }
 
     /// The navigation after `mode` was written (a click, the Go menu, a
-    /// deep link from the pill or a card): the window follows it.
+    /// deep link from a banner): the window follows it.
     static func following(_ mode: ListMode, from nav: MainNav) -> MainNav {
         var next = nav
         next.section = section(for: mode)
@@ -96,7 +97,7 @@ enum NavRules {
     /// the section has none of its own (Today, Assistant's briefing).
     static func listMode(entering section: NavSection, nav: MainNav, current: ListMode) -> ListMode? {
         switch section {
-        case .today:
+        case .today, .files:
             return nil
         case .mail:
             return current.isMailFamily ? current : nav.lastMailMode
@@ -146,16 +147,15 @@ enum NavRules {
         return (defaultMailMode, nav)
     }
 
-    /// The main window shows the reader only in Mail; the bar's full view
-    /// (flag off) always has it.
-    static func readerVisible(macMainWindow: Bool, section: NavSection) -> Bool {
-        !macMainWindow || section == .mail
+    /// The main window shows the reader only in Mail.
+    static func readerVisible(section: NavSection) -> Bool {
+        section == .mail
     }
 
     /// Whether arriving at `section` drops the reading-pane selection: only
-    /// in the main window, and only when the reader goes off screen.
-    static func clearsSelection(macMainWindow: Bool, section: NavSection) -> Bool {
-        !readerVisible(macMainWindow: macMainWindow, section: section)
+    /// when the reader goes off screen.
+    static func clearsSelection(section: NavSection) -> Bool {
+        !readerVisible(section: section)
     }
 
     /// Mail's sidebar count: everything a lane segment can show. SILENT is
@@ -164,10 +164,18 @@ enum NavRules {
         LaneFilter.allCases.compactMap(\.tier).reduce(0) { $0 + count($1) }
     }
 
-    /// Go-menu digit for a section. Assistant is 4 while Files does not
-    /// exist; 5 goes to Approvals, the old menu's most-used numbered target.
+    /// Go-menu digit for a section. The digits shipped before Files stay
+    /// put (Assistant ⌘4, Approvals ⌘5), so a flag flip never moves a
+    /// shortcut under the user's fingers; Files, present only with a drive
+    /// source, takes ⌘6.
     static func shortcutDigit(for section: NavSection) -> Int {
-        (NavSection.allCases.firstIndex(of: section) ?? 0) + 1
+        switch section {
+        case .today: 1
+        case .mail: 2
+        case .calendar: 3
+        case .assistant: 4
+        case .files: 6
+        }
     }
 
     /// Existing Go destinations kept reachable under the sections. Inbox and
@@ -251,7 +259,6 @@ extension AppModel {
     /// and the reader together.
     func revealInMail(_ item: FirewallItem) {
         listMode = NavRules.mailMode(showing: item.tier, current: mainNav.lastMailMode)
-        sidebarLevel = .mail
     }
 
     /// Called once when the main window is first built.

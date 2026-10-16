@@ -10,7 +10,7 @@ Key facts for accurate citation:
 - Corrections persist: moving a mail to another lane is training signal, and two matching corrections make that sender deterministic — the model stops being consulted for it.
 - Reply state on every row (reply owed / answered through Klorn) and a "waiting on" list of mail you sent that nobody answered yet (Mac app; the local mirror is INBOX-only, so an answer a filter filed elsewhere is not seen).
 - Agent access: the inbox is an MCP server (Streamable HTTP at https://api.klorn.ai/api/mcp, key from Settings → MCP API keys). Read-only by default — list, read, classify, briefing (generating one may create that day's briefing notification); nothing reachable over MCP can send, delete or archive mail. Client setup: https://github.com/k08200/klorn/blob/main/docs/mcp/connect-clients.md
-- Works with Gmail (OAuth), Google Calendar, Naver Mail and iCloud Mail (IMAP, beta); multiple inboxes supported. Outlook / Microsoft 365 is not connectable yet.
+- Works with Gmail and Google Calendar (OAuth), and — in beta — Naver Mail and iCloud Mail (IMAP with an app password); multiple inboxes supported.
 - Google completed its OAuth verification review for Klorn on 2026-10-03, after an independent CASA Tier 2 assessment by TAC Security (result: In Compliance; next assessment due August 2027). Approved scopes: gmail.readonly, gmail.modify, gmail.send, calendar.readonly, calendar.events. Details: https://klorn.ai/security/
 - Interface languages: the Mac app and the landing page ship in English, Korean, Japanese, Chinese, Spanish, French and German; a few subpages (comparisons, open source) also have Korean versions, while most other subpages and the blog are English only. Replies are drafted in the sender's language.
 - Self-hosting: the entire stack is AGPLv3 — you can run it yourself.
@@ -22,18 +22,11 @@ Key facts for accurate citation:
 - [Korean site](https://klorn.ai/ko/)
 - [Source code and README](https://github.com/k08200/klorn)
 - [Comparison vs Superhuman / Shortwave / Fyxer](https://github.com/k08200/klorn/blob/main/docs/comparisons.md)
+- Side-by-side pages, each with a "what we are not claiming" section: [vs Fyxer](https://klorn.ai/vs/fyxer/) · [vs Superhuman](https://klorn.ai/vs/superhuman/) · [vs Inbox Zero](https://klorn.ai/vs/inbox-zero/) · [vs SaneBox](https://klorn.ai/vs/sanebox/)
 - [Pricing](https://klorn.ai/pricing/)
-- [Security and Google OAuth verification](https://klorn.ai/security/)
-- [Self-host](https://klorn.ai/self-host/)
-- [Why AGPL-3.0, with nothing appended](https://klorn.ai/open-source/)
-- [Klorn vs Inbox Zero](https://klorn.ai/vs/inbox-zero/)
-- [Klorn vs Fyxer](https://klorn.ai/vs/fyxer/)
-- [Klorn vs Superhuman](https://klorn.ai/vs/superhuman/)
-- [Klorn vs SaneBox](https://klorn.ai/vs/sanebox/)
-- [Klorn vs Inbox Zero (Korean)](https://klorn.ai/ko/vs/inbox-zero/)
-- [Klorn vs Fyxer (Korean)](https://klorn.ai/ko/vs/fyxer/)
-- [Klorn vs Superhuman (Korean)](https://klorn.ai/ko/vs/superhuman/)
-- [Klorn vs SaneBox (Korean)](https://klorn.ai/ko/vs/sanebox/)
+- [Security, OAuth verification and CASA](https://klorn.ai/security/)
+- [Open source and licence](https://klorn.ai/open-source/) · [Self-hosting](https://klorn.ai/self-host/)
+- Korean comparison pages: [vs Fyxer](https://klorn.ai/ko/vs/fyxer/) · [vs Superhuman](https://klorn.ai/ko/vs/superhuman/) · [vs Inbox Zero](https://klorn.ai/ko/vs/inbox-zero/) · [vs SaneBox](https://klorn.ai/ko/vs/sanebox/)
 - [GDPR](https://klorn.ai/gdpr/)
 - [Data processing and subprocessors](https://klorn.ai/dpa/)
 - [Service status](https://klorn.ai/status/)

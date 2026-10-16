@@ -89,7 +89,7 @@ readable after one permission grant.
 | # | Decision | Value |
 |---|---|---|
 | V1 | Service order | finish mail, then calendar, then drive |
-| V2 | New Google Drive scope | only after the current Google verification passes |
+| V2 | New Google Drive scope | only after the current Google verification passes (2026-10-15, founder: lifted for D5's code behind a flag OFF; the flip still waits) |
 | V3 | Device bridge | in scope, required |
 | V4 | External drive connectors v1 | list, search, summarise. No upload or edit |
 | V5 | Klorn mailbox | auxiliary path, not the product |
@@ -2297,6 +2297,16 @@ needs FA-9 and the admin guidance from F0.
     including the ones this sync just wrote. (c) Unchanged: only a complete listing
     removes. Tested: an empty 207 over 8 rows, a calendar missing from discovery, a
     single legitimate removal, the valve's edges, 150 occurrences still complete.
+    Follow-up 2026-10-15: under the valve's floor an empty 207 still removed up to 5
+    rows, and one calendar's empty 207 removed its rows whenever another calendar of
+    the account listed events. Now a vanished row of a calendar the listing read but
+    found no event in is removed only when the account's previous complete listing
+    showed the same such rows gone (a sha-256 of the sorted ids, in process memory,
+    bounded like the valve's reports); a vanished row of a calendar that lists
+    events goes at once, as before. A listing with no such rows, one that is not
+    complete, a failed removal and a restart all start the wait again. A calendar
+    really emptied loses its rows one sync later. The valve is checked first, so its
+    report is unchanged.
   - Free/busy. `busyBlocks` is a live listing of the window: timed occurrences not
     `TRANSP:TRANSPARENT`, label `calendar`, no title. `peopleFreeBusy` answers
     unknown for everyone (CalDAV shows no one else's calendar). Writes reject with
@@ -2344,18 +2354,25 @@ needs FA-9 and the admin guidance from F0.
     one invite are two entries unless they share provider and UID. (4) Discovery runs
     every sync (3 PROPFINDs per account per 15 minutes); the home set is not cached.
     (5) Rows store no transparency, so a transparent timed event is a row conflict
-    (C7's limit (2)). (6) Found while wiring, NOT fixed (pre-existing, outside C3):
-    `readSyncTimezone` in `pim/calendar-sync.ts` reads `User.timezone`, which does
-    not exist (the zone is on `AutomationConfig`), so every sync passes the default
-    `Asia/Seoul`; CalDAV floating times are read in Seoul during the sync, as are
-    Google's offset-less times. `busyBlocks` reads the configured zone. (7) ical.js
+    (C7's limit (2)). (6) Found while wiring (pre-existing, outside C3), fixed
+    2026-10-15: `readSyncTimezone` in `pim/calendar-sync.ts` read `User.timezone`,
+    which does not exist (the zone is on `AutomationConfig`), so every sync passed
+    the default `Asia/Seoul`: CalDAV floating times, Google's offset-less times and
+    Outlook's `Prefer: outlook.timezone` were all Seoul. It now reads
+    `getUserTimeZone` (`AutomationConfig.timezone`), like `busyBlocks`. The tests
+    had mocked the missing column, so they passed. Side effect, once per zone
+    change: a floating-time CalDAV series is keyed `UID#<UTC start>`, so a new zone
+    gives its occurrences new ids; the next complete listing writes them and the
+    window reconcile removes the old ones (an incomplete listing leaves them until
+    they age out). Prod had no ICLOUD, NAVER or OUTLOOK row when this shipped. (7) ical.js
     2.2.1 does not expand a YEARLY rule with BYHOUR, BYMINUTE or BYSECOND as RFC
     5545 says (`FREQ=YEARLY;BYHOUR=9,10` gives one time a year; with BYSECOND as well,
     nothing). Such a series is missing or wrong, the same way every sync, so it never
     had rows to remove; neither provider's UI writes such a rule. (8) PARTSTAT is
     not read: an invitation the user DECLINED is still a busy block and a row (no
-    code change; review 2026-10-02). (9) Every fixture is hand-written from RFC
-    4791 / 5545 shapes; none was captured from a real iCloud or Naver answer.
+    code change; review 2026-10-02; Google's equivalent: the next item). (9) Every
+    fixture is hand-written from RFC 4791 / 5545 shapes; none was captured from a
+    real iCloud or Naver answer.
     (10) The deletion valve also refuses a real mass deletion (more than half of a
     month, over 5 rows): those rows stay until they leave the window. (11) An
     override of an EXDATE'd instance is dropped (EXDATE wins). (12) Found by the
@@ -2363,6 +2380,18 @@ needs FA-9 and the admin guidance from F0.
     without its DTSTART instance, so that instance has no row. (13) One object's
     ical.js parse is not sliced (~60-100 ms for 3-4 MB, bounded by the response
     cap). (14) The IMAP connect route's link limit is per IP only (see Link).
+  - Declined Google invitations (2026-10-15, `CALENDAR_HIDE_DECLINED_ENABLED`, OFF).
+    Google lists an invitation the user declined; its own attendee entry
+    (`self: true`) says `declined`. With the flag on, a primary or linked Google sync
+    writes no row for it, and the row an earlier sync wrote is removed through C2b's
+    `removeCancelledGoogleEventRows`: that account's rows only, exact ids (each
+    instance of a series has its own), attention items resolved, a dismissed item
+    kept, one transaction. A failure never fails the sync and is reported once per
+    account until a removal succeeds. Accepting later writes the row again on the
+    next sync. Scope is rows only: live Google reads (`listEvents` callers, the
+    conflict summary) still return declined events, and Google's free/busy already
+    treats them as free. Declined events still count toward the 100-event listing
+    cap. Outlook and CalDAV unchanged (limit 8 above).
   - Rollback. Flags never on: revert the PR. Ever on: set
     `CALDAV_CALENDAR_ENABLED` OFF (rows hidden at once), then `DELETE FROM
     "AttentionItem" WHERE "source" = 'CALENDAR_EVENT' AND "sourceId" IN (SELECT "id"
@@ -2609,9 +2638,13 @@ needs FA-9 and the admin guidance from F0.
     from an account whose own zone is on the other side, and record whether Graph
     returns it at midnight or converted (the code handles both; the converted case
     needs `originalStartTimeZone` to be a name in the table). An event cancelled
-    AFTER its first sync stays as a row: removal of upstream-cancelled events
-    (C2b, in flight, Google only) must be extended to Outlook before the flip,
-    or the calendar shows meetings that were cancelled. (d) `Prefer: outlook.timezone` accepts an
+    or deleted AFTER its first sync: done 2026-10-15 through the C3 window
+    reconcile. The Outlook session lists through `listWindow`; a calendarView
+    read to its last page and under `OUTLOOK_LISTING_MAX_EVENTS` (500) is the
+    window's whole set, rows carry the key `outlook:default`, and the rows it
+    lacks go with the deletion valve and the empty-calendar wait (#1425), behind
+    `OUTLOOK_CALENDAR_ENABLED`. Check it here: cancel one meeting and delete one
+    event after their first sync; both rows go on the next sync. (d) `Prefer: outlook.timezone` accepts an
     IANA name and echoes it; a moved event keeps its id. (e) getSchedule on the
     work account returns the account's own busy time; record the exact status a
     personal account answers, because the fallback rule (any 4xx except 401, 408
@@ -3488,6 +3521,7 @@ D3 ships no user-facing copy beyond API error strings, which clients replace by
   | `PATCH /api/drive/files/:id` `{ name?, parentExternalId? }` (null: the root) | `{ file }` |
   | `DELETE /api/drive/files/:id` | `{ deleted: { files, folders } }` |
   | `GET /api/drive/files?folder=<externalId>\|root` (D2's list, new filter) | one Klorn folder's children |
+  | `GET /api/drive/limits` (added by D7) | `{ maxFileBytes, quotaBytes, usedBytes }`, `Cache-Control: no-store` |
 
   Errors are `{ error, code, retryable }` with a fixed status per code
   (`drive/klorn-errors.ts`): 400 `invalid-upload`, `invalid-name`,
@@ -3766,19 +3800,751 @@ D3 ships no user-facing copy beyond API error strings, which clients replace by
   exists, keep `OBJECT_STORAGE_ENABLED` on and a build with the sweep running
   (or run the purge by hand) until `StoragePurge` is empty: with the flag off
   the sweep does nothing.
-**D4 — file summaries and search** (*outline*). Depends on: D1, D2. Reuses the
-attachment analysis pipeline. Cost caps apply.
-**D5 — Google Drive connector** (*outline*). Depends on: D2. Blocked by V2.
-Scope path per P5.
+**D4 — file summaries and search.** Depends on: D1, D2 (and D3 for the first
+files). A summary of each drive file's text, made through the attachment
+analysis pipeline and the shared LLM layer, kept in a table of its own; the name
+search also matches summary text. Landed 2026-10-14 (branch
+`feat/drive-summaries`, PR not yet opened), flag OFF. Server and API only, like
+D3: no UI and no user-facing copy, so no vocabulary row yet; the UI step adds
+both.
+- Flag: `DRIVE_SUMMARIES_ENABLED`, default off, read at request and job time. It
+  acts only while `DRIVE_ENABLED` is on too (`driveSummariesLive`), and only on
+  files whose provider is visible: a Klorn file needs `KLORN_DRIVE_ENABLED` and
+  `OBJECT_STORAGE_ENABLED` (the D2 kill switch, `isDriveRowVisible`). While off:
+  an upload queues nothing, the job reads nothing, `POST
+  /api/drive/files/:id/summarize` answers Fastify's default 404 before
+  authentication (its own `darkRouteGate` after the drive's), `GET
+  /api/drive/files/:id` has no `summary` key (D2's response exactly), and `q`
+  matches names only without reading the summary table.
+- Reuse, not a copy:
+  - Text extraction is `extractAttachmentContent` / `isReadableEmailAttachment`
+    (`mail/email-attachment-text.ts`), the same readers and zip-bomb caps the
+    mail attachments use. Only a `readable` result is summarised; the
+    extractor's `metadata` placeholder (an image, a PDF without a text layer) is
+    `no-text`, and images are not fetched at all. Its byte cap
+    (`MAX_EXTRACTABLE_BYTES`, 8,000,000) is now exported and is D4's byte cap.
+  - The prompt is the attachment analyser's (`analyzeAttachment` in
+    `mail/email-attachments.ts`): JSON only, temperature 0.1, the untrusted-data
+    line, and `createCompletion(..., { credentials, userId, priority })` with the
+    user's own credentials, so the per-user daily cost cap, the global ceiling,
+    the usage ledger and BYOK apply unchanged. The file name, the type label and
+    the text each go through `wrapUntrusted` (#1345's version). The stored
+    summary has control and format characters (bidi overrides and isolates,
+    zero-width marks) stripped.
+  - **Founder-reviewable choice: the summary language.** The summary is asked
+    for in the main language of the file's text, so the summary search works in
+    that language; the attachment prompt asks for English. Kept after review
+    (2026-10-15); reversing it is one line in `drive/summary-llm.ts`
+    (`SYSTEM_PROMPT`).
+- Model. Migration `20261014020000_drive_file_summary` (after D3's
+  `20261014010000_klorn_drive`), additive: one enum, two tables, four indexes,
+  three foreign keys, RLS on both tables in the repo's form (ENABLE, never FORCE,
+  tenant and system policies; `rls-coverage-guard.test.ts` passes and fails for
+  each statement removed).
+  - `DriveFileSummary`, one row per file (`driveFileId` unique, cascades with
+    the file and with the user): `status` PENDING / DONE / FAILED / SKIPPED,
+    `summary` (CHECK at most 1,000 characters; the app caps at the same
+    `DRIVE_SUMMARY_MAX_CHARS`), `sourceEtag` (the file's `etag` the row is for),
+    `model`, `costMicroCents` (0.0001 ¢ units, as `GlobalCostLedger.microCents`),
+    `error` (CHECK: a lower-case code, never a provider message), `attempts`
+    (the failure budget), `outageStreak` (outages in a row, their backoff),
+    `nextAttemptAt` (due time, or a live lease's end), `runsDayKey` /
+    `runsToday` (the per-file daily count),
+    `summarizedAt`. The extracted text is never stored. `DriveFile` itself only
+    gains the back-relation (no column), so D2's "metadata only" holds.
+  - `DriveSummaryUsage` (userId, dayKey, count): summary calls per user per UTC
+    day. A ledger of its own so deleting a file does not give its count back.
+  - Indexes: (status, nextAttemptAt) for the job, (userId, status,
+    summarizedAt) for the summary search, (dayKey) for the prune. On the
+    scratch database each query plans on its index.
+- Queue (`drive/summary-store.ts`, the only writer besides the user purge).
+  `enqueueDriveFileSummary` upserts the row at the file's etag: a new file is
+  PENDING and due now; the same etag leaves the row alone (DONE stays DONE); a
+  different etag re-queues it from scratch (summary, model, cost, attempts
+  cleared), except that a PENDING row keeps its `nextAttemptAt` (a live lease is
+  never cut short, a deferral never brought forward). FAILED is retried only on
+  demand. The first enqueue's upsert names the unique key only, so Postgres runs
+  it as one INSERT ... ON CONFLICT (10 concurrent first enqueues: one row, all
+  fulfilled), then refuses another user's row; a P2002 still answers the
+  winner's row.
+  - Leases. Before a run the row is claimed: `nextAttemptAt` moves a lease
+    (5 min) ahead and `attempts` goes up by one, conditional on the values read,
+    so the job and an on-demand request (or two instances) never run one row
+    twice, and a row whose run never ends (a crash, or a freeze in the
+    extractor) spends its attempts: after 5 the claim marks it FAILED
+    `interrupted` instead of running it again. Every outcome write is
+    conditional on the lease still holding (PENDING, `nextAttemptAt` at the
+    lease's end, `sourceEtag` as read): a run whose lease expired and was
+    reclaimed, or whose file changed meanwhile, writes nothing (`lost`).
+  - Every query names the user except the job's two system queries (the users
+    with due rows, the prune), each marked `system:`, and the first enqueue
+    above.
+- A run (`drive/summary-run.ts`), cheapest refusal first: the row through the
+  kill switch (hidden or trashed, or object storage off: PENDING
+  `source-unavailable`, not an attempt, looked at again after an hour doubling
+  up to a day, and not counted against the job's batch, since a flag can flip
+  back and a file can be restored; a file that is gone took its row with it);
+  a
+  folder, a type the extractor has no text for, or a recorded size over the cap:
+  SKIPPED without reading a byte; the per-file count and the user's daily
+  count (a read), so a user at the count costs no download; the bytes, read through
+  D1's user-scoped storage with the cap counted while they stream
+  (`readCappedBytes`: it stops at the chunk that crosses 8,000,000 bytes and
+  destroys the stream; a store that under-reports the size still stops there);
+  the text, cut to 8,000 characters before any model sees it; the user's daily
+  count (atomic increment, the count after it decides); the file's (each update
+  checks the count in its own `where`, so two holders of one snapshot cannot
+  both take the last call: 10 concurrent on the last slot, exactly 1 passed on
+  Postgres); one model call with a 90 s wall-clock limit
+  (`DRIVE_SUMMARY_LLM_TIMEOUT_MS`, pacing and failover included), so a run ends
+  well inside its lease. The storage read (the object and all its bytes) has a
+  60 s deadline too (`DRIVE_SUMMARY_READ_TIMEOUT_MS`): past it the body is
+  destroyed and the run defers as a storage outage, so a hung read cannot hold
+  the job's one-sweep-at-a-time flag. A timed-out model call is abandoned, not
+  aborted: `createCompletion` takes no AbortSignal, so the `Promise.race` cannot
+  cancel it, and the provider may still answer and bill it. The per-user cost
+  cap still holds, because the LLM layer pre-bills the call before it is sent.
+- Cost model and caps (`drive/summary-policy.ts`, named constants):
+  - at most 8,000,000 bytes read and 8,000 characters sent per summary;
+  - `DRIVE_SUMMARIES_PER_USER_PER_DAY` 50 and
+    `DRIVE_SUMMARY_RUNS_PER_FILE_PER_DAY` 3 model calls per UTC day (a retry
+    counts; slots are given back when no model answered, below); the job runs
+    at most 10 a sweep every 5 minutes, so at most 120 calls an hour
+    fleet-wide, picked fairly: the 10 users whose oldest due row is oldest
+    (one `groupBy`), up to 3 rows of each, round-robin, so 60 due rows of one
+    user do not hold back another user's one (tested); a cheap skip does not use
+    up the batch; the on-demand route is limited to 10 a minute per user and
+    per address;
+  - every call is charged to the user's daily cost cap and the global ceiling
+    by the LLM layer (BYOK: on the user's own key, $0 to Klorn). The row's
+    `costMicroCents` is the call's estimated cost from its token counts with the
+    repo's rate table, whoever paid; the ledgers stay the caps' source of truth.
+    Estimate, not measured: the production default model
+    (`google/gemini-2.5-flash`) at 3,000 to 8,000 prompt and 200 completion
+    tokens is $0.0014 to $0.003 a summary, so at most about $0.15 per user per
+    day and $0.36 an hour fleet-wide from the job.
+  - A cap never fails a summary: the user's or the file's daily count, the
+    LLM layer's cost cap (`DailyCostCapExceededError`) and its daily call limit
+    leave it PENDING with the code, due at the next UTC midnight; a per-minute
+    limit leaves it PENDING for the wait the layer gave. None is an attempt.
+  - Slots: the user's and the file's daily slots are taken just before the
+    call and given back when no model answered (a cost-cap or rate-limit
+    refusal, an outage, a timeout); they stay spent once a model answered (DONE,
+    or output that is not a summary). Reserving first keeps the counts a hard
+    bound on concurrent calls (reserving only after success would let concurrent
+    runs overshoot); giving back keeps an outage from spending a user's day
+    (before the review, about 17 failing files did). Money stays bounded by the
+    LLM layer's cost cap, which pre-bills every call, failed or not.
+- Degrading (#1319, the LLM failing in production). An outage is never a
+  content failure: every provider failing (402, 429, 5xx), no provider
+  configured, a network error or the 90 s timeout leaves the summary PENDING
+  `llm-unavailable` with the attempt given back and a backoff from 10 minutes
+  doubling up to 24 hours (`DRIVE_SUMMARY_OUTAGE_MAX_MS`), indefinitely; a
+  retryable storage error is the same with `storage-error`. FAILED is kept for
+  content errors, after 5 attempts: output that is not a summary
+  (`llm-bad-output`), a provider 4xx about the request itself (`llm-rejected`:
+  any 4xx but 401, 402, 403, 408 and 429; 401 and 403 are key or permission
+  problems that hit every file alike, so they stay outages and a key rotation
+  does not FAIL every summary), a non-retryable storage error, a run that throws
+  (`internal`) or never ends (`interrupted`); a Klorn row whose object is
+  missing is FAILED `object-missing` at once. A queue write that fails is
+  logged and reported (`scope: drive.summary.enqueue`) and never fails the
+  upload. Tested with the real `createCompletion` and a provider chain that
+  answers 402: the upload is 201, the list and the file are 200, the summary
+  stays PENDING `llm-unavailable` through 15 sweeps with its wait at the 24 h
+  cap and none of the user's daily count spent, and a second upload is 201.
+- Triggers (`drive/summary-triggers.ts`): D3's `commitKlornUpload` queues the
+  new file at its etag; the job (`drive/summary-job.ts`, scheduler
+  `drive-summary`, started with the others unless BACKGROUND_AGENTS_DISABLED)
+  runs due rows and prunes usage rows older than 7 days; `POST
+  /api/drive/files/:id/summarize` (session, user-scoped, 404 as the file route)
+  queues the file, runs it now in the foreground when it is due and answers
+  `{ summary }`. Due on demand: new, changed, FAILED (retried, except an
+  `interrupted` row: a poison file is re-queued only by new content, never by a
+  click), or waiting out an outage or an unreadable source (the wait and its
+  backoff are reset, so a summary runs as soon as credits return). A cap's wait
+  is not lifted and the daily caps apply to the run; a live lease is never
+  lifted (a claim clears the code, so it never reads as an outage). The route's
+  rate limit is unchanged.
+- API (`packages/contract/src/drive.ts`): `DriveFileSummaryWire` (`status`,
+  `text` only when DONE, `error` code, `summarizedAt`), `DriveFileResponse`
+  gains `summary` while on, `DriveSummarizeResponse`. The extracted text and the
+  storage key never cross the wire. The data export now carries each file's
+  `summary`, whatever the flags (the user's own rows only).
+- Search: with summaries on, `GET /api/drive/files?q=` also returns the files
+  whose DONE summary contains the text, in the same query as the name match
+  (`matchSummaries` in `drive-read.ts`: `OR` of the name and the summary
+  through its one-to-one relation, inside the AND), so the scope, the user, the
+  provider and folder filters, the order and the page ceiling apply to summary
+  matches exactly as to names; there is no separate id cap (205 matches in a
+  folder page through whole). The pattern is the name search's escaped ILIKE
+  (`%`, `_`, `\` match themselves). If that query fails, the route answers the
+  name-only search instead, logged and reported once per process
+  (`scope: drive.summary.search`), never a 500. `GET /api/drive/files/:id`
+  likewise answers the file without `summary` if the summary cannot be read
+  (`scope: drive.summary.read`).
+- Seam: `DriveProviderSession.fetchForSummary(externalId, { maxBytes })` answers
+  `CappedBytes` (the streaming reader's result) or null. D5 and D6 implement it
+  with `readCappedBytes` over their own API host only, call
+  `enqueueSummaryOnWrite` after each `upsertDriveFileRow` of a file (it compares
+  the etag), and get summaries and search with no change here: the run already
+  dispatches a non-KLORN row to its connector, and V4 still holds (the seam only
+  reads).
+- Guards: `drive-file-guard.test.ts` lists `drive/summary-llm.ts` as the one
+  LLM-facing drive module (the pattern shows the name, the type and the text
+  inside `wrapUntrusted`) and fails if any other drive module imports the LLM;
+  the summary source is a fourth DriveFile reader held to the scope, user and
+  select rules; the summary tables have one writer besides the purge; every
+  other summary query names its user (inline, or through the pinned `leased`,
+  `unchanged` and `ref` helpers); the summary search is the name search's
+  escaped pattern; no response module names the storage key or the extracted
+  text.
+  `drive-summary-llm.test.ts` proves the wrap on what is actually sent. The
+  calendar guard exempts eight drive files that name a `sourceKey` (was six).
+- Verify. Tests: `drive-file-summary-migration`, `drive-summary-pure`,
+  `drive-summary-llm`, `drive-summary-run`, `routes-drive-summaries`,
+  `drive-summary-failing-provider`, plus additions to `drive-file-guard`,
+  `drive-file-migration`, `drive-provider-dispatch`, `drive-read` (export),
+  `fake-db` (`{ increment }`, `groupBy` with `_min`, relation `is` filters),
+  `purge-user-data`. Mutation checks (single
+  changes, each failing at least one test): each `wrapUntrusted`, the in-stream
+  byte check, the cost-cap deferral in the run and its mapping in the
+  summariser, user scoping of the row read, a write, the summary search and the
+  source read, each flag-off gate (job, route, upload, file response, search),
+  the search escape, both daily counts and the user's pre-fetch check, the
+  give-up bound, two RLS statements, the purge of summaries; after the review
+  (2026-10-15), 23 more: fair picking (two), the attempt at claim and the
+  `interrupted` bound, the LLM timeout, the slot release, the outage rule and
+  its 24 h cap, the atomic file count, the enqueue keeping a live lease, each
+  lease condition of an outcome write (time, etag, user), the P2002 path, the
+  search fallback and escape, hidden-is-skipped, the format-character strip,
+  skips sparing the batch, and others. On a scratch Postgres 16 (not in the suite): `prisma
+  migrate deploy`, the CI drift check ("No difference detected"), each CHECK
+  refusing a row, one row per file, the policies (no tenant sees nothing, a
+  tenant only its own, the system setting all), both cascades; and the store
+  against the real client: a cross-user enqueue refused (P2002), a cross-user
+  write ignored, 60 concurrent reservations on a count of 3 letting exactly 47
+  through, the escapes, the re-queue on a new etag, the prune; after the review
+  (migration re-run with `outageStreak`): the drift check again, the
+  `outageStreak` CHECK, 10 concurrent first enqueues (one row), the cross-user
+  enqueue refused with the other row untouched, the fair `groupBy`, the claim
+  counting an attempt, a reclaim at the lease's end and the stale write dropped,
+  10 concurrent file counts on the last slot (one passed), a release that never
+  goes below zero, and the joined summary search (escapes, folder filter, other
+  user).
+- Known limits.
+  - Files that exist before the flip are summarised only on demand (no
+    backfill); a backfill would be the job queueing visible files without a
+    row, bounded by the same daily counts.
+  - The fair pick's `groupBy` reads every due row to find each user's oldest;
+    bounded by the rows that exist, not by an index of its own. Each user's
+    rows are then read on (userId, status, summarizedAt), not a
+    (userId, status, nextAttemptAt) index.
+  - A summary search joins one user's rows to their summaries with ILIKE:
+    bounded by the rate limits and the page ceiling, not by a trigram index.
+  - The extractor's quality is the attachment pipeline's (heuristic PDF text,
+    no OCR); a scanned PDF is SKIPPED `no-text`.
+  - A timed-out call is abandoned, not cancelled: the LLM layer may still
+    finish it and bill it, which the cost cap counts; its slot was given back.
+  - When the app role drops BYPASSRLS, the store moves to `withTenant` and the
+    job's two system queries to `withSystem`, like the other drive modules.
+- Before the flip (in this order): D3's flip conditions (the files must exist);
+  the LLM working in production (#1319: credits on the OpenRouter key, or the
+  founder's decision to rely on BYOK only); FA-5 covering that file contents are
+  sent to the model provider for summaries; the UI step with its vocabulary
+  row; then `DRIVE_SUMMARIES_ENABLED` on, founder account first (L23). Watch
+  `LlmUsageLog` and `DriveSummaryUsage` the first days.
+- Rollback: revert the PR. The tables and the enum can stay; nothing reads them.
+  With the flag off nothing writes them.
+**D5 — Google Drive connector.** Depends on: D2 (D4 for summaries). Scope path per P5.
+Founder decision 2026-10-15: built now, code only, flag OFF. This lifts V2 for the
+code, not for the flip: the flip still waits on the current Google verification and
+on `drive.file` being approved. D5 never changes the production consent screen or
+the scopes that sign-in, Gmail, Calendar and the inbox links request
+(`mail/gmail.ts:59-143`).
+- Flow. /files (`web/src/app/files/files-view.tsx`) offers "Connect Google Drive":
+  `POST /api/drive/google/link` → consent for `openid`, `userinfo.email` and
+  `drive.file` → `/files?drive=success`. "Add from Google Drive" opens the Google
+  Picker for that account. Only the picked ids reach the server, which reads their
+  metadata from Google and indexes them as GOOGLE rows. Klorn lists, searches and
+  summarises them, and never changes them (V4).
+- Flag `GOOGLE_DRIVE_ENABLED`, OFF, read per request. GOOGLE joins
+  `DRIVE_PROVIDER_ENABLED` (`drive/drive-scope.ts:45`) and the dispatcher
+  (`providers/dispatch.ts:35`), so its rows show only while `DRIVE_ENABLED` is on
+  too. /files opens through `user.files` (`routes/auth.ts:750`). The routes sit
+  behind `darkRouteGate`.
+- Decisions.
+  - Accounts: `LinkedDriveAccount`, as D2 deferred. Not `LinkedCalendarAccount`
+    (`schema.prisma:404`) and not `UserToken` (`:337`), so unlinking a drive
+    unlinks nothing else.
+    - Columns: `provider DriveProvider` (no default; CHECK not KLORN; D6 reuses
+      it), the verified and normalised `email`, encrypted `accessToken` and
+      `refreshToken`, `expiresAt`, `grantedScopes`, `needsReconnect`,
+      `lastRefreshedAt`. Unique (userId, provider, email).
+    - `DriveFile.sourceAccountId`: a nullable FK, ON DELETE CASCADE, indexed on
+      its own (C2's reason). CHECK `(provider = 'KLORN') = (sourceAccountId IS
+      NULL)`, and `sourceAccountId = sourceKey` when set. `driveRowData`
+      (`drive-rows.ts:224`) sets it on create only, never in `changes`.
+    - The FK proves the account exists, not who owns it, so every write first
+      loads the account by (id, userId, provider).
+  - Grant: separate and incremental.
+    - `getLinkDriveAuthUrl` asks for exactly those three scopes, with
+      `access_type=offline`, `prompt=consent` and the state `__link_drive__`
+      (10 min).
+    - No `include_granted_scopes`. With it, picking the primary's Google account
+      would return a token that also carries the Gmail and Calendar scopes.
+    - Same client and redirect URI, so the redirect needs no console change
+      (C4's precedent).
+    - Bound to the session that started it, like every account link (#1451):
+      `routes/auth.ts` gains one branch after the state check and before the
+      code exchange that parks the code (`routes/link-handoff.ts`) and never
+      exchanges it; while `DRIVE_ENABLED` or `GOOGLE_DRIVE_ENABLED` is off it
+      parks nothing and lands on `/files?drive=failed`. `__link_drive__` is in
+      `LINK_MARKERS` (`auth/pending-links.ts`), and POST
+      `/api/auth/link/complete` (`routes/link-complete.ts`) calls
+      `completeGoogleDriveLink` only for the session of the user who started
+      the flow (another session: 409, nothing exchanged or written). The code
+      exchange happens there, built like `outlook-calendar-link.ts:129`:
+      - flag off → `failed`, with no code exchange;
+      - `verified_email` is required;
+      - the returned `scope` must include `drive.file` (granular consent lets the
+        user untick it), else `scope-missing` and nothing is stored;
+      - no refresh token → `failed`;
+      - entitlement is checked again;
+      - at most 5 accounts;
+      - a granted scope beyond `openid`, `email`, `userinfo.email` and
+        `drive.file` (a Gmail or Calendar scope) is warned about and reported to
+        Sentry, scope names only; the account is still stored, since
+        `drive.file` is present.
+    - Plan gate: `requireEntitled`, as link-calendar (default 2026-10-15; the
+      founder may change it — open question, not yet answered). The callback
+      checks the plan again; listing and unlinking need a session only, so a
+      downgraded user can still unlink.
+  - Tokens: `encryptToken` under the `TOKEN_ENCRYPTION_KEYS` ring.
+    - `buildLinkedDriveClient` copies `gmail.ts:502`. An undecryptable or empty
+      token sets `needsReconnect`. A refreshed token is saved through
+      `decideRefreshTokenWrite` (`:412`), scoped by (id, userId).
+    - A revoked grant (C2's `isRevokedGrantError`,
+      `pim/linked-calendar-failure.ts:70`) sets `needsReconnect`: refresh stops,
+      the rows stay.
+    - The key-rotation sweep (`scripts/reencrypt-tokens.ts:122`) and
+      `purgeUserData` (`purge-user-data.ts:27`) cover the table.
+  - Unlink: the rows (through the writer's `deleteLinkedAccountDriveRows`, by
+    sourceKey), then the account, in one transaction; the cascade covers a
+    refresh still in flight. Klorn does not call
+    Google's revoke endpoint: Google revokes a combined grant whole (prior
+    knowledge), and for the primary's account that would cut Gmail.
+  - Picker: the browser needs a `drive.file` token, a developer key and the app id.
+    - `POST /api/drive/google/accounts/:id/picker-session` returns all three,
+      `no-store`. The token is minted on click. An unset variable answers 503
+      `picker-not-configured`.
+    - `GOOGLE_PICKER_API_KEY`: public by design, restricted in the console to the
+      web origin's referrers and the Picker API.
+    - `GOOGLE_CLOUD_PROJECT_NUMBER`: public, the `setAppId` value that ties picked
+      files to this project's grant.
+    - Both stay server-side, so a flag-off bundle holds neither.
+      `GOOGLE_CLIENT_ID` (public) and `GOOGLE_CLIENT_SECRET` (secret) are
+      unchanged.
+    - The web build switch `NEXT_PUBLIC_GOOGLE_DRIVE_PICKER=on` adds
+      `https://apis.google.com` to `script-src` and `https://docs.google.com` to
+      `frame-src` (`web/next.config.ts:18,35`) and compiles the Picker in. Unset,
+      the CSP and the bundle are unchanged.
+  - Metadata: picked files only.
+    - The client sends ids only, at most 50. The server calls `files.get` with
+      `fields=id,name,mimeType,size,md5Checksum,version,modifiedTime,webViewLink,parents,trashed`
+      and `supportsAllDrives`. A 404 means "not granted".
+    - Rows go through `upsertDriveFileRow` with
+      `connectedDriveSource("GOOGLE", account.id, id)` (`drive-rows.ts:65,265`),
+      then `enqueueSummaryOnWrite` (`summary-triggers.ts:29`).
+    - The parent is `parents[0]`, usually one that is not indexed (D2 foresaw
+      this). `webUrl` is kept only on docs.google.com or drive.google.com.
+    - The etag is `md5:<md5Checksum>` when Drive reports one (a rename keeps it),
+      else `v:<version>`.
+    - 500 rows per account. Folders and shortcuts cannot be picked.
+  - Refresh: an hourly job `drive-google-refresh` with a heartbeat; it reads
+    nothing while the flag is off.
+    - Each sweep takes up to 20 accounts not refreshed for 6 h: one `files.get`
+      per row, 4 in flight.
+    - Trashed → `trashed`. 404 → the row is deleted (`deleteConnectedDriveRows`,
+      a per-file delete in the writer, by externalId; not D5b's account-wide
+      `deleteLinkedAccountDriveRows`). A 429, a 403 rate-limit reason or a 5xx
+      ends that account's pass.
+    - `lastRefreshedAt` is this job's alone: only a pass through every row
+      stamps it. D5b's token save stamped it too; D5d removed that, so a token
+      refreshed during a pass that a 429 then ends does not count as a refresh.
+    - Drive's limits (prior knowledge, not re-verified: 12,000 queries a minute
+      per project and per user) are far above this. `changes.list` is deferred.
+  - Summaries.
+    - `fetchForSummary` exports Docs and Slides as `text/plain` and Sheets as
+      `text/csv`, and reads other files with `alt=media`. The bytes stream into
+      `readCappedBytes` within D4's deadline, through googleapis only.
+      `webContentLink`, `exportLinks` and `thumbnailLink` are never requested.
+    - `exportSizeLimitExceeded` → `too-large`. A 429, a 5xx or a network error
+      throws a retryable `StorageError`, which `summary-run.ts:239` defers
+      instead of failing.
+    - `summary-extract.ts:34,46` map the three Google types to their export
+      types; otherwise a Doc is SKIPPED.
+  - Read-only (V4): `drive.file` has no read-only variant, so the code enforces it.
+    - The seam has no write method (D2's test).
+    - A guard fails if the connector names
+      `files.create|update|delete|copy|emptyTrash`, `permissions.` or
+      `revisions.`.
+    - D3 answers 409 `read-only`.
+- Slices: one PR each, flag OFF, full gate.
+  - D5a, schema.
+    - Migration `20261015020000_linked_drive_account`, sorted after
+      `20261015010000_auto_unsubscribe_caps`: `lock_timeout`, the table, the FKs,
+      the index, the CHECKs and RLS in the `20260806033517_add_user_identity`
+      form. Also `drive-rows.ts`, the purge and the sweep.
+    - Tests first: the migration SQL, pinned; how sourceAccountId is derived;
+      `reencrypt-tokens-drive`; the purge; `drive-file-guard.test.ts:89,102`;
+      `rls-coverage-guard`, which must fail for each RLS statement removed.
+    - On a scratch Postgres: deploy, the drift check, each CHECK, the cascade
+      account → file → summary, the policies. Preflight: no non-KLORN DriveFile
+      row.
+    - Prod impact: an empty table and a NULL column that nothing reads.
+  - D5b, grant and unlink.
+    - Files: `config.ts`, `drive-scope.ts`, `dispatch.ts`;
+      `drive/linked-drive-accounts.ts` (the only module that touches the table);
+      `drive/providers/google-auth.ts`; `drive/providers/google.ts`, whose
+      `connect` returns a session only for an owned, unflagged account, else
+      null; `routes/google-drive-link.ts` (`POST /link`, `GET /accounts`,
+      `DELETE /accounts/:id`); `routes/auth.ts`, `index.ts`, the contract types;
+      the writer's account-wide `deleteLinkedAccountDriveRows` (`drive-rows.ts`),
+      reached only by the unlink.
+    - Tests first: a characterisation test pinning the four existing auth URLs
+      and the callback's existing branches to main; the new URL's exact scopes;
+      each callback case above; a dark 404 with either flag off; no token on the
+      wire; another user's sourceKey → null; the guard lists
+      (`drive-file-guard.test.ts:370`, `calendar-provider-writers-guard.test.ts:110`,
+      `drive-scope.test.ts:54`).
+    - Prod impact: dark routes. The new branch needs a state that only the dark
+      route signs, and parks nothing while the flags are off.
+  - D5c, Picker and ingest.
+    - Files: `google.ts` (`getMetadata`, `list`, `search`, and `fetchForSummary`
+      for files with bytes); `picker-session` and `POST /accounts/:id/picked`,
+      answering `{ added, refused: [{ id, code }] }`; web
+      `app/files/google-drive-connect.tsx` and `lib/google-picker.ts` (the script
+      loads on click; `setMaxItems(50)`); `next.config.ts`; the 7 locale files;
+      a vocabulary row **Google Drive**.
+    - Tests first: the fields mask, the host allowlist, the write guard; client
+      metadata ignored; 404 → `not-accessible`; the cap; Playwright: hidden on the
+      dark 404, no script loaded before the click; a script in
+      `packages/web/scripts` that checks the CSP is unchanged without the switch
+      (the web package has no unit-test runner).
+    - Summaries before D5d: `DRIVE_SUMMARY_READABLE_PROVIDERS` (`summary-policy.ts`)
+      held KLORN only, so a GOOGLE row's queued summary waited `source-unavailable`
+      (PENDING, no attempt spent, never SKIPPED as a Google type) without
+      connecting; D5d added GOOGLE there.
+    - Picking and its session need the plan (`requireEntitled`), like the link.
+    - Prod impact: none.
+  - D5d, refresh and Google-format summaries. Built 2026-10-15 (branch
+    `feat/drive-d5d-refresh`), flag OFF.
+    - Refresh: `drive/google-drive-refresh-job.ts` (the sweep and the scheduler,
+      `drive-google-refresh`, hourly, in `EXPECTED_SCHEDULERS`, started in
+      `index.ts` unless BACKGROUND_AGENTS_DISABLED) and
+      `drive/google-drive-refresh.ts` (one account's pass).
+      - Off (`DRIVE_ENABLED` or `GOOGLE_DRIVE_ENABLED`, read per sweep and per
+        account): no query, no client, no Google call; the heartbeat is still
+        recorded after each sweep (not while one is still running).
+      - The pick: `dueDriveRefreshAccounts` (`linked-drive-accounts.ts`, the
+        module's one `system:` query, pinned by the guard), GOOGLE, not
+        `needsReconnect`, `lastRefreshedAt` NULL or ≤ now − 6 h, NULLS FIRST then
+        the oldest, 20; it carries out (id, userId) only, and the pass loads
+        each account by (id, userId, provider). No index on `lastRefreshedAt`:
+        at most 5 accounts of a provider per user, scanned once an hour.
+      - The rows: `connectedAccountFiles` (`drive-read.ts`, scoped like every
+        read, trashed ones included), at most twice the 500 cap (the cap is soft
+        by a few concurrent picks).
+      - A file → `updateDriveFileRow` (update-only, so a row an unlink removed
+        meanwhile never comes back), `trashed` included; its summary is queued
+        again only when the etag moved and the file is not trashed (an unchanged
+        `md5:` or `v:` etag writes nothing to the summary table).
+      - 404 → `deleteConnectedDriveRows(userId, provider, sourceKey,
+        externalIds)` (`drive-rows.ts`; refuses KLORN); the refresh is its only
+        caller (guard).
+      - A 403 about the file (`appNotAuthorizedToFile`,
+        `insufficientFilePermissions`, the Picker's set, now shared in
+        `google-files.ts`) leaves the row. Any other refusal of one call (a
+        400, a 403 that is neither about the file, a rate limit nor the
+        project) leaves that row too, is logged and reported to Sentry once per
+        pass and label (status and reason only), and the pass goes on and
+        stamps: one bad row cannot hold its account back for good. A revoked
+        grant → `needsReconnect` (`handleDriveGrantFailure`), pass ended, the
+        sweep goes on.
+      - A 429, a 403 `userRateLimitExceeded`/`rateLimitExceeded`/
+        `dailyLimitExceeded`, a 5xx, no answer or a timeout ends the pass (no
+        further call starts, the ones in flight finish, no stamp) and the
+        WHOLE sweep, so a retry never fans out over 20 accounts. A 403
+        `accessNotConfigured` (the Drive API off for the project, prior
+        knowledge) ends the sweep too, and is reported at most once an hour per
+        process, not per account.
+      - Each `files.get` (the Picker's too) has googleapis' own `timeout`, 30 s
+        (`GOOGLE_METADATA_TIMEOUT_MS`); a timeout is an outage.
+    - Summaries: `fetchForSummary` (`providers/google.ts`) takes the row's type
+      (the seam's options gain `mimeType`; `drive-provider-dispatch.test.ts`
+      pins it). Docs and Slides → `files.export` text/plain, Sheets → text/csv
+      (first sheet only), anything else `files.get` `alt=media`; `responseType:
+      "stream"` into `readCappedBytes`; D4's 60 s deadline aborts the request
+      and releases the body. No field is requested, so no `webContentLink`,
+      `exportLinks` or `thumbnailLink`. 404 → null; `exportSizeLimitExceeded`
+      → `too-large`; a 429, a
+      rate-limit 403, a 5xx, no answer, the deadline, or a revoked grant (the
+      refresh flags the account later) → a retryable `StorageError`; anything
+      else a non-retryable one. A Google format with no text export (a form, a
+      drawing) is never fetched. `summary-extract.ts` reads the three Google
+      types as their export type under a neutral name (`export.txt`,
+      `export.csv`), so a Doc named `notes.docx` is plain text; any other
+      Google type is `unsupported-type`. `DRIVE_SUMMARY_READABLE_PROVIDERS` is
+      {KLORN, GOOGLE}.
+    - Reasons on the streamed path (review fix). A refused streamed request
+      carries its JSON body in the error's message only: gaxios 7 leaves
+      `errors` and `response.data` unset (reproduced against a local server in
+      `google-drive-stream-errors.test.ts`, through the real googleapis). So
+      `googleErrorReason` also parses the message (JSON.parse from its first
+      `{`, bounded to 64 KiB, in try/catch; a reason must be a plain name), and
+      a body still left as a stream is read, bounded and within D4's deadline,
+      then released. Without it `exportSizeLimitExceeded` was never
+      `too-large` and a rate-limit 403 was never retried.
+    - Known limit, as D4's no-backfill rule: an etag change the refresh writes
+      while summaries are off is not queued when they are turned on (the row
+      already holds the new etag, so the next refresh sees no change); that file
+      is summarised on demand (`POST /api/drive/files/:id/summarize`
+      re-queues it, its etag differing from the summary's).
+    - Read-only: `google-drive-readonly-guard.test.ts` now allows `files.get`,
+      `files.list` and `files.export`, `export` only in `google.ts`, once; both
+      new modules are scanned. No write method.
+    - Tests (each failed first): `google-drive-refresh.test.ts` (idle while
+      off; the pick: 6 h, 20, NULLS FIRST, `needsReconnect` and ONEDRIVE left
+      out; trashed; 404 deletes only that row; revoked; 429 / 403 rate limit /
+      5xx / network end the pass after the 4 in flight, unstamped, the next
+      account still runs; a file-level 403; an unexpected 403 reported without
+      the error; ≤ 4 in flight; both etag forms, moved and unchanged; trashed
+      not queued; busy; the heartbeat in the health report; a sweep that
+      throws; the review fix: a rate limit or outage ends the whole sweep, a
+      revoked account does not, a 400 or an unexpected 403 skips its row and
+      stamps, `accessNotConfigured` reported once an hour, the per-call
+      timeout), `google-drive-files.test.ts` (the exports per type, alt=media,
+      no field or link, the cap, the size error and the rate-limit 403s in
+      gaxios' real streamed shape, a refusal body left as a stream read
+      bounded, a body past the bound, a message that is not JSON, 404, the
+      retryable and non-retryable mappings, the deadline for the body and for
+      a refusal's body, no call for a form or a non-id),
+      `google-drive-stream-errors.test.ts` (a local HTTP server: the real
+      error shape, too-large, the rate-limit 403s, 404, a JSON request's
+      refusals), `drive-summary-pure.test.ts` (the Google types),
+      `drive-summary-run.test.ts` (a Doc summarised from its export, an outage
+      deferred with the attempt given back, too-large SKIPPED),
+      `linked-drive-accounts.test.ts` (the pick, the stamp, no stamp on a token
+      save), and the guards. Written after the code they pin:
+      `drive-rows.test.ts` (the per-file delete, already covered by the refresh
+      test's 404 case) and `fake-db.test.ts` (orderBy `{ sort, nulls }`, added to
+      the fake for the pick).
+    - Not done: googleapis-common turns googleapis' retry on by default
+      (`apirequest.js`), so gaxios may retry one `files.get` on a 429 or 5xx
+      (its defaults, prior knowledge) before the pass sees the error; the
+      refresh does not turn it off.
+    - Prod impact: none (no migration; the job idles while the flags are off).
+- Before the flip, in order:
+  1. The current Google verification has passed (V2).
+  2. FA-10 (new): (a) now, a separate Testing-mode Cloud project and OAuth client
+     with test users, for development and the live checks; (b) at the flip, on
+     production: the Drive and Picker APIs enabled, the restricted key created
+     (restricted to the Picker API under "API restrictions", not only to the web
+     origin's referrers: a Referer header can be forged outside a browser), and
+     `drive.file` added to the consent screen and approved.
+  3. FA-5 covers Drive metadata and the file text sent for summaries.
+  4. Live checks on the Testing client, each recorded here with its date: the
+     scopes of a token for the primary's account; `drive.file` unticked at
+     consent; a picked file readable and an unpicked id 404; `parents`,
+     `md5Checksum` and `version` after a rename and an edit; the exports and their
+     size error; a revocation → `needsReconnect`; Gmail still working after an
+     unlink; no CSP violation; the numbers on the quota page.
+     - The Picker opens and picks in a production build (the switch on) under
+       the CSP, with only `https://apis.google.com` in `script-src` and
+       `https://docs.google.com` in `frame-src`. Any origin it turns out to need
+       is added at this check, in `next.config.ts` and in the pin of
+       `packages/web/scripts/check-csp.mjs`, before step 5.
+  5. Env set, the web built with the switch, then `GOOGLE_DRIVE_ENABLED` on,
+     founder account first (L23).
+- Risks and limits.
+  - The browser holds a `drive.file` token (which can read and write the picked
+    files) for up to an hour; an XSS could write to them. It is minted on click,
+    never stored or logged, and bounded by the CSP.
+  - Picked files only: no folder contents, and nothing added later. P5's fallback
+    is a restricted scope, which brings CASA back.
+  - A revocation in Google deletes nothing in Klorn until the user unlinks.
+  - Metadata can be up to 6 h old, and a transient 404 deletes a row.
+  - Renaming a Google-format file re-queues its summary (version etag), within
+    D4's per-file cap. Sheets export one sheet only (prior knowledge).
+  - Web desktop only. Workspace admins can block the app (F0).
+  - Facts marked "prior knowledge" were not re-verified against Google's docs for
+    this text; the live checks in step 4 cover each one.
+  - Shared-files table: add D5 to the `routes/auth.ts`, `contract/src/drive.ts`
+    and `summary-extract.ts` rows.
+  - Rollback: revert. If the flag was ever on: turn it off, delete the
+    `LinkedDriveAccount` rows (the cascade takes the files and summaries), then
+    revert.
 **D6 — OneDrive connector** (*outline*). Depends on: D2, FA-9 with file
 permissions.
-**D7 — device import** (*outline*). Depends on: D3. Upload policy per P4. The desktop
-and mobile apps import files from iCloud Drive, MYBOX and on-device storage
-into the Klorn drive.
+**D7 — device import.** Depends on: D3. Upload policy per P4. Landed 2026-10-14
+(branch `feat/mac-drive-import`, PR not yet opened). **Mac app only**: it reaches
+users only with a desktop release, and only while D3's flags are on. No flag of
+its own: D3's gate decides, and the app hides the feature while it is dark.
+- What shipped:
+  - Mac entry points: File › "Import to Klorn Drive…" (under New Email) and
+    Settings › Accounts › Klorn Drive (after Device calendars, the other opt-in
+    for data on this Mac). Both open one `NSOpenPanel`:
+    files and folders, several at once, aliases resolved, packages not opened.
+    An import started from the menu shows its progress in Settings › Accounts.
+    While it runs: a progress bar, "Uploading N of M", and Cancel. Afterwards: a
+    report (uploaded, not uploaded with the reason per item, and each cap
+    reached), cleared by the user.
+  - Server: `GET /api/drive/limits` → `{ maxFileBytes, quotaBytes, usedBytes }`
+    (`DriveLimitsResponse`), `Cache-Control: no-store`. In `routes/klorn-drive.ts`
+    behind the same `darkRouteGate(klornDriveRoutesEnabled)`, session-
+    authenticated, 60 a minute per address and per user
+    (`KLORN_LIMITS_RATE_LIMIT`). `quotaBytes` is null while
+    `KLORN_DRIVE_QUOTA_BYTES` is unset or unusable (`klornDriveQuotaOrNull`):
+    every upload would be refused, so the app says so before the user picks.
+    It exists because no D3 route answers a GET without an id: D2's list is
+    gated by `DRIVE_ENABLED` alone and would answer 200 with the Klorn drive off.
+- Opt-in model (P4). The pick is the opt-in. Nothing is read before the user
+  confirms the panel; only the picked items, and what is inside a picked folder,
+  are read; each import is one act. No background watching, no bookmarks, no
+  re-sync, no second import of the same pick. A link or a Finder alias inside a
+  picked folder is never followed (it can point outside the pick, and an
+  alias's bookmark names its target); a link the user picked is resolved (they
+  chose it). A pipe or a device is not read. Hidden files inside a folder (`.DS_Store`) are left
+  out; a hidden file picked by name goes. The self-check pins that the drive
+  code has no `NSMetadataQuery`, FSEvents stream, dispatch file source or file
+  presenter.
+- Gate (C6's pattern). The probe runs at launch, at sign-in, each time
+  Settings › Accounts shows, and before every import. 200 shows the menu item
+  and the section; the dark gate's 404 (a body with no drive `code`) hides both;
+  any other failure leaves the state as it was and asks again after 5 minutes.
+  A code-less 404 during an import stops it and hides the feature. A 404 with a
+  drive code (`not-found`, `parent-not-found`) is not the gate.
+- Walk (`Drive/DriveImportWalk.swift`, off the main thread). Named caps in
+  `DriveImportLimits`: 200 files, 50 folders, 8 levels below a picked folder,
+  1 GiB per import, 10,000 entries looked at (hidden, links, oversized and
+  unreadable ones count too), 25 MiB per file (D3's cap; the server's
+  `maxFileBytes` wins when it answers). A folder is read one entry at a time
+  (`FileManager.enumerator`, one level), never loaded whole. Cancel and
+  sign-out reach the walk through a flag (`DriveImportCancelFlag`; the walk runs
+  in a detached task, which does not inherit a cancel), checked before every
+  entry. A picked folder becomes a Klorn folder (`POST
+  /api/drive/folders`) with its folders inside it, parents first; each file goes
+  into its folder (`parentExternalId`). At the file, byte or examined cap the
+  walk stops (later picks included); the folder and depth caps leave that folder out; each
+  cap reached is reported. A file over the size cap is reported before any byte
+  is read and counts toward no cap. The target is the drive's root in v1: no
+  client has a folder view of the Klorn drive yet, so picking a destination
+  folder would need one first.
+- Upload (`Drive/DriveImportBody.swift`, `Drive/DriveAPI.swift`): **streamed**.
+  Each file's multipart body (`size`, optional `parentExternalId`, then `file`,
+  D3's order) is written to a file under `~/Library/Caches/<bundle id>/
+  drive-import/` (folder 0700, each body 0600, created with `O_EXCL`), 1 MiB at
+  a time, and sent with `URLSession.upload(for:fromFile:)`. Memory holds one
+  chunk; disk holds one body per upload in flight (at most 25 MiB plus the
+  framing), deleted after the send; the folder is emptied at launch and when an
+  import starts. The source is checked with `lstat`, then opened with
+  `O_NOFOLLOW | O_NONBLOCK` and read only if `fstat` says it is a regular file,
+  so a path swapped after the walk for a link or a pipe is refused, never
+  followed or waited on. A cancel seen before the read starts opens nothing.
+  `size` is the length of the opened file; a file that ends early or goes on past it is refused
+  (`changedWhileReading`), never sent as a mix. File names keep their UTF-8 (the
+  server normalises to NFC); control characters are dropped, `/` and `\` become
+  `_` (busboy keeps only what follows the last one), quotes are escaped. Two
+  uploads at once (`uploadConcurrency`: D3 allows 20 a minute per user, so more
+  buys nothing). A 429, a 503 `storage-unavailable` or no answer is tried again,
+  at most 5 tries, after `Retry-After` (1 to 60 s) or 2, 4, 8 … s, unless the
+  server said `retryable: false` (a malformed quota answers 503
+  `storage-unavailable` with it). A retry after no answer can upload a file
+  twice when the first try did reach the server: D3 has no idempotency key, so
+  this is a known limit, not handled by the client.
+- Cloud placeholders. Decision: **download on read**, not "report and skip".
+  Each file is read inside `NSFileCoordinator.coordinate(readingItemAt:options:
+  .withoutChanges)` on a queue of its own, so a file in iCloud Drive (or another
+  File Provider folder, such as a MYBOX folder where its Mac app provides one)
+  that is not on the Mac yet is downloaded by the system before it is read; a
+  cancel cancels the coordination. If the read fails for an iCloud or File
+  Provider item the file is reported as "Couldn't download it to this Mac";
+  an old-style `.Name.icloud` stub is reported the same way without a read. Why:
+  the user picked a file they see in Finder; reporting instead would fail every
+  file macOS has evicted from this Mac.
+- Errors (`DriveImportRules.failure`, by `code` first, then status), each with its
+  own text in 7 languages:
+
+  | Answer | Means | Import |
+  |---|---|---|
+  | 503 `quota-not-configured` | uploads not available yet | stops |
+  | 413 `quota-exceeded` | drive full | stops |
+  | 409 `account-purging` | a data deletion is running | stops |
+  | 404 without a drive code | the drive is off (dark gate) | stops, hides |
+  | 401 | session ended | stops |
+  | 413 `too-large` (or any code-less 413) | over the cap | per file |
+  | 429 (with or without `rate-limited`) | rate limited | retried, then per file |
+  | 400 `multipart-malformed`, `invalid-upload` | body did not arrive whole | per file |
+  | 400 `invalid-name` | name refused | per file |
+  | 404 `parent-not-found` | its folder is gone | per file |
+  | 503 `storage-unavailable` | storage down | retried, then per file |
+  | anything else | generic | per file |
+
+  Local outcomes: not downloaded, unreadable, changed while read, unsupported
+  (a link or a package), cancelled. A folder that cannot be created takes its
+  files and folders with it ("Its folder couldn't be created").
+- Sign-out cancels an import in flight and forgets the limits, the report and
+  the availability; an answer or a report of the previous session changes
+  nothing (a session counter).
+- Copy: 37 keys in all 7 languages, integers as `%d`; the self-check compares
+  each key's format specifiers with English in every language. Vocabulary row
+  **Klorn Drive** added to `../product-vocabulary.md`.
+- Verify. `swift run KlornMac --self-check`: 94 cases under "Drive import (D7)",
+  among them the walk caps (files, bytes, folders, depth, entries examined), a
+  cancel mid-walk, a folder read one entry at a time, hidden files, links,
+  placeholders, the size pre-check, every code against `klorn-errors.ts` with
+  its status, the backoff, the multipart framing and name escaping, the
+  404-hides rule, the menu rule, the specifier parity; and scenarios over real
+  temporary files and a URLProtocol stub that parses every multipart body sent:
+  folders before files, each file's size, parent and bytes, the token on every
+  request, a D4-shaped file answer (with `summary`) and an extended limits answer
+  still decoding, the temporary bodies removed, Retry-After honoured, a give-up after 5
+  tries, `retryable: false` not retried, a quota refusal stopping the rest, a
+  dark 404 mid-import, cancel (a sibling cancelled before it starts reads and
+  sends nothing), sign-out (no progress moved by the old run); on the real file
+  system, a link, a Finder alias and a pipe skipped by the walk, a link and a
+  pipe refused at open without waiting, the body folder 0700 and bodies 0600 in
+  Caches, and the launch sweep. Server: `routes-klorn-drive-limits.test.ts`
+  (dark with each flag off, 401, this user's KLORN usage only, quota null when
+  unset or malformed, a drive error while reading the usage answered as the
+  drive's own error rather than a 500, a malformed quota logged once per value,
+  both rate limits). Mutation checks, each failing at least one check: the
+  code-less 404 not read as the gate, the hidden-file rule inverted, the depth
+  cap off by one, a stopping refusal not stopping.
+- Not verified: a real upload from a real Mac to a real R2 bucket (FA-7; D3
+  itself has not met a real bucket); any GUI run (the panel, the menu item,
+  the section and the progress were never drawn: `swift build` and the headless
+  self-check only); a real iCloud Drive or MYBOX download through the
+  coordinated read (exercised on local files only); the global per-address
+  429 body (no `code`; the status maps it).
+- Known limits: no background sync or watching (v1, P4); no Galaxy, Android or
+  iOS import (C5, FA-8); root only as the target; packages (apps, some Pages
+  or Keynote documents) are not uploaded; names are not deduplicated (D3 allows
+  two files of one name, so a second import of the same pick adds copies); a
+  cancelled or stopped import keeps what was already uploaded; the quota is
+  the server's to check, per file (no client pre-check of the total);
+  `Retry-After` is read as seconds only; if the app quits mid-import, the
+  bodies in flight (at most two) stay in Caches until the next launch.
+- Rollback: revert the PR. `/limits` can stay; it is dark with the drive.
+The desktop and mobile apps import files from iCloud Drive, MYBOX and on-device
+storage into the Klorn drive: the Mac part is the above; the mobile part is C5's
+(blocked on FA-8).
 
 A Klorn drive shows what a person puts into it. Files that stay in a service
 with no API remain invisible until D7 imports them. Product copy must not
-claim otherwise.
+claim otherwise. An import is a copy made once: a file changed or deleted in
+that service later is not changed in Klorn.
 
 ### Workstream E — Klorn mailbox (auxiliary)
 
@@ -3827,6 +4593,8 @@ time, whatever the graph says. The later step rebases, reruns
 |---|---|
 | `packages/api/prisma/schema.prisma` | A1, A2a, A2b, B2, C1, D2, D5, D6, E1, F |
 | `drive/drive-scope.ts`, `drive/drive-rows.ts`, `drive/providers/dispatch.ts`, `routes/drive.ts` | D3, D5, D6, D7 |
+| `routes/klorn-drive.ts`, `drive/klorn-quota.ts` | D3, D7 |
+| `packages/contract/src/drive.ts` | D3, D4, D7 |
 | `packages/api/src/mcp/tool-gate.ts`, `mcp/write-call.ts`, `mcp/server.ts` | A2a, A2b, A4 |
 | `mail/providers/types.ts`, `dispatch.ts` | A4, B0, B0b, B1, B2, B3, E2 |
 | `mail/imap-connection.ts`, `mail/imap-sync.ts`, `mail/providers/imap.ts` | B1, B2, B3 |
@@ -3850,6 +4618,7 @@ time, whatever the graph says. The later step rebases, reruns
 | FA-7 | Create the object storage account: Cloudflare R2, one private bucket, an API token with object read and write on that bucket only, and the S3 endpoint. No CORS rule (details in D1) | D1 flip |
 | FA-8 | Run the Samsung calendar probe on a Galaxy device and record the result here | C5 |
 | FA-9 | Azure app registration (existing action B). That action lists `Mail.*` permissions only; calendar and file permissions must be added for C4 and D6. For C4: add delegated `Calendars.Read` (and `User.Read` if it is not already listed); the calendar link requests exactly `openid email offline_access User.Read Calendars.Read`, reuses the existing redirect URI, and asks for no `Mail.*`. Existing inbox links keep their consent unchanged | B5, C4, D6 |
+| FA-10 | Google Drive (D5). (a) Now: a separate Testing-mode Cloud project and OAuth client with test users, for development and D5's live checks. (b) At the flip, on production: enable the Drive and Picker APIs, create the Picker API key restricted to the web origin's referrers AND, under "API restrictions", to the Picker API only (a Referer header can be forged outside a browser), and add `drive.file` to the consent screen for approval. Nothing changes on the production consent screen before (b) | D5 |
 
 ## Cross-cutting rules
 

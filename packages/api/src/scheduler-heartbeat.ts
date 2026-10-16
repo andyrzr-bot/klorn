@@ -34,6 +34,8 @@ export const EXPECTED_SCHEDULERS = [
   "pattern-learner",
   "log-retention",
   "storage-purge",
+  "drive-summary",
+  "drive-google-refresh",
 ] as const;
 
 export type SchedulerName = (typeof EXPECTED_SCHEDULERS)[number];

@@ -9,8 +9,8 @@ import SwiftUI
 /// reading pane alone fits at over 100%.
 struct ReadingPane: View {
     @Environment(AppModel.self) private var model
-    let actions: TopBarActions
-    /// The owning FullView's key zone; `.reader` draws the focus ring.
+    let actions: ShellActions
+    /// The owning window's key zone; `.reader` draws the focus ring.
     var keyZone: MailKeyZone = .list
     /// `.window` in the main window: the type roles, the reader meta line
     /// and the flat primary button. The default is the bar's pane, unchanged.
@@ -589,8 +589,7 @@ struct ReadingPane: View {
                             Text(option.toneLabel).frame(minHeight: 24)
                         }
                         .buttonStyle(.bordered).controlSize(.regular)
-                        // The card binds 1/2/3 positionally; mirroring that here
-                        // keeps one muscle memory across both surfaces.
+                        // 1/2/3 pick the drafts positionally (wire order).
                         .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [])
                         .help(option.body)
                         .accessibilityLabel(L("reading.quickReply.a11y", option.toneLabel, option.body))

@@ -108,10 +108,16 @@ export interface ProviderCalendarEvent {
   readonly startTime: Date | null;
   readonly endTime: Date | null;
   /**
-   * CalDAV only (C3): the calendar collection the event was listed from, as
-   * `calendarKeyOf` (pim/caldav/caldav-listing.ts) names it. Absent elsewhere.
+   * The calendar the event was listed from, for the window reconcile: a CalDAV
+   * collection as `calendarKeyOf` (pim/caldav/caldav-listing.ts) names it (C3), or
+   * Outlook's one `outlook:default`. Absent elsewhere.
    */
   readonly calendarKey?: string;
+  /**
+   * Google only: the calendar's owner declined this invitation (their own attendee
+   * entry, `self: true`, is `declined`). Absent elsewhere.
+   */
+  readonly declinedBySelf?: boolean;
 }
 
 export interface CalendarCreateInput {
@@ -174,7 +180,7 @@ export interface CalendarWindowListing {
   /** When the listing started: a row written after it (by a concurrent sync) is never removed. */
   readonly listedAt: Date;
   /**
-   * The calendars the listing read (CalDAV, `calendarKeyOf`). A row of any other
+   * The calendars the listing read (CalDAV collections, or `outlook:default`). A row of any other
    * calendar is unknown to it, never removed for being absent.
    */
   readonly calendarKeys?: readonly string[];
@@ -184,7 +190,7 @@ export interface CalendarSession {
   readonly provider: CalendarProviderName;
   listEvents(query: CalendarListQuery): Promise<ProviderCalendarEvent[]>;
   /**
-   * The window's events and whether that is all of them (C3, CalDAV only). The
+   * The window's events and whether that is all of them (C3: CalDAV and Outlook). The
    * sync prefers it to `listEvents` when present. Throws like `listEvents`.
    */
   listWindow?(query: CalendarListQuery): Promise<CalendarWindowListing>;
