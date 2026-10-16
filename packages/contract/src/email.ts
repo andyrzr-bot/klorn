@@ -288,3 +288,18 @@ export interface WaitingOnResponse {
   /** The floor that was applied (the request's `days`, or the default). */
   minDays: number;
 }
+
+/**
+ * `POST /api/email/send` body — a brand-new message (not a reply).
+ * `linkedInboxAccountId` picks the account it leaves from: absent / null /
+ * "primary" = the primary inbox (as before the field existed); otherwise the id
+ * of one of the caller's linked inboxes. An id that is not the caller's is 404
+ * (never a silent primary send), a non-id value 400, and a linked mailbox whose
+ * provider cannot send from Klorn 501.
+ */
+export interface SendEmailRequest {
+  to: string;
+  subject: string;
+  body: string;
+  linkedInboxAccountId?: string | null;
+}
