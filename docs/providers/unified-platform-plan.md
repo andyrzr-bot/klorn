@@ -4095,18 +4095,31 @@ the scopes that sign-in, Gmail, Calendar and the inbox links request
       would return a token that also carries the Gmail and Calendar scopes.
     - Same client and redirect URI, so the redirect needs no console change
       (C4's precedent).
-    - `routes/auth.ts` gains one branch after the state check (`:1175`) and
-      before the code exchange (`:1182`). It calls `completeGoogleDriveLink`,
-      built like `outlook-calendar-link.ts:129`:
+    - Bound to the session that started it, like every account link (#1451):
+      `routes/auth.ts` gains one branch after the state check and before the
+      code exchange that parks the code (`routes/link-handoff.ts`) and never
+      exchanges it; while `DRIVE_ENABLED` or `GOOGLE_DRIVE_ENABLED` is off it
+      parks nothing and lands on `/files?drive=failed`. `__link_drive__` is in
+      `LINK_MARKERS` (`auth/pending-links.ts`), and POST
+      `/api/auth/link/complete` (`routes/link-complete.ts`) calls
+      `completeGoogleDriveLink` only for the session of the user who started
+      the flow (another session: 409, nothing exchanged or written). The code
+      exchange happens there, built like `outlook-calendar-link.ts:129`:
       - flag off → `failed`, with no code exchange;
       - `verified_email` is required;
       - the returned `scope` must include `drive.file` (granular consent lets the
         user untick it), else `scope-missing` and nothing is stored;
       - no refresh token → `failed`;
       - entitlement is checked again;
-      - at most 5 accounts.
-    - Plan gate: as link-calendar (`requireEntitled`). Whether it stays is a
-      founder question, recorded here before D5b merges.
+      - at most 5 accounts;
+      - a granted scope beyond `openid`, `email`, `userinfo.email` and
+        `drive.file` (a Gmail or Calendar scope) is warned about and reported to
+        Sentry, scope names only; the account is still stored, since
+        `drive.file` is present.
+    - Plan gate: `requireEntitled`, as link-calendar (default 2026-10-15; the
+      founder may change it — open question, not yet answered). The callback
+      checks the plan again; listing and unlinking need a session only, so a
+      downgraded user can still unlink.
   - Tokens: `encryptToken` under the `TOKEN_ENCRYPTION_KEYS` ring.
     - `buildLinkedDriveClient` copies `gmail.ts:502`. An undecryptable or empty
       token sets `needsReconnect`. A refreshed token is saved through
@@ -4116,8 +4129,9 @@ the scopes that sign-in, Gmail, Calendar and the inbox links request
       the rows stay.
     - The key-rotation sweep (`scripts/reencrypt-tokens.ts:122`) and
       `purgeUserData` (`purge-user-data.ts:27`) cover the table.
-  - Unlink: the rows (through the writer, by sourceKey), then the account, in one
-    transaction; the cascade covers a refresh still in flight. Klorn does not call
+  - Unlink: the rows (through the writer's `deleteLinkedAccountDriveRows`, by
+    sourceKey), then the account, in one transaction; the cascade covers a
+    refresh still in flight. Klorn does not call
     Google's revoke endpoint: Google revokes a combined grant whole (prior
     knowledge), and for the primary's account that would cut Gmail.
   - Picker: the browser needs a `drive.file` token, a developer key and the app id.
@@ -4152,8 +4166,9 @@ the scopes that sign-in, Gmail, Calendar and the inbox links request
     - Each sweep takes up to 20 accounts not refreshed for 6 h: one `files.get`
       per row, 4 in flight.
     - Trashed → `trashed`. 404 → the row is deleted (`deleteConnectedDriveRows`,
-      in the writer). A 429, a 403 rate-limit reason or a 5xx ends that
-      account's pass.
+      a per-file delete in the writer, by externalId; not D5b's account-wide
+      `deleteLinkedAccountDriveRows`). A 429, a 403 rate-limit reason or a 5xx
+      ends that account's pass.
     - Drive's limits (prior knowledge, not re-verified: 12,000 queries a minute
       per project and per user) are far above this. `changes.list` is deferred.
   - Summaries.
@@ -4191,7 +4206,9 @@ the scopes that sign-in, Gmail, Calendar and the inbox links request
       `drive/providers/google-auth.ts`; `drive/providers/google.ts`, whose
       `connect` returns a session only for an owned, unflagged account, else
       null; `routes/google-drive-link.ts` (`POST /link`, `GET /accounts`,
-      `DELETE /accounts/:id`); `routes/auth.ts`, `index.ts`, the contract types.
+      `DELETE /accounts/:id`); `routes/auth.ts`, `index.ts`, the contract types;
+      the writer's account-wide `deleteLinkedAccountDriveRows` (`drive-rows.ts`),
+      reached only by the unlink.
     - Tests first: a characterisation test pinning the four existing auth URLs
       and the callback's existing branches to main; the new URL's exact scopes;
       each callback case above; a dark 404 with either flag off; no token on the
@@ -4199,7 +4216,7 @@ the scopes that sign-in, Gmail, Calendar and the inbox links request
       (`drive-file-guard.test.ts:370`, `calendar-provider-writers-guard.test.ts:110`,
       `drive-scope.test.ts:54`).
     - Prod impact: dark routes. The new branch needs a state that only the dark
-      route signs.
+      route signs, and parks nothing while the flags are off.
   - D5c, Picker and ingest.
     - Files: `google.ts` (`getMetadata`, `list`, `search`, and `fetchForSummary`
       for files with bytes); `picker-session` and `POST /accounts/:id/picked`,
@@ -4214,8 +4231,9 @@ the scopes that sign-in, Gmail, Calendar and the inbox links request
       (the web package has no unit-test runner).
     - Prod impact: none.
   - D5d, refresh and Google-format summaries.
-    - Files: the refresh module and its job, the writer delete (pinned by the
-      guard), the exports, `summary-extract.ts`.
+    - Files: the refresh module and its job, the writer's per-file delete
+      `deleteConnectedDriveRows` (pinned by the guard), the exports,
+      `summary-extract.ts`.
     - Tests first: trashed, 404, revoked, rate limit, both etag forms, the exports
       and their size error, the outage mapping, the job idling while off.
     - Prod impact: none.
