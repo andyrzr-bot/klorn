@@ -167,7 +167,7 @@ export function LaneSheet({
           type="checkbox"
           role="switch"
           aria-checked={pin}
-          className="switch"
+          className="lane-switch"
           checked={pin}
           onChange={(e) => setPin(e.target.checked)}
         />

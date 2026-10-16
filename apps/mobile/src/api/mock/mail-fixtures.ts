@@ -313,6 +313,7 @@ export function mockMailDetail(now: number, row: MailRow): EmailDetailWire {
             mimeType: "application/pdf",
             size: 482_133,
             summary: "3조 지급 일정 2주 앞당김, 7조 해지 통보 30일 → 14일",
+            category: "contract",
             analysisStatus: "done",
           },
         ]
@@ -325,6 +326,7 @@ export function mockMailDetail(now: number, row: MailRow): EmailDetailWire {
               mimeType: "application/pdf",
               size: 2_310_000,
               summary: null,
+              category: null,
               analysisStatus: "pending",
             },
             {
@@ -334,6 +336,7 @@ export function mockMailDetail(now: number, row: MailRow): EmailDetailWire {
               mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
               size: 48_200,
               summary: null,
+              category: null,
               analysisStatus: "pending",
             },
           ]

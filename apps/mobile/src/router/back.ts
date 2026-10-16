@@ -17,9 +17,18 @@ export interface BackState {
   tabHistory: readonly Tab[];
 }
 
+/** Settings pages sit under Settings (the Accounts artboard's back label is "설정"). */
+export function parentOf(route: Route): Route | null {
+  if (route.name === "settings" && route.section) return { name: "settings" };
+  if (route.name === "accounts") return { name: "settings" };
+  return null;
+}
+
 export function resolveBack(state: BackState): BackAction {
   if (state.sheetOpen) return { kind: "closeSheet" };
   if (hasDetail(state.route)) return { kind: "navigate", route: withoutDetail(state.route) };
+  const parent = parentOf(state.route);
+  if (parent) return { kind: "navigate", route: parent };
   const current = tabOf(state.route);
   const history = state.tabHistory.filter((tab, i, all) => i === 0 || all[i - 1] !== tab);
   if (current !== null) {

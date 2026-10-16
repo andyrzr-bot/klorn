@@ -25,7 +25,13 @@
   --ink-button-text: #0b1120;
 }
 
-/* Sheet — LaneSheet artboard (bottom sheet r28, grabber 36×5, scrim 32%). */
+/*
+ * Sheet (ui/Sheet.tsx) — every modal surface in the app: Mail's lane /
+ * account / snooze / confirm / composer sheets and the Calendar, Assistant,
+ * Accounts sheets. LaneSheet artboard: bottom sheet r28, grabber 36×5, scrim
+ * 32%; a centred dialog from medium; a full-height side sheet (`--side`) for
+ * the expanded layout's assistant.
+ */
 .sheet {
   position: fixed;
   inset: 0;
@@ -143,6 +149,41 @@
   width: min(640px, 100%);
 }
 
+/* ── Side sheet (expanded): the assistant thread beside the content ────── */
+.sheet--side {
+  justify-content: flex-end;
+  align-items: stretch;
+}
+
+.sheet--side .sheet__panel {
+  width: min(420px, 100%);
+  height: 100%;
+  max-height: none;
+  border-radius: var(--radius-sheet) 0 0 var(--radius-sheet);
+  border-left: 1px solid var(--line-nav);
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) 0;
+  box-shadow: var(--shadow-float);
+  opacity: 0;
+  transform: translateX(24px);
+  transition:
+    opacity var(--motion-exit) var(--ease),
+    transform var(--motion-exit) var(--ease);
+}
+
+.sheet--side[data-open="true"] .sheet__panel {
+  opacity: 1;
+  transform: none;
+  transition-duration: var(--motion-enter);
+}
+
+.sheet--side .sheet__head {
+  padding: 10px 12px 4px 20px;
+}
+
+.sheet--side .sheet__body {
+  gap: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sheet--bottom .sheet__panel,
   .sheet--bottom[data-open="true"] .sheet__panel {
@@ -154,8 +195,12 @@
   .sheet--dialog[data-open="true"] .sheet__panel {
     opacity: 1;
   }
-  .sheet--dialog .sheet__panel {
+  .sheet--dialog .sheet__panel,
+  .sheet--side .sheet__panel {
     transform: none;
+  }
+  .sheet--side[data-open="true"] .sheet__panel {
+    opacity: 1;
   }
 }
 
@@ -164,9 +209,39 @@
   flex: none;
   padding: 6px 4px 14px;
   display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.sheet__titles {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
   flex-direction: column;
   gap: 4px;
-  min-width: 0;
+}
+
+.sheet__head--close .sheet__titles {
+  padding-top: 8px;
+}
+
+/* The optional close button (44×44, Calendar / Assistant / Accounts sheets). */
+.sheet__close {
+  flex: none;
+  width: var(--touch);
+  height: var(--touch);
+  margin: 0 -8px 0 0;
+  border-radius: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-mid);
+}
+
+.sheet__close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .sheet--dialog .sheet__head {
@@ -175,6 +250,11 @@
 
 .sheet__head--hidden {
   padding: 0;
+}
+
+.sheet__head--hidden.sheet__head--close {
+  justify-content: flex-end;
+  padding-bottom: 4px;
 }
 
 .sheet__title {
@@ -187,13 +267,16 @@
   font-size: var(--type-subhead);
   line-height: var(--type-subhead-lh);
   color: var(--ink-mid);
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
 :root[data-large-text] .sheet__subtitle {
-  white-space: normal;
+  display: block;
 }
 
 .sheet__body {
@@ -204,6 +287,8 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 .sheet__footer {
@@ -212,6 +297,20 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* A footer of `.button`s (Cancel · Confirm) sits in one row, equal widths. */
+.sheet__footer:has(> .button) {
+  flex-direction: row;
+  gap: 10px;
+}
+
+.sheet__footer > .button {
+  flex: 1 1 0;
+}
+
+.sheet--side .sheet__footer {
+  padding: 12px 20px 16px;
 }
 
 /* The sheet's primary button (LaneSheet: 50px, r14, 17px). */
@@ -243,4 +342,160 @@
 .sheet-cta--quiet {
   background: var(--surface-control);
   color: var(--ink);
+}
+
+/* ── Form fields inside sheets and settings ──────────────────────────────── */
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-field__label {
+  font-size: var(--type-subhead);
+  line-height: var(--type-subhead-lh);
+  font-weight: 600;
+  color: var(--ink-mid);
+}
+
+.form-field__hint {
+  font-size: var(--type-footnote);
+  line-height: var(--type-footnote-lh);
+  color: var(--ink-dim);
+}
+
+.form-field input,
+.form-field select,
+.form-field textarea {
+  min-height: 48px;
+  padding: 0 14px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--line-bar);
+  background: var(--surface-card);
+  color: var(--ink);
+  font-size: 16px; /* ≥16px: no iOS zoom on focus */
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.form-field textarea {
+  padding: 12px 14px;
+  resize: vertical;
+}
+
+.form-field input:focus,
+.form-field select:focus,
+.form-field textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+  border-color: transparent;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.form-error {
+  padding: 10px 14px;
+  border-radius: var(--radius-control);
+  background: var(--state-danger-bg);
+  color: var(--state-danger-ink);
+  font-size: var(--type-callout);
+  line-height: var(--type-callout-lh);
+}
+
+.form-note {
+  padding: 10px 14px;
+  border-radius: var(--radius-control);
+  background: var(--state-warn-bg);
+  color: var(--state-warn-ink);
+  font-size: var(--type-callout);
+  line-height: var(--type-callout-lh);
+}
+
+.button--danger {
+  background: var(--state-danger-ink);
+  color: #ffffff;
+}
+
+:root[data-theme="dark"] .button--danger {
+  color: #0b1120;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .button--danger {
+    color: #0b1120;
+  }
+}
+
+/* ── Status note ─────────────────────────────────────────────────────────── */
+.status-note-host {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--safe-bottom) + var(--note-offset, 16px));
+  z-index: 120;
+  display: flex;
+  justify-content: center;
+  padding: 0 16px;
+  pointer-events: none;
+}
+
+html:has(.shell[data-nav="tabs"]) .status-note-host {
+  --note-offset: calc(var(--tabbar-height) + 12px);
+}
+
+.status-note {
+  pointer-events: auto;
+  max-width: 520px;
+  min-height: var(--touch);
+  padding: 10px 14px;
+  border-radius: var(--radius-row);
+  background: #0f172a;
+  color: #f1f5f9;
+  box-shadow: var(--shadow-float);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--type-callout);
+  line-height: var(--type-callout-lh);
+  animation: sheet-rise var(--motion-enter) var(--ease);
+}
+
+:root[data-theme="dark"] .status-note {
+  background: #1e293b;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .status-note {
+    background: #1e293b;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+}
+
+.status-note--ok svg {
+  color: #6ee7b7;
+}
+
+.status-note--error svg {
+  color: #fca5a5;
+}
+
+.status-note--info svg {
+  color: #7dd3fc;
+}
+
+.status-note__text {
+  flex: 1 1 auto;
+}
+
+.status-note__action {
+  flex: none;
+  min-height: 36px;
+  padding: 0 8px;
+  color: #7dd3fc;
+  font-weight: 600;
 }

@@ -5,11 +5,12 @@
  *   Sidebar (expanded ≥1024) — 248px, lanes + accounts, TabletLandscape artboard
  */
 import type { LiveTier } from "@klorn/contract";
-import type { MouseEvent } from "react";
+import { type MouseEvent, useState } from "react";
 import { useInboxes, useLaneCounts, usePendingApprovals } from "../api/queries";
 import { useI18n } from "../i18n/I18nProvider";
 import { useRouter } from "../router/Router";
 import { formatRoute, LIVE_LANES, type Tab, tabOf } from "../router/routes";
+import { AssistantSheet } from "../screens/assistant/AssistantSheet";
 import { Icon } from "../ui/Icon";
 import { SourceBadge } from "../ui/SourceBadge";
 import { NAV_ITEMS } from "./nav-items";
@@ -173,17 +174,25 @@ export function Sidebar() {
   );
 }
 
+/** Expanded only: opens the assistant thread in a side sheet beside the content. */
 export function AssistantFab() {
   const { t } = useI18n();
-  const { navigate } = useRouter();
+  const { route } = useRouter();
+  const [open, setOpen] = useState(false);
+  if (route.name === "assistant") return null;
   return (
-    <button
-      type="button"
-      className="assistant-fab"
-      onClick={() => navigate({ name: "assistant", section: "chat" })}
-    >
-      <Icon name="sparkSmall" size={18} strokeWidth={2} className="assistant-fab__icon" />
-      {t("nav.assistantFab")}
-    </button>
+    <>
+      <button
+        type="button"
+        className="assistant-fab"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen(true)}
+      >
+        <Icon name="sparkSmall" size={18} strokeWidth={2} className="assistant-fab__icon" />
+        {t("nav.assistantFab")}
+      </button>
+      <AssistantSheet open={open} onClose={() => setOpen(false)} />
+    </>
   );
 }

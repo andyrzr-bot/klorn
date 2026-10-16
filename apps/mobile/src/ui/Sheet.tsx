@@ -1,15 +1,19 @@
 /**
- * Sheet — the modal surface Mail's lane / account / snooze / confirm panels
- * use (LaneSheet artboard). One component, two shapes:
+ * Sheet — the app's one modal surface (LaneSheet artboard): Mail's lane /
+ * account / snooze / confirm / composer panels and the Calendar, Assistant
+ * and Accounts sheets. Three shapes:
  *
  *   compact (phones, Flip unfolded, tabletop)  bottom sheet, r28 top corners,
  *                                              grabber, drag down to dismiss
  *   medium / expanded                          centred dialog (r20), same content
+ *   variant="side", medium / expanded          full-height side sheet (the
+ *                                              expanded layout's assistant)
  *
  * Accessibility: role=dialog + aria-modal, labelled by its title; focus moves
  * in and is trapped (the app root is `inert` while open, with a Tab-wrap
- * fallback); Escape, the scrim and Android back (router.registerSheet) close
- * it; focus returns to the opener. Reduced motion → fade only.
+ * fallback); Escape (topmost sheet only), the scrim, the optional close
+ * button and Android back (router.registerSheet) close it; focus returns to
+ * the opener. Reduced motion → fade only.
  */
 import {
   type CSSProperties,
@@ -21,8 +25,10 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { useI18n } from "../i18n/I18nProvider";
 import { useLayout } from "../layout/LayoutContext";
 import { useRouter } from "../router/Router";
+import { Icon } from "./Icon";
 import "./sheet.css";
 
 /** Drag past this (or fling down) to dismiss. */
@@ -31,6 +37,10 @@ const SHEET_DISMISS_VELOCITY = 0.5;
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const FORM_FIELD = "input:not([type=hidden]):not([disabled]), textarea:not([disabled]), select";
+
+/** Open sheets, oldest first: Escape closes only the topmost (a stacked confirm). */
+const openSheets: symbol[] = [];
 
 export interface SheetProps {
   open: boolean;
@@ -52,6 +62,14 @@ export interface SheetProps {
   size?: "auto" | "full";
   /** Extra CSS variables on the sheet root (e.g. --kb-inset). */
   style?: CSSProperties;
+  /** "side": a full-height sheet at the trailing edge on medium / expanded. */
+  variant?: "auto" | "side";
+  /**
+   * A 44px close button in the header. Without it the first control takes
+   * focus on open; with it, a `[data-autofocus]` element or the first form
+   * field does, else the panel (so focus never lands on the close button).
+   */
+  closeButton?: boolean;
 }
 
 function reducedMotion(): boolean {
@@ -93,11 +111,15 @@ function SheetBody({
   className,
   size = "auto",
   style: extraStyle,
+  variant = "auto",
+  closeButton = false,
 }: SheetProps & { visible: boolean }) {
   const plan = useLayout();
+  const { t } = useI18n();
   const { registerSheet } = useRouter();
   const bottom =
     plan.sizeClass === "compact" || plan.sizeClass === "cover" || plan.posture === "tabletop";
+  const shape = bottom ? "bottom" : variant === "side" ? "side" : "dialog";
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const subtitleId = useId();
@@ -110,19 +132,26 @@ function SheetBody({
   useEffect(() => {
     if (!open) return;
     const unregister = registerSheet(() => closeRef.current());
+    const self = Symbol("sheet");
+    openSheets.push(self);
     const opener = document.activeElement as HTMLElement | null;
     const root = document.getElementById("root");
     root?.setAttribute("inert", "");
     root?.setAttribute("aria-hidden", "true");
     const focusFirst = () => {
+      const panel = panelRef.current;
       const target =
         initialFocus?.() ??
-        panelRef.current?.querySelector<HTMLElement>(FOCUSABLE) ??
-        panelRef.current;
+        panel?.querySelector<HTMLElement>("[data-autofocus]") ??
+        (closeButton
+          ? panel?.querySelector<HTMLElement>(FORM_FIELD)
+          : panel?.querySelector<HTMLElement>(FOCUSABLE)) ??
+        panel;
       target?.focus({ preventScroll: true });
     };
     const raf = requestAnimationFrame(focusFirst);
     const onKey = (e: KeyboardEvent) => {
+      if (openSheets[openSheets.length - 1] !== self) return;
       if (e.key === "Escape") {
         e.preventDefault();
         closeRef.current();
@@ -147,6 +176,7 @@ function SheetBody({
     return () => {
       cancelAnimationFrame(raf);
       unregister();
+      openSheets.splice(openSheets.indexOf(self), 1);
       document.removeEventListener("keydown", onKey);
       // Another sheet may still be open (stacked confirm); only the last one restores.
       if (!document.querySelector(".sheet[data-open='true']:not([data-closing])")) {
@@ -155,12 +185,14 @@ function SheetBody({
       }
       opener?.focus?.({ preventScroll: true });
     };
-    // initialFocus is read once, when the sheet opens.
+    // initialFocus / closeButton are read once, when the sheet opens.
   }, [open, registerSheet]);
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (!bottom) return;
+      // A control in the header (the close button) keeps its own tap.
+      if ((e.target as Element).closest("button, a, input")) return;
       dragStart.current = { y: e.clientY, t: e.timeStamp, lastY: e.clientY, lastT: e.timeStamp };
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     },
@@ -198,7 +230,7 @@ function SheetBody({
 
   return (
     <div
-      className={`sheet ${bottom ? "sheet--bottom" : "sheet--dialog"} sheet--${size} ${className ?? ""}`}
+      className={`sheet sheet--${shape} sheet--${size} ${className ?? ""}`}
       data-open={visible ? "true" : "false"}
       data-dragging={drag > 0 ? "true" : undefined}
       style={style}
@@ -226,19 +258,26 @@ function SheetBody({
           </div>
         ) : null}
         <div
-          className={`sheet__head${hideTitle ? " sheet__head--hidden" : ""}`}
+          className={`sheet__head${hideTitle ? " sheet__head--hidden" : ""}${closeButton ? " sheet__head--close" : ""}`}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
         >
-          <h2 id={titleId} className={hideTitle ? "sr-only" : "sheet__title"}>
-            {title}
-          </h2>
-          {subtitle ? (
-            <span id={subtitleId} className="sheet__subtitle">
-              {subtitle}
-            </span>
+          <div className="sheet__titles">
+            <h2 id={titleId} className={hideTitle ? "sr-only" : "sheet__title"}>
+              {title}
+            </h2>
+            {subtitle ? (
+              <span id={subtitleId} className="sheet__subtitle">
+                {subtitle}
+              </span>
+            ) : null}
+          </div>
+          {closeButton ? (
+            <button type="button" className="sheet__close" onClick={onClose}>
+              <Icon name="close" size={20} strokeWidth={2} label={t("settings.ui.close")} />
+            </button>
           ) : null}
         </div>
         <div className="sheet__body">{children}</div>

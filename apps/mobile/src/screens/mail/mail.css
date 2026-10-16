@@ -961,7 +961,7 @@ html[data-large-text] .mail-row__top {
   color: var(--ink-dim);
 }
 
-.switch {
+.lane-switch {
   flex: none;
   position: relative;
   width: 44px;
@@ -975,7 +975,7 @@ html[data-large-text] .mail-row__top {
   transition: background-color var(--motion-state) var(--ease);
 }
 
-.switch::before {
+.lane-switch::before {
   content: "";
   position: absolute;
   top: 2px;
@@ -988,11 +988,11 @@ html[data-large-text] .mail-row__top {
   transition: transform var(--motion-state) var(--ease);
 }
 
-.switch:checked {
+.lane-switch:checked {
   background: var(--accent);
 }
 
-.switch:checked::before {
+.lane-switch:checked::before {
   transform: translateX(18px);
 }
 

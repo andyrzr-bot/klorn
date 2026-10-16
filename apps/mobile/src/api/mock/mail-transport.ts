@@ -3,10 +3,10 @@
  * move, an unsubscribe stay done while the demo runs), so screenshots and the
  * Playwright behaviour specs see the same consequences the server would give.
  *
- * Scenario `flagsOff` answers the dark routes the way production does while
- * their flags are off (Fastify's bare 404): reader-context (MAIL_V2), the
- * by-email lane move + undo (KEYBOARD_TRIAGE), subscriptions
- * (BULK_UNSUBSCRIBE_ENABLED).
+ * Scenarios `flagsOff` and `featuresOff` answer the dark routes the way
+ * production does while their flags are off (Fastify's bare 404):
+ * reader-context (MAIL_V2), the by-email lane move + undo (KEYBOARD_TRIAGE),
+ * subscriptions (BULK_UNSUBSCRIBE_ENABLED).
  */
 import type { LiveTier } from "@klorn/contract";
 import {
@@ -85,7 +85,7 @@ export interface MailMockContext {
 /** Answers a mail route, or returns null so the caller tries its own routes. */
 export function mockMailRoute(ctx: MailMockContext): Response | null {
   const { pathname, searchParams, method, init, now, scenario, state } = ctx;
-  const flagsOff = scenario === "flagsOff";
+  const flagsOff = scenario === "flagsOff" || scenario === "featuresOff";
   const empty = scenario === "empty" || scenario === "noAccounts";
   const rows = empty ? [] : mailRows(now);
   const tierOf = (row: MailRow): LiveTier | null => state.tiers.get(row.id) ?? row.tier;

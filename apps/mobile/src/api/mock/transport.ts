@@ -8,6 +8,7 @@
  * Scenario (`?scenario=` once, then remembered for the tab):
  *   default | empty | error | offline | loading | noAccounts | signedOut
  *   flagsOff (Mail's dark routes 404) | draftUnavailable (reply drafting 503)
+ *   featuresOff (every flag-gated route as production's defaults answer it — Mail's too)
  */
 import type { Transport } from "../client";
 import {
@@ -19,6 +20,7 @@ import {
   mockPendingActions,
 } from "./fixtures";
 import { createMailMockState, mockMailRoute } from "./mail-transport";
+import { handleHub } from "./routes-hub";
 
 export const MOCK_SCENARIOS = [
   "default",
@@ -30,6 +32,7 @@ export const MOCK_SCENARIOS = [
   "signedOut",
   "flagsOff",
   "draftUnavailable",
+  "featuresOff",
 ] as const;
 export type MockScenario = (typeof MOCK_SCENARIOS)[number];
 
@@ -106,6 +109,12 @@ export function createMockTransport(options: MockOptions = {}): Transport {
     if (scenario === "error") return json(500, { error: "Internal Server Error" });
 
     const empty = scenario === "empty" || scenario === "noAccounts";
+
+    // Calendar, Assistant, Files, Accounts, Settings, Push, Plans (routes-hub.ts).
+    // First: it answers the "Mail attachments" source's /api/email reads and
+    // falls through for everything else, which Mail's routes then take.
+    const hub = handleHub({ pathname, searchParams, method, body: init.body, scenario, now });
+    if (hub) return hub;
 
     const mail = mockMailRoute({
       pathname,

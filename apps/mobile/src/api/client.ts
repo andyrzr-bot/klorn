@@ -76,11 +76,11 @@ export interface ApiClient {
 const DEFAULT_TIMEOUT_MS = 20_000;
 
 function errorMessageOf(data: unknown): string | null {
-  if (data && typeof data === "object" && "error" in data) {
-    const value = (data as { error: unknown }).error;
-    return typeof value === "string" ? value : null;
-  }
-  return null;
+  if (!data || typeof data !== "object") return null;
+  const { error, message } = data as { error?: unknown; message?: unknown };
+  if (typeof error === "string") return error;
+  // Some routes answer { ok: false, message } (routes/imap-connect.ts).
+  return typeof message === "string" ? message : null;
 }
 
 export function createApiClient(options: ApiClientOptions): ApiClient {
@@ -98,7 +98,9 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       Accept: "application/json",
       ...requestOptions.headers,
     };
-    if (body !== undefined) headers["Content-Type"] = "application/json";
+    // FormData (a multipart upload) goes as-is: fetch sets the boundary itself.
+    const multipart = typeof FormData !== "undefined" && body instanceof FormData;
+    if (body !== undefined && !multipart) headers["Content-Type"] = "application/json";
     const token = requestOptions.anonymous ? null : options.getToken();
     if (token) headers.Authorization = `Bearer ${token}`;
 
@@ -117,7 +119,8 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       res = await transport(`${options.baseUrl}${path}`, {
         method,
         headers,
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body:
+          body === undefined ? undefined : multipart ? (body as FormData) : JSON.stringify(body),
         signal: controller.signal,
       });
     } catch (err) {

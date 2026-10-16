@@ -8,7 +8,8 @@
  *   /calendar  /calendar/:id   Calendar, optionally with an event open
  *   /files  /files/:id         Files
  *   /assistant[/:section]      Assistant hub: approvals | briefing | activity | chat
- *   /accounts                  Accounts & sources (settings)
+ *   /accounts                  Accounts & sources
+ *   /settings[/:section]       Settings: notifications | plans | delete-account
  *
  * Every parameter is external input (a deep link, a notification payload),
  * so it is validated here and anything malformed becomes notFound / dropped.
@@ -34,6 +35,9 @@ export type MailView = (typeof MAIL_VIEWS)[number];
 export const ASSISTANT_SECTIONS = ["approvals", "briefing", "activity", "chat"] as const;
 export type AssistantSection = (typeof ASSISTANT_SECTIONS)[number];
 
+export const SETTINGS_SECTIONS = ["notifications", "plans", "delete-account"] as const;
+export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
+
 export type Route =
   | { name: "today" }
   | { name: "mail"; lane?: LaneParam; id?: string; view?: MailView }
@@ -41,6 +45,7 @@ export type Route =
   | { name: "files"; id?: string }
   | { name: "assistant"; section?: AssistantSection; id?: string }
   | { name: "accounts" }
+  | { name: "settings"; section?: SettingsSection }
   | { name: "notFound"; path: string };
 
 const ID = /^[A-Za-z0-9_-]{1,128}$/;
@@ -102,6 +107,11 @@ export function parseRoute(pathname: string, search = ""): Route {
     }
     case "accounts":
       return parts.length === 1 ? { name: "accounts" } : notFound;
+    case "settings":
+      if (second === undefined) return { name: "settings" };
+      if (parts.length !== 2 || !(SETTINGS_SECTIONS as readonly string[]).includes(second))
+        return notFound;
+      return { name: "settings", section: second as SettingsSection };
     default:
       return notFound;
   }
@@ -129,6 +139,8 @@ export function formatRoute(route: Route): string {
     }
     case "accounts":
       return "/accounts";
+    case "settings":
+      return route.section ? `/settings/${route.section}` : "/settings";
     case "notFound":
       return route.path;
   }
