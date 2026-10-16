@@ -365,12 +365,6 @@ Calendar · Assistant · Files · push:
   native follow-up described above).
 - `GET /api/teams` needs a saved team; teams are created on the web only.
 
-## PROBE mode (diagnostics only)
-
-`KLORN_PROBE=1 npx cap sync` packages the self-contained Samsung-calendar probe
-(`probe/index.html`, its own web dir) instead of the app. Store builds must not
-set it.
-
 ## Native configuration
 
 - **iOS**: `TARGETED_DEVICE_FAMILY = "1,2"`, all orientations on iPad, no
@@ -378,7 +372,12 @@ set it.
   `armv7` `UIRequiredDeviceCapabilities` is removed. Dynamic Type is adopted
   through `-apple-system-body` (text sizes are rem-based). `cap sync` rewrites
   `ios/App/CapApp-SPM/Package.swift` (`speech-recognition` has no
-  Package.swift — pre-existing).
+  Package.swift — pre-existing). Push: `App/App.entitlements`
+  (`aps-environment`, `CODE_SIGN_ENTITLEMENTS` on Debug and Release; the App
+  Store export re-signs it as production). `App/PrivacyInfo.xcprivacy` is in
+  the App target's Resources phase. No calendar plugin is linked (the old
+  Samsung-calendar probe and `@ebarooni/capacitor-calendar` are gone), so the
+  binary uses no EventKit and needs no calendar usage string.
 - **Android**: `resizeableActivity`, no orientation lock, configChanges cover
   screen size / layout / smallest width (fold, unfold, multi-window),
   `adjustResize` for the keyboard, `READ_CALENDAR` removed (no feature uses it).
@@ -465,8 +464,8 @@ For iOS later: also upload an APNs auth key (.p8) to Firebase + `npx cap add ios
 `@capacitor/push-notifications` returns an **APNs token** on iOS (not an FCM
 token), so iOS delivery goes **straight to APNs** (`packages/api/src/push-apns.ts`,
 HTTP/2 + an ES256 provider JWT) rather than through FCM. This was the chosen path
-(over unified `@capacitor-firebase/messaging`) because it keeps the Android probe
-Firebase-free and the web bundle lean. Both channels run after the same gates in
+(over unified `@capacitor-firebase/messaging`) because it keeps the app
+Firebase-free on iOS and the web bundle lean. Both channels run after the same gates in
 `sendPushNotification` — FCM for Android, APNs for iOS.
 
 To activate iOS push, create an **APNs auth key (.p8)** in the Apple Developer
