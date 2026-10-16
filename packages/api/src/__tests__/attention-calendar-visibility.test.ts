@@ -325,6 +325,7 @@ describe("every AttentionItem reader is accounted for", () => {
   const NOT_CALENDAR = [
     "agentcore/auto-mode-candidates.ts",
     "judge/attention-aging.ts",
+    "judge/attention-by-email.ts", // one mail's EMAIL item: id and status only
     "judge/calibration-snapshot.ts",
     "judge/email-firewall.ts",
     "judge/email-lanes.ts",
