@@ -7,18 +7,18 @@
  *
  * Scenario (`?scenario=` once, then remembered for the tab):
  *   default | empty | error | offline | loading | noAccounts | signedOut
+ *   flagsOff (Mail's dark routes 404) | draftUnavailable (reply drafting 503)
  */
 import type { Transport } from "../client";
 import {
   MOCK_INBOXES,
   MOCK_LANE_COUNTS,
   MOCK_USER,
-  mockEmailDetail,
-  mockEmailList,
   mockEvents,
   mockFirewall,
   mockPendingActions,
 } from "./fixtures";
+import { createMailMockState, mockMailRoute } from "./mail-transport";
 
 export const MOCK_SCENARIOS = [
   "default",
@@ -28,6 +28,8 @@ export const MOCK_SCENARIOS = [
   "loading",
   "noAccounts",
   "signedOut",
+  "flagsOff",
+  "draftUnavailable",
 ] as const;
 export type MockScenario = (typeof MOCK_SCENARIOS)[number];
 
@@ -68,6 +70,11 @@ export function createMockTransport(options: MockOptions = {}): Transport {
   const scenarioOf = options.scenario ?? currentScenario;
   const nowOf = options.now ?? (() => Date.now());
   const latency = options.latencyMs ?? 0;
+  const mailState = createMailMockState();
+  // Playwright reads what the app sent (mock builds only — this module never ships).
+  if (typeof window !== "undefined") {
+    (window as unknown as { __klornMailMock?: unknown }).__klornMailMock = mailState;
+  }
 
   return async (url, init) => {
     const scenario = scenarioOf();
@@ -100,6 +107,17 @@ export function createMockTransport(options: MockOptions = {}): Transport {
 
     const empty = scenario === "empty" || scenario === "noAccounts";
 
+    const mail = mockMailRoute({
+      pathname,
+      searchParams,
+      method,
+      init,
+      now,
+      scenario,
+      state: mailState,
+    });
+    if (mail) return mail;
+
     // ── Authenticated reads ──────────────────────────────────────────────
     switch (pathname) {
       case "/api/auth/me":
@@ -123,8 +141,6 @@ export function createMockTransport(options: MockOptions = {}): Transport {
           200,
           scenario === "noAccounts" ? { ...MOCK_INBOXES, inboxes: [] } : MOCK_INBOXES,
         );
-      case "/api/email":
-        return json(200, mockEmailList(now, searchParams.get("tier") ?? undefined));
       case "/api/calendar":
         return json(200, { events: mockEvents(now, empty) });
       case "/api/chat/pending-actions":
@@ -153,14 +169,6 @@ export function createMockTransport(options: MockOptions = {}): Transport {
         });
       default:
         break;
-    }
-    const detail = pathname.match(/^\/api\/email\/([^/]+)$/);
-    if (detail?.[1] && method === "GET") {
-      const email = mockEmailDetail(now, decodeURIComponent(detail[1]));
-      return email ? json(200, email) : json(404, { error: "Email not found" });
-    }
-    if (method === "POST" && /^\/api\/inbox\/firewall\/[^/]+\/(dismiss|snooze)$/.test(pathname)) {
-      return json(200, { ok: true });
     }
     return json(404, { error: `Mock has no route for ${method} ${pathname}` });
   };

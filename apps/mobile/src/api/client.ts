@@ -62,6 +62,8 @@ export interface ApiClient {
   get<T>(path: string, options?: RequestOptions): Promise<T>;
   post<T>(path: string, body?: unknown, options?: RequestOptions): Promise<T>;
   del<T>(path: string, options?: RequestOptions): Promise<T>;
+  /** Binary GET (attachments): the body as a Blob, same auth / timeout / errors. */
+  getBlob(path: string, options?: RequestOptions): Promise<Blob>;
   /** Raw status + parsed JSON, for endpoints whose 2xx codes differ in meaning (202). */
   request<T>(
     method: string,
@@ -148,9 +150,37 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     return { status: res.status, data: data as T };
   }
 
+  async function getBlob(path: string, requestOptions: RequestOptions = {}): Promise<Blob> {
+    if (!path.startsWith("/")) throw new Error(`API path must start with "/": ${path}`);
+    const headers: Record<string, string> = { ...requestOptions.headers };
+    const token = requestOptions.anonymous ? null : options.getToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let res: Response;
+    try {
+      res = await transport(`${options.baseUrl}${path}`, {
+        method: "GET",
+        headers,
+        signal: controller.signal,
+      });
+    } catch {
+      throw new ApiError(controller.signal.aborted ? "timeout" : "network", 0, `GET ${path}`, null);
+    } finally {
+      clearTimeout(timer);
+    }
+    if (res.status === 401) {
+      if (token) options.onUnauthorized?.();
+      throw new ApiError("unauthorized", 401, `Unauthorized: ${path}`, null);
+    }
+    if (!res.ok) throw new ApiError("http", res.status, `HTTP ${res.status}: ${path}`, null);
+    return res.blob();
+  }
+
   return {
     baseUrl: options.baseUrl,
     request,
+    getBlob,
     async get<T>(path: string, requestOptions?: RequestOptions) {
       return (await request<T>("GET", path, undefined, requestOptions)).data;
     },

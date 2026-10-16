@@ -11,9 +11,10 @@ are shared with the web (`src/styles/tokens.css` mirrors
 > `apps/desktop-mac`). Wire types come from `packages/contract` through a
 > tsconfig path alias, as `import type` only (pinned by `src/config.test.ts`).
 
-> **Status (2026-10-16): foundation.** Shell at every size class, auth, data
-> layer, offline cache, i18n and the Today screen are built. Mail, Calendar,
-> Files and Assistant are placeholder routes. The previous WebView shell got
+> **Status (2026-10-16): foundation + Mail.** Shell at every size class, auth,
+> data layer, offline cache, i18n, the Today screen and **Mail** (list, swipe
+> rows, lane sheet, reader, reply / compose with an explicit confirm, Later,
+> Subscriptions) are built. Calendar, Files and Assistant are placeholder routes. The previous WebView shell got
 > push registration, IAP and account deletion from the web app — those are
 > **not yet** in the bundled app, so do not submit a store build from here
 > until they are (see `STORE_SUBMISSION.md`).
@@ -26,7 +27,8 @@ npm ci
 npm run dev          # Vite dev server against http://localhost:3001 (local API)
 npm run dev:mock     # Vite dev server against the in-app mock API (fixtures)
 npm run typecheck
-npm test             # vitest: router, size classes, API client, i18n parity, Today model, tokens
+npm test             # vitest: router, size classes, API client, i18n parity, Today + Mail models,
+                     #   swipe thresholds, undo window, lane sheet, snooze, mail HTML sanitizer (XSS)
 npm run lint         # biome with the repo-root biome.json, errors only
 npm run build        # typecheck + vite build → dist/ (what Capacitor bundles)
 npm run e2e          # Playwright screenshots + behaviour against the mock build
@@ -68,9 +70,12 @@ src/
   i18n/                        en ko ja zh es fr de; device locale default; plural forms
   router/                      typed routes + deep links, tab memory, Android back decision
   layout/                      size classes, fold posture, Shell (tabs / rail / sidebar), ListDetail
-  screens/                     today (built), cover (Flip), login (Welcome), mail (scaffold),
-                               accounts, placeholder
-  ui/                          icons (artboard paths), states, pull-to-refresh, source badges
+  screens/                     today, mail (list · reader · sheets · Subscriptions), cover (Flip),
+                               login (Welcome), accounts, placeholder
+  ui/                          icons (artboard paths), states, pull-to-refresh, source badges,
+                               Sheet (bottom sheet / dialog), Snackbar
+  platform/                    native bridges: back button, browser, kv, secure store,
+                               haptics, keyboard inset
   styles/                      tokens.css (light + dark), base.css
   assets/fonts/                Geist + Instrument Serif woff2 (OFL 1.1, licences alongside)
 ```
@@ -117,10 +122,65 @@ tab → background the app.
 | `GET /api/calendar?start&end` | routes/calendar.ts | next event, meeting count |
 | `GET /api/chat/pending-actions` | routes/chat-pending-actions.ts | Approvals |
 | `GET /api/email/inboxes` | routes/email.ts | connected accounts (sidebar, Accounts) |
-| `GET /api/email?tier&page&inbox&search` · `GET /api/email/:id` | routes/email.ts | Mail scaffold |
+| `GET /api/email?tier&page&inbox&search` | routes/email.ts | Mail list (infinite, server search, account filter) |
+| `GET /api/email/:id` · `PATCH /:id/read` | routes/email.ts, routes/email-mutations.ts | reader (body, `renderHtml`, attachments, proactive draft); opening marks read |
+| `POST /api/email/sync` | routes/email.ts | pull-to-refresh / "sync all accounts" (primary + linked inboxes) |
+| `GET /api/email/:id/reader-context` | routes/email-lanes.ts | lane + `tierReason` + neighbours (dark unless MAIL_V2 → falls back to the firewall item and the cached list) |
+| `GET /api/email/:id/sender-dossier` · `/:id/thread-brief` | routes/email.ts | reader context lines (PUSH / MEETING / reply-needed QUEUE only — each is an LLM call) |
+| `GET /api/email/:id/inline/:cid` · `/:id/attachments/:aid/download` | routes/email.ts, routes/email-attachments.ts | cid images inlined as data: urls; attachment open / share |
+| `POST /api/email/:id/reply-draft {intent?}` | routes/email-replies.ts | AI draft; tone chips regenerate with an `intent` |
+| `POST /api/email/:id/reply {body}` · `POST /api/email/send` · `POST /:id/gmail-draft` | routes/email-replies.ts, routes/email-mutations.ts | send — only from the confirm sheet; save as draft |
 | `GET /api/briefing/status` | routes/briefing | typed, not rendered yet |
-| `POST /api/inbox/firewall/:id/dismiss` · `/:id/snooze` · `/email/:emailId` · `/:id/undo` | routes/firewall.ts | typed for Mail's swipe rows / lane sheet (next) |
-| `POST` / `DELETE /api/email/:id/pin-tier` | routes/email.ts | "keep this sender here" (next) |
+| `POST /api/inbox/firewall/:id/dismiss` | routes/firewall.ts | Done (swipe right) — sent after the 5 s client-side undo window |
+| `POST /api/inbox/firewall/:id/snooze` | routes/firewall.ts | Later |
+| `POST /api/inbox/firewall/email/:emailId` · `/:id/undo` · `POST /:id` | routes/firewall.ts | lane move (reversible); `POST /:id` only while KEYBOARD_TRIAGE keeps the by-email route dark |
+| `POST /api/email/:id/pin-tier` | routes/email.ts | "keep this sender here" |
+| `GET /api/email/subscriptions` · `POST /subscriptions/unsubscribe` | routes/email-subscriptions.ts | Subscriptions (dark unless BULK_UNSUBSCRIBE_ENABLED — the entry point hides on 404) |
+
+### Mail (`src/screens/mail/`)
+
+- **List** (Mail / FoldOpen / TabletLandscape artboards): account filter sheet,
+  server search, lane tabs 전체 · PUSH · MEETING · QUEUE · INFO · SILENT (the
+  lane filter is applied on the client too, because the server honours `tier`
+  only with MAIL_V2 / UNIFIED_HOME on; SILENT is recorded, never rendered in
+  전체), day-grouped inset list on phones, cards on wide panes, infinite
+  scroll, pull-to-refresh, compose button, every loading / empty / error /
+  offline state.
+- **Swipe rows** (`SwipeRow`, `swipe.ts`): right = Done (row leaves at once,
+  5 s undo, then `dismiss`; `undo-queue.ts` flushes on background), left = lane
+  sheet with SILENT preselected, long press = multi-select (bulk Done / move).
+  Pointer Events (touch and mouse), haptics at the threshold and on commit,
+  reduced motion = no slide. Each row is followed by a focus-only "actions"
+  button and the reader has a toolbar, so nothing needs a gesture.
+- **Done is local as well**: `GET /api/email` lists mail whatever its attention
+  item's status, so this device keeps Done / Later rows out of its lists
+  (`hidden-store.ts`, persisted, expiring) — see Gaps.
+- **Reader**: `renderHtml` sanitized again by `mail-html.ts` (a port of the
+  web's #1455 wall) into an `<iframe sandbox="allow-same-origin">` with no
+  `allow-scripts`, a CSP meta allowing images only, remote images off until
+  "이미지 보기"; the app (never the mail) takes link taps: https → system
+  browser, mailto → compose. Uncoloured HTML follows dark mode; designed mail
+  keeps its light sheet.
+- **Send** happens only from the confirm sheet, with exactly the recipient /
+  subject / body shown; afterwards the sheet is the receipt (provider message
+  id + `sendEmailPayloadHash` of the confirmed bytes, computed client-side).
+- **Tabletop**: reading above the hinge, the reply form below (FoldTabletop).
+
+### Gaps (server)
+
+- `GET /api/email` does not filter dismissed / snoozed attention items, so Done
+  and Later stay out of the list only on the device that did them. A
+  status-aware list (or `hideDone`) would make them consistent across devices.
+- Done / Later need the attention item id; only OPEN items in the firewall's
+  newest-200 window carry it to the client. Older mail is hidden locally only.
+  A dismiss / snooze keyed by email id (like `POST /firewall/email/:emailId`)
+  would close this.
+- `POST /api/email/:id/reply` and `/send` record no `ActionReceipt` server-side;
+  the app shows a client receipt with the same payload hash.
+- `POST /api/email/send` always sends from the primary account (the confirm
+  sheet says so).
+- No "save attachment to Klorn Drive" route; attachments open via the share
+  sheet / a download. Native file save needs `@capacitor/filesystem`.
 
 ## PROBE mode (diagnostics only)
 
@@ -150,6 +210,10 @@ set it.
 - Keychain / Keystore persistence across relaunch; sign-out wipes token + cache.
 - Airplane-mode cold start shows the cached Today with the offline banner.
 - Android back: sheet → detail → previous tab → background.
+- Mail: swipe right / left with a finger (threshold haptic, commit haptic),
+  long-press multi-select, the composer above the keyboard on iOS
+  (`keyboardWillShow`) and Android (`adjustResize`), links from a mail opening
+  the system browser, an attachment opening in the share sheet.
 - Galaxy Z Fold (flat / half-folded / rotated), Z Flip cover screen, Samsung
   pop-up window, iPad Split View + Stage Manager, Dynamic Type at 200%.
 - Safe areas on notch / Dynamic Island / gesture-nav devices.

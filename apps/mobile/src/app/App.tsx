@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { persistOptions } from "../api/query-client";
 import { SessionProvider, useSession } from "../auth/session";
 import { I18nProvider } from "../i18n/I18nProvider";
@@ -13,10 +13,16 @@ import type { Route } from "../router/routes";
 import { AccountsScreen } from "../screens/accounts/AccountsScreen";
 import { CoverScreen } from "../screens/cover/CoverScreen";
 import { WelcomeScreen } from "../screens/login/WelcomeScreen";
-import { MailScreen } from "../screens/mail/MailScreen";
 import { PlaceholderScreen } from "../screens/placeholder/PlaceholderScreen";
 import { TodayScreen } from "../screens/today/TodayScreen";
 import { ThemeProvider } from "./theme";
+
+// Mail is the largest screen (reader, composer, sheets, sanitizer): its own
+// chunk, loaded from the bundle on first use, so a cold start into Today
+// parses less.
+const MailScreen = lazy(() =>
+  import("../screens/mail/MailScreen").then((m) => ({ default: m.MailScreen })),
+);
 
 function Screen({ route }: { route: Route }) {
   switch (route.name) {
@@ -24,7 +30,11 @@ function Screen({ route }: { route: Route }) {
     case "notFound":
       return <TodayScreen />;
     case "mail":
-      return <MailScreen lane={route.lane} id={route.id} />;
+      return (
+        <Suspense fallback={<div className="boot" aria-busy="true" />}>
+          <MailScreen lane={route.lane} id={route.id} view={route.view} />
+        </Suspense>
+      );
     case "calendar":
       return <PlaceholderScreen title="tab.calendar" icon="calendar" />;
     case "files":

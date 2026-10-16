@@ -10,6 +10,7 @@ describe("parseRoute / formatRoute", () => {
     ["/mail", "?lane=push", { name: "mail", lane: "PUSH" }],
     ["/mail/abc_123", "", { name: "mail", id: "abc_123" }],
     ["/mail/abc", "?lane=QUEUE", { name: "mail", lane: "QUEUE", id: "abc" }],
+    ["/mail/subscriptions", "", { name: "mail", view: "subscriptions" }],
     ["/calendar", "", { name: "calendar" }],
     ["/calendar/evt-1", "", { name: "calendar", id: "evt-1" }],
     ["/files/f1", "", { name: "files", id: "f1" }],
@@ -54,6 +55,8 @@ describe("parseRoute / formatRoute", () => {
     expect(tabOf({ name: "accounts" })).toBeNull();
     expect(hasDetail({ name: "mail", id: "x" })).toBe(true);
     expect(hasDetail({ name: "mail", lane: "PUSH" })).toBe(false);
+    expect(hasDetail({ name: "mail", view: "subscriptions" })).toBe(true);
+    expect(withoutDetail({ name: "mail", view: "subscriptions" })).toEqual({ name: "mail" });
     expect(withoutDetail({ name: "mail", lane: "PUSH", id: "x" })).toEqual({
       name: "mail",
       lane: "PUSH",

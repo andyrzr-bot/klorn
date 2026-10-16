@@ -8,6 +8,7 @@ import type {
   BriefingStatus,
   EmailLaneCountsResponse,
   EmailListResponse,
+  EmailReaderContextResponse,
   FirewallResponse,
   InboxesResponse,
   LaneOverrideByEmailResponse,
@@ -20,10 +21,17 @@ import type {
   DesktopNonceResponse,
   DesktopTokenResponse,
   EmailDetailWire,
+  EmailSubscriptionsResponse,
+  EmailSubscriptionUnsubscribeResponse,
   ExchangeCodeResponse,
   LoginResponse,
   MeResponse,
   PendingActionsResponse,
+  ReplyDraftResponse,
+  SavedDraftResponse,
+  SenderDossierWire,
+  SendMailResponse,
+  ThreadBriefResponse,
 } from "./wire";
 
 /** A lane filter as Mail's list takes it (`tier=`): a live lane or ALL. */
@@ -106,6 +114,98 @@ export function endpoints(api: ApiClient) {
         api.get<EmailDetailWire>(`/api/email/${encodeURIComponent(id)}`, o),
       /** routes/email.ts GET /inboxes — the connected accounts ("inboxes"). */
       inboxes: (o?: RequestOptions) => api.get<InboxesResponse>("/api/email/inboxes", o),
+      /**
+       * routes/email-lanes.ts GET /:id/reader-context — lane + tierReason + the
+       * mail's neighbours in the list view (dark 404 unless MAIL_V2; the reader
+       * then falls back to the firewall item and the cached list).
+       */
+      readerContext: (
+        id: string,
+        view: { tier: LaneFilter; inbox: InboxScope; search?: string },
+        o?: RequestOptions,
+      ) =>
+        api.get<EmailReaderContextResponse>(
+          `/api/email/${encodeURIComponent(id)}/reader-context${query({
+            tier: view.tier,
+            inbox: view.inbox === "all" ? undefined : view.inbox,
+            search: view.search?.trim(),
+          })}`,
+          o,
+        ),
+      /**
+       * routes/email.ts POST /sync — pull-to-refresh: new mail from the primary
+       * account and every linked inbox. Answers 200 with `{ error }` on a dead
+       * token, so the caller treats `error` as a failure.
+       */
+      sync: () =>
+        api.post<{ newCount?: number; synced?: number; error?: string }>("/api/email/sync"),
+      /**
+       * routes/email-mutations.ts PATCH /:id/read — reading is a GET and side-effect
+       * free; marking read is this explicit write (synced to the mail's own account).
+       */
+      markRead: (id: string, isRead = true) =>
+        api.request<{ success?: boolean }>("PATCH", `/api/email/${encodeURIComponent(id)}/read`, {
+          isRead,
+        }),
+      /** routes/email.ts GET /:id/thread-brief — "why did they write now" ({brief:null} for IMAP). */
+      threadBrief: (id: string, lang: "ko" | "en", o?: RequestOptions) =>
+        api.get<ThreadBriefResponse>(
+          `/api/email/${encodeURIComponent(id)}/thread-brief${query({ lang })}`,
+          o,
+        ),
+      /** routes/email.ts GET /:id/sender-dossier — relationship context (503 without an AI key). */
+      senderDossier: (id: string, lang: "ko" | "en", o?: RequestOptions) =>
+        api.get<SenderDossierWire>(
+          `/api/email/${encodeURIComponent(id)}/sender-dossier${query({ lang })}`,
+          o,
+        ),
+      /**
+       * routes/email-attachments.ts GET /:id/attachments/:attachmentId/download —
+       * bytes from the mail's OWN account (linked inbox included). Authenticated,
+       * so the reader fetches it and hands the blob to the OS.
+       */
+      attachmentPath: (id: string, attachmentId: string) =>
+        `/api/email/${encodeURIComponent(id)}/attachments/${encodeURIComponent(attachmentId)}/download`,
+    },
+    /**
+     * Replies and new mail. Sending is one of the three real-world actions
+     * (deterministic floor): it only ever happens from the confirm sheet, on
+     * an explicit tap, with exactly the bytes shown there.
+     */
+    compose: {
+      /** routes/email-replies.ts POST /:id/reply-draft — `intent` steers a regeneration. */
+      replyDraft: (id: string, intent?: string) =>
+        api.post<ReplyDraftResponse>(
+          `/api/email/${encodeURIComponent(id)}/reply-draft`,
+          intent ? { intent } : {},
+        ),
+      /**
+       * routes/email-replies.ts POST /:id/reply — sends from the mail's own
+       * account (the server reads linkedInboxAccountId from the row), threaded.
+       */
+      sendReply: (id: string, body: string) =>
+        api.post<SendMailResponse>(`/api/email/${encodeURIComponent(id)}/reply`, { body }),
+      /** routes/email-replies.ts POST /:id/gmail-draft — keep it as a draft in the account. */
+      saveReplyDraft: (id: string, draft: { to: string; subject: string; body: string }) =>
+        api.post<SavedDraftResponse>(`/api/email/${encodeURIComponent(id)}/gmail-draft`, draft),
+      /** routes/email-mutations.ts POST /send — a new mail; the server sends it from the primary account. */
+      send: (mail: { to: string; subject: string; body: string }) =>
+        api.post<SendMailResponse>("/api/email/send", mail),
+    },
+    /**
+     * routes/email-subscriptions.ts — dark (404) unless BULK_UNSUBSCRIBE_ENABLED;
+     * Mail hides its entry point on 404.
+     */
+    subscriptions: {
+      list: (o?: RequestOptions) =>
+        api.get<EmailSubscriptionsResponse>("/api/email/subscriptions", o),
+      /** `archive` clears that sender's recent mail from the lists too; nothing is deleted. */
+      unsubscribe: (sub: {
+        sender: string;
+        linkedInboxAccountId: string | null;
+        archive: boolean;
+      }) =>
+        api.post<EmailSubscriptionUnsubscribeResponse>("/api/email/subscriptions/unsubscribe", sub),
     },
     /**
      * Row triage (founder decision 2026-10-16: there is no archive gesture).
@@ -139,6 +239,16 @@ export function endpoints(api: ApiClient) {
       moveLane: (emailId: string, tier: LiveTier) =>
         api.post<LaneOverrideByEmailResponse>(
           `/api/inbox/firewall/email/${encodeURIComponent(emailId)}`,
+          { tier },
+        ),
+      /**
+       * routes/firewall.ts POST /:id — the older, irreversible override by
+       * attention item id. Only used while KEYBOARD_TRIAGE keeps the by-email
+       * route dark (Fastify's bare 404).
+       */
+      moveLaneByItem: (attentionItemId: string, tier: LiveTier) =>
+        api.post<{ ok: true; tier: LiveTier }>(
+          `/api/inbox/firewall/${encodeURIComponent(attentionItemId)}`,
           { tier },
         ),
       /** routes/firewall.ts POST /:id/undo — 409 undo_expired / undo_conflict change nothing. */

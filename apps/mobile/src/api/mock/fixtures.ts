@@ -9,15 +9,12 @@
  */
 import type {
   EmailLaneCountsResponse,
-  EmailListItem,
-  EmailListResponse,
   FirewallItem,
   FirewallResponse,
   InboxesResponse,
-  LiveTier,
   Tier,
 } from "@klorn/contract";
-import type { CalendarEventWire, EmailDetailWire, MeUser, PendingActionWire } from "../wire";
+import type { CalendarEventWire, MeUser, PendingActionWire } from "../wire";
 
 const MIN = 60_000;
 
@@ -308,138 +305,4 @@ export function mockPendingActions(now: number, empty = false): PendingActionWir
       createdAt: iso(now, -50),
     },
   ];
-}
-
-function listItem(
-  now: number,
-  row: {
-    id: string;
-    from: string;
-    subject: string;
-    tier: LiveTier;
-    ago: number;
-    unread: boolean;
-    inbox: string | null;
-    summary: string;
-  },
-): EmailListItem {
-  return {
-    id: row.id,
-    gmailId: `g-${row.id}`,
-    threadId: `t-${row.id}`,
-    linkedInboxAccountId: row.inbox,
-    from: row.from,
-    senderEmail: null,
-    trust: null,
-    tier: row.tier,
-    to: MOCK_USER.email,
-    subject: row.subject,
-    snippet: row.summary,
-    date: iso(now, -row.ago),
-    labels: ["INBOX"],
-    isRead: !row.unread,
-    isStarred: false,
-    priority: row.tier === "PUSH" ? "URGENT" : "NORMAL",
-    category: null,
-    summary: row.summary,
-    keyPoints: [],
-    actionItems: [],
-    sentiment: null,
-    needsReply: row.tier === "PUSH",
-    attachmentCount: 0,
-    attachmentCandidateCount: 0,
-    attachmentPendingCount: 0,
-    attachmentFallbackCount: 0,
-    attachmentUnsupportedCount: 0,
-    attachmentCategories: [],
-    candidateProfilePreview: null,
-    candidateIntake: null,
-  };
-}
-
-export function mockEmailList(now: number, tier?: string): EmailListResponse {
-  const rows = [
-    {
-      id: "email-att-push-1",
-      from: "박서연 · 한빛파트너스",
-      subject: "계약서 수정본 — 오늘 서명 가능할까요?",
-      tier: "PUSH",
-      ago: 106,
-      unread: true,
-      inbox: "inbox-work",
-      summary: "오늘 18시 마감, 회신 기다림",
-    },
-    {
-      id: "email-att-meet-1",
-      from: "Mark Chen",
-      subject: "Re: 투자 미팅 목요일 → 금요일?",
-      tier: "MEETING",
-      ago: 138,
-      unread: true,
-      inbox: "inbox-outlook",
-      summary: "목 14:00 회사 일정과 겹침",
-    },
-    {
-      id: "email-att-info-1",
-      from: "쿠팡이츠",
-      subject: "주문하신 음식이 배달 완료됐어요",
-      tier: "INFO",
-      ago: 153,
-      unread: false,
-      inbox: null,
-      summary: "영수증 · 답장 불필요",
-    },
-    {
-      id: "email-att-queue-1",
-      from: "김도윤",
-      subject: "포트폴리오 피드백 부탁드려요",
-      tier: "QUEUE",
-      ago: 960,
-      unread: false,
-      inbox: null,
-      summary: "답장 필요 · 급하지 않음",
-    },
-    {
-      id: "email-naverpay",
-      from: "네이버페이",
-      subject: "10월 결제 내역 안내",
-      tier: "INFO",
-      ago: 1224,
-      unread: false,
-      inbox: "inbox-naver",
-      summary: "영수증 · 보관됨",
-    },
-  ] as const;
-  const filtered = rows.filter((r) => !tier || tier === "ALL" || r.tier === tier);
-  return {
-    emails: filtered.map((r) => listItem(now, { ...r })),
-    source: "gmail",
-    total: filtered.length,
-    unread: filtered.filter((r) => r.unread).length,
-    page: 1,
-  };
-}
-
-export function mockEmailDetail(now: number, id: string): EmailDetailWire | null {
-  const row = mockEmailList(now).emails.find((e) => e.id === id);
-  if (!row) return null;
-  return {
-    id: row.id,
-    gmailId: row.gmailId,
-    threadId: row.threadId,
-    from: row.from,
-    senderEmail: row.senderEmail,
-    to: row.to,
-    subject: row.subject,
-    snippet: row.snippet,
-    body: "지수님, 어제 말씀하신 3조와 7조 수정 반영했습니다. 오늘 18시까지 서명해 주시면 다음 주 월요일부터 진행 가능합니다.",
-    date: row.date,
-    isRead: row.isRead,
-    isStarred: false,
-    summary: row.summary,
-    keyPoints: [],
-    needsReply: row.needsReply,
-    attachmentCount: 0,
-    tier: row.tier,
-  };
 }
