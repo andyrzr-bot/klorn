@@ -40,6 +40,16 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="ai.klorn.app" android:host="oauth-callback" />
             </intent-filter>
+            <!-- Account-link relay: after Gmail / Outlook / Google Drive consent in
+                 the system browser, the API deep-links
+                 ai.klorn.app://link-complete?h=<handle> and the app finishes the
+                 link with its own session (src/platform/link-relay.ts). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="ai.klorn.app" android:host="link-complete" />
+            </intent-filter>
             <!-- App Links hardening path (custom schemes are hijackable by a
                  co-resident app; verified https links are not). Verified against
                  https://klorn.ai/.well-known/assetlinks.json — currently carries
