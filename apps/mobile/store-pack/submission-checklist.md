@@ -1,5 +1,9 @@
 # iOS submission checklist — founder run-book
 
+> **Note (2026-10-16):** written for the previous WebView shell that loaded
+> `app.klorn.ai`. The app is now a bundled SPA (`apps/mobile/README.md`);
+> revise this file before submission.
+
 Ordered, follow-along sequence from a clean repo to "Waiting for Review".
 Assumes the founder-ops prerequisites in `apps/mobile/STORE_SUBMISSION.md`
 (Apple Developer membership, APNs key on Render, CASA started) — this file is

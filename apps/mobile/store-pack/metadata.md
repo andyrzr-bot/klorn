@@ -1,5 +1,9 @@
 # App Store Connect metadata — Klorn (iOS)
 
+> **Note (2026-10-16):** written for the previous WebView shell that loaded
+> `app.klorn.ai`. The app is now a bundled SPA (`apps/mobile/README.md`);
+> revise this file before submission.
+
 Copy-paste source for the App Store Connect listing. Grounded in the repo:
 
 - Bundle ID: `ai.klorn.app` (`apps/mobile/ios/App/App.xcodeproj/project.pbxproj:308`, `capacitor.config.ts` `appId`)

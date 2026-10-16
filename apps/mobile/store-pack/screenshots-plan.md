@@ -1,5 +1,9 @@
 # Screenshot plan — iOS App Store
 
+> **Note (2026-10-16):** written for the previous WebView shell that loaded
+> `app.klorn.ai`. The app is now a bundled SPA (`apps/mobile/README.md`);
+> revise this file before submission.
+
 The shell renders `app.klorn.ai`, so screenshots are just the web app captured
 inside the iOS Simulator with a **logged-in demo account holding seeded mail**
 (reuse the review demo account from `review-notes.md` — do NOT screenshot your

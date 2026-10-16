@@ -1,5 +1,9 @@
 # App Privacy questionnaire — answers with code evidence
 
+> **Note (2026-10-16):** written for the previous WebView shell that loaded
+> `app.klorn.ai`. The app is now a bundled SPA (`apps/mobile/README.md`);
+> revise this file before submission.
+
 Fill-in sheet for App Store Connect → App Privacy ("Privacy Nutrition Labels").
 Every answer below is grounded in the repo; the questionnaire **must agree with**
 `apps/mobile/ios/App/App/PrivacyInfo.xcprivacy` (see the gap flagged at the end).

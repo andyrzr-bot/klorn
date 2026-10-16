@@ -1,5 +1,9 @@
 # App Review notes — draft + reviewer-access strategy
 
+> **Note (2026-10-16):** written for the previous WebView shell that loaded
+> `app.klorn.ai`. The app is now a bundled SPA (`apps/mobile/README.md`);
+> revise this file before submission.
+
 Two parts: (1) the strategy analysis for giving Apple's reviewer a working
 login, (2) the actual "Notes" text to paste into App Store Connect → App Review
 Information. Facts grounded in the repo; see citations inline.

@@ -1,7 +1,16 @@
 # Klorn — App Store + Play Store submission checklist
 
-Capacitor shell (`ai.klorn.app`) wrapping the hosted web app (`app.klorn.ai`).
-This is the source of truth for getting Klorn onto both stores. Items are split
+> **Architecture change (2026-10-16, founder-approved):** the app is now a
+> **bundled** React SPA (`apps/mobile/src`, built to `dist/`) that talks to the
+> API directly — it no longer loads `app.klorn.ai` (no `server.url`). That
+> retires the Apple 4.2 "thin web-wrapper" profile, but it also means the
+> features the shell inherited from the web app — **native push registration,
+> RevenueCat IAP, account deletion, settings** — must be rebuilt in the bundled
+> app before a store submission. Everything below that says "the shell loads
+> app.klorn.ai" describes the previous build and must be re-verified; the
+> `store-pack/` texts likewise. See `README.md` for the current state.
+
+Capacitor app (`ai.klorn.app`). This is the source of truth for getting Klorn onto both stores. Items are split
 into **[CODE — done]** (already in the repo), **[CODE — remaining]**, and
 **[YOU — founder-ops]** (accounts, consoles, secrets, signing — cannot be done
 in code).
@@ -88,7 +97,8 @@ sign-in demonstrable at launch, the app moves from "thin wrapper" to defensible.
 
 Reviewers often launch once in airplane mode. A blank WebView or the system
 "cannot connect" screen reads as a website in a frame; since P10 the shell shows
-its own bundled offline page instead (`www/index.html`, via `server.errorPath`).
+its own bundled offline page instead (since 2026-10-16 the bundled app itself
+renders the offline state from its cache).
 That helps the impression but does not answer 4.2 by itself — live push and
 native sign-in still have to carry the case. The mobile web app itself also has
 touch-native swipe triage on Mail rows (P10, behind `MAIL_V2`), worth showing in
