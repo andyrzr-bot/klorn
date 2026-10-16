@@ -6,25 +6,58 @@
 import type {
   AuthProvidersResponse,
   BriefingStatus,
+  DailyReceipt,
+  DriveDownloadResponse,
+  DriveFileResponse,
+  DriveFilesListResponse,
+  DriveLimitsResponse,
+  DriveProviderWire,
+  DriveSummarizeResponse,
+  DriveUploadResponse,
   EmailLaneCountsResponse,
   EmailListResponse,
   FirewallResponse,
+  GoogleDriveAccountsResponse,
   InboxesResponse,
   LaneOverrideByEmailResponse,
   LaneOverrideUndoResponse,
   LiveTier,
+  TeamAvailabilityResponse,
+  TeamsListResponse,
 } from "@klorn/contract";
+import { NATIVE_OAUTH_SCHEME } from "../config";
 import type { ApiClient, RequestOptions } from "./client";
 import type {
+  ApproveActionResponse,
+  AttachmentMailWire,
+  BillingStatusWire,
   CalendarEventsResponse,
+  CalendarEventWire,
+  ChatMessagesResponse,
+  ChatTurnResponse,
+  ConversationsResponse,
+  ConversationWire,
   DesktopNonceResponse,
   DesktopTokenResponse,
   EmailDetailWire,
+  EventDraftWire,
   ExchangeCodeResponse,
+  ImapConnectResponse,
+  ImapStatusWire,
+  LinkCompleteResponse,
+  LinkedCalendarsResponse,
+  LinkStartResponse,
   LoginResponse,
   MeResponse,
+  NotificationSettingsWire,
   PendingActionsResponse,
 } from "./wire";
+
+/** The IMAP-connected providers and their route prefixes (routes/imap-connect.ts). */
+export type ImapKind = "naver" | "icloud" | "generic";
+
+/** Every account-link start asks the callback to relay to the app (routes/link-handoff.ts). */
+const LINK_RELAY = `?appScheme=${encodeURIComponent(NATIVE_OAUTH_SCHEME)}`;
 
 /** A lane filter as Mail's list takes it (`tier=`): a live lane or ALL. */
 export type LaneFilter = LiveTier | "ALL";
@@ -166,6 +199,17 @@ export function endpoints(api: ApiClient) {
           `/api/calendar${query({ start: start.toISOString(), end: end.toISOString() })}`,
           o,
         ),
+      /** routes/calendar.ts GET /:id — one event (404 for a hidden or foreign row). */
+      event: (id: string, o?: RequestOptions) =>
+        api.get<CalendarEventWire>(`/api/calendar/${encodeURIComponent(id)}`, o),
+      /**
+       * routes/calendar.ts POST / — the ONLY calendar write the app makes, sent
+       * after the user confirms the draft card (Pro-gated: 402/403 → Plans).
+       */
+      create: (draft: EventDraftWire) => api.post<CalendarEventWire>("/api/calendar", draft),
+      /** routes/calendar.ts POST /parse-event — free text → a draft; writes nothing. */
+      parseEvent: (text: string) =>
+        api.post<{ event: Partial<EventDraftWire> | null }>("/api/calendar/parse-event", { text }),
     },
     assistant: {
       /** routes/chat-pending-actions.ts GET /pending-actions — Approvals. */
@@ -173,6 +217,187 @@ export function endpoints(api: ApiClient) {
         api.get<PendingActionsResponse>("/api/chat/pending-actions", o),
       /** routes/briefing GET /status — the stored briefing; reading it runs no model. */
       briefingStatus: (o?: RequestOptions) => api.get<BriefingStatus>("/api/briefing/status", o),
+      /** routes/chat-pending-actions.ts POST /:id/approve — runs the action (a send mints a receipt). */
+      approve: (id: string) =>
+        api.post<ApproveActionResponse>(
+          `/api/chat/pending-actions/${encodeURIComponent(id)}/approve`,
+        ),
+      /** routes/chat-pending-actions.ts POST /:id/reject — nothing runs; the reason teaches. */
+      reject: (id: string, reason?: string) =>
+        api.post<{ success: boolean }>(
+          `/api/chat/pending-actions/${encodeURIComponent(id)}/reject`,
+          reason?.trim() ? { reason: reason.trim() } : {},
+        ),
+      /** routes/chat-pending-actions.ts POST /:id/snooze */
+      snooze: (id: string, until: Date) =>
+        api.post<{ success: boolean; snoozedUntil: string }>(
+          `/api/chat/pending-actions/${encodeURIComponent(id)}/snooze`,
+          { snoozeUntil: until.toISOString() },
+        ),
+      /** routes/chat-conversations.ts GET /conversations — newest first. */
+      conversations: (o?: RequestOptions) =>
+        api.get<ConversationsResponse>("/api/chat/conversations", o),
+      /** routes/chat-conversations.ts POST /conversations */
+      createConversation: () => api.post<ConversationWire>("/api/chat/conversations"),
+      /** routes/chat-conversations.ts GET /conversations/:id/messages */
+      messages: (id: string, o?: RequestOptions) =>
+        api.get<ChatMessagesResponse>(
+          `/api/chat/conversations/${encodeURIComponent(id)}/messages`,
+          o,
+        ),
+      /**
+       * routes/chat-conversations.ts POST /conversations/:id/messages — one
+       * turn. `emailId` names the mail on screen so "this email" resolves.
+       * Chat only ever drafts: an event is written by calendar.create alone.
+       */
+      send: (id: string, text: string, emailId?: string | null) =>
+        api.post<ChatTurnResponse>(`/api/chat/conversations/${encodeURIComponent(id)}/messages`, {
+          text,
+          ...(emailId ? { context: { emailId } } : {}),
+        }),
+      /** routes/receipt.ts GET /today — Activity (what Klorn did and decided today). */
+      receipt: (o?: RequestOptions) => api.get<DailyReceipt>("/api/inbox/receipt/today", o),
+    },
+    teams: {
+      /** routes/teams.ts GET / — 403 TEAM_REQUIRED while team mode is off. */
+      list: (o?: RequestOptions) => api.get<TeamsListResponse>("/api/teams", o),
+      /** routes/teams.ts GET /:id/availability — read-only common free slots. */
+      availability: (id: string, start: Date, end: Date, minutes: number, o?: RequestOptions) =>
+        api.get<TeamAvailabilityResponse>(
+          `/api/teams/${encodeURIComponent(id)}/availability${query({
+            window_start: start.toISOString(),
+            window_end: end.toISOString(),
+            duration_minutes: minutes,
+          })}`,
+          o,
+        ),
+    },
+    /** routes/drive.ts, klorn-drive.ts, google-drive-link.ts — all 404 while their flags are off. */
+    files: {
+      list: (
+        params: {
+          q?: string;
+          provider?: DriveProviderWire;
+          cursor?: string | null;
+          limit?: number;
+        },
+        o?: RequestOptions,
+      ) =>
+        api.get<DriveFilesListResponse>(
+          `/api/drive/files${query({
+            q: params.q?.trim().slice(0, 100),
+            provider: params.provider,
+            cursor: params.cursor ?? undefined,
+            limit: params.limit ?? 50,
+          })}`,
+          o,
+        ),
+      file: (id: string, o?: RequestOptions) =>
+        api.get<DriveFileResponse>(`/api/drive/files/${encodeURIComponent(id)}`, o),
+      summarize: (id: string) =>
+        api.post<DriveSummarizeResponse>(`/api/drive/files/${encodeURIComponent(id)}/summarize`),
+      /** A signed storage link (≤ 300 s), opened WITHOUT the Bearer header. */
+      download: (id: string) =>
+        api.get<DriveDownloadResponse>(`/api/drive/files/${encodeURIComponent(id)}/download`),
+      limits: (o?: RequestOptions) => api.get<DriveLimitsResponse>("/api/drive/limits", o),
+      /** klorn-drive.ts POST /files — multipart, `size` before `file` (the server reads in order). */
+      upload: (file: Blob, name: string) => {
+        const form = new FormData();
+        form.append("size", String(file.size));
+        form.append("file", file, name);
+        return api.post<DriveUploadResponse>("/api/drive/files", form);
+      },
+      /** routes/email.ts GET /:id — the attachments of one mail (Files' mail source). */
+      attachmentsOf: (emailId: string, o?: RequestOptions) =>
+        api.get<AttachmentMailWire>(`/api/email/${encodeURIComponent(emailId)}`, o),
+      /** routes/email.ts GET /?filter=attachments — mail that carries attachments. */
+      attachmentMail: (page = 1, o?: RequestOptions) =>
+        api.get<EmailListResponse>(`/api/email${query({ filter: "attachments", page })}`, o),
+      googleAccounts: (o?: RequestOptions) =>
+        api.get<GoogleDriveAccountsResponse>("/api/drive/google/accounts", o),
+      linkGoogle: () => api.post<LinkStartResponse>(`/api/drive/google/link${LINK_RELAY}`),
+      unlinkGoogle: (id: string) =>
+        api.del<{ success: true }>(`/api/drive/google/accounts/${encodeURIComponent(id)}`),
+    },
+    /**
+     * Account links. Each OAuth start returns a consent URL for the SYSTEM
+     * browser; the callback deep-links ai.klorn.app://link-complete?h=… and the
+     * app finishes it with its own session (linkComplete).
+     */
+    accounts: {
+      /** routes/auth.ts POST /google/start (the primary Gmail) or /google/link-inbox (another). */
+      startGoogle: (primary: boolean) =>
+        api.post<LinkStartResponse>(
+          `/api/auth/google/${primary ? "start" : "link-inbox"}${LINK_RELAY}`,
+        ),
+      /** routes/outlook-auth.ts POST /link-inbox (404 while OUTLOOK_INBOX_ENABLED is off). */
+      startOutlook: () => api.post<LinkStartResponse>(`/api/auth/outlook/link-inbox${LINK_RELAY}`),
+      /** routes/auth.ts POST /google/link-calendar — another Google calendar (Pro). */
+      startGoogleCalendar: () =>
+        api.post<LinkStartResponse>(`/api/auth/google/link-calendar${LINK_RELAY}`),
+      /** routes/link-complete.ts POST /link/complete — 404 LINK_EXPIRED, 409 other session. */
+      linkComplete: (handle: string) =>
+        api.post<LinkCompleteResponse>("/api/auth/link/complete", { handle }),
+      outlookInboxes: (o?: RequestOptions) =>
+        api.get<{ accounts: Array<{ id: string; email: string }> }>(
+          "/api/auth/outlook/linked-inboxes",
+          o,
+        ),
+      imapStatus: (kind: ImapKind, o?: RequestOptions) =>
+        api.get<ImapStatusWire>(`/api/${kind}-imap/status`, o),
+      imapConnect: (kind: ImapKind, body: { email: string; password: string; host?: string }) =>
+        api.post<ImapConnectResponse>(`/api/${kind}-imap/connect`, body),
+      imapDisconnect: (kind: ImapKind, email: string) =>
+        api.post<{ ok: boolean }>(`/api/${kind}-imap/disconnect`, { email }),
+      unlinkGoogleInbox: (id: string) =>
+        api.del<{ success: true }>(`/api/auth/google/linked-inboxes/${encodeURIComponent(id)}`),
+      unlinkOutlookInbox: (id: string) =>
+        api.del<{ success: true }>(`/api/auth/outlook/linked-inboxes/${encodeURIComponent(id)}`),
+      /** routes/auth.ts DELETE /google — drops the primary Gmail grant (not the Klorn account). */
+      disconnectPrimaryGoogle: () => api.del<null>("/api/auth/google"),
+      /** Google (Pro-gated: 403), Outlook and CalDAV (404 while off) linked calendars. */
+      linkedCalendars: (source: "google" | "outlook" | "caldav", o?: RequestOptions) =>
+        api.get<LinkedCalendarsResponse>(
+          source === "caldav"
+            ? "/api/caldav-calendar/linked-calendars"
+            : `/api/auth/${source}/linked-calendars`,
+          o,
+        ),
+      unlinkCalendar: (source: "google" | "outlook" | "caldav", id: string) =>
+        api.del<{ success: true }>(
+          `${
+            source === "caldav" ? "/api/caldav-calendar" : `/api/auth/${source}`
+          }/linked-calendars/${encodeURIComponent(id)}`,
+        ),
+    },
+    settings: {
+      /** routes/automations.ts GET / — the notification fields are read from it. */
+      notifications: (o?: RequestOptions) =>
+        api.get<NotificationSettingsWire>("/api/automations", o),
+      /** routes/automations.ts PATCH / — only known fields are accepted server-side. */
+      updateNotifications: (patch: Partial<NotificationSettingsWire>) =>
+        api
+          .request<NotificationSettingsWire>("PATCH", "/api/automations", patch)
+          .then((r) => r.data),
+      /** routes/auth.ts DELETE /account — the user and ALL their data, irreversibly (204). */
+      deleteAccount: () => api.del<null>("/api/auth/account"),
+    },
+    push: {
+      /** routes/notifications.ts POST /push/device-token/register — FCM (Android) / APNs (iOS). */
+      register: (token: string, platform: "ios" | "android") =>
+        api.post<{ success: true }>("/api/notifications/push/device-token/register", {
+          token,
+          platform,
+        }),
+      /** routes/notifications.ts DELETE /push/device-token — on sign-out. */
+      unregister: (token: string) =>
+        api
+          .request<null>("DELETE", "/api/notifications/push/device-token", { token })
+          .then(() => undefined),
+    },
+    billing: {
+      /** routes/billing.ts GET /status — the current plan (never a checkout link on native). */
+      status: (o?: RequestOptions) => api.get<BillingStatusWire>("/api/billing/status", o),
     },
   };
 }

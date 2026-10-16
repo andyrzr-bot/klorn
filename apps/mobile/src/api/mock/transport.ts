@@ -7,6 +7,7 @@
  *
  * Scenario (`?scenario=` once, then remembered for the tab):
  *   default | empty | error | offline | loading | noAccounts | signedOut
+ *   featuresOff (every flag-gated route as production's defaults answer it)
  */
 import type { Transport } from "../client";
 import {
@@ -19,6 +20,7 @@ import {
   mockFirewall,
   mockPendingActions,
 } from "./fixtures";
+import { handleHub } from "./routes-hub";
 
 export const MOCK_SCENARIOS = [
   "default",
@@ -28,6 +30,7 @@ export const MOCK_SCENARIOS = [
   "loading",
   "noAccounts",
   "signedOut",
+  "featuresOff",
 ] as const;
 export type MockScenario = (typeof MOCK_SCENARIOS)[number];
 
@@ -99,6 +102,10 @@ export function createMockTransport(options: MockOptions = {}): Transport {
     if (scenario === "error") return json(500, { error: "Internal Server Error" });
 
     const empty = scenario === "empty" || scenario === "noAccounts";
+
+    // Calendar, Assistant, Files, Accounts, Settings, Push, Plans (routes-hub.ts).
+    const hub = handleHub({ pathname, searchParams, method, body: init.body, scenario, now });
+    if (hub) return hub;
 
     // ── Authenticated reads ──────────────────────────────────────────────
     switch (pathname) {
