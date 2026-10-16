@@ -7,15 +7,22 @@ import { I18nProvider } from "../i18n/I18nProvider";
 import { Shell } from "../layout/Shell";
 import { useLayoutPlan } from "../layout/viewport";
 import { installBackButton } from "../platform/back-button";
+import { installKeyboardInsets } from "../platform/keyboard";
 import { isNative } from "../platform/native";
+import { PushLayer } from "../push/PushLayer";
 import { RouterProvider, useRouter } from "../router/Router";
 import type { Route } from "../router/routes";
 import { AccountsScreen } from "../screens/accounts/AccountsScreen";
+import { LinkRelay } from "../screens/accounts/LinkRelay";
+import { AssistantScreen } from "../screens/assistant/AssistantScreen";
+import { CalendarScreen } from "../screens/calendar/CalendarScreen";
 import { CoverScreen } from "../screens/cover/CoverScreen";
+import { FilesScreen } from "../screens/files/FilesScreen";
 import { WelcomeScreen } from "../screens/login/WelcomeScreen";
 import { MailScreen } from "../screens/mail/MailScreen";
-import { PlaceholderScreen } from "../screens/placeholder/PlaceholderScreen";
+import { SettingsScreen } from "../screens/settings/SettingsScreen";
 import { TodayScreen } from "../screens/today/TodayScreen";
+import { StatusNoteHost } from "../ui/StatusNote";
 import { ThemeProvider } from "./theme";
 
 function Screen({ route }: { route: Route }) {
@@ -26,13 +33,15 @@ function Screen({ route }: { route: Route }) {
     case "mail":
       return <MailScreen lane={route.lane} id={route.id} />;
     case "calendar":
-      return <PlaceholderScreen title="tab.calendar" icon="calendar" />;
+      return <CalendarScreen id={route.id} />;
     case "files":
-      return <PlaceholderScreen title="tab.files" icon="files" />;
+      return <FilesScreen id={route.id} />;
     case "assistant":
-      return <PlaceholderScreen title="tab.assistant" icon="spark" />;
+      return <AssistantScreen section={route.section} id={route.id} />;
     case "accounts":
       return <AccountsScreen />;
+    case "settings":
+      return <SettingsScreen section={route.section} />;
   }
 }
 
@@ -52,17 +61,35 @@ function Root() {
   const router = useRouter();
 
   useEffect(() => installBackButton(router.back), [router.back]);
+  useEffect(() => installKeyboardInsets(), []);
   useEffect(() => {
     if (session.status !== "loading") hideSplash();
   }, [session.status]);
 
   if (session.status === "loading") return <div className="boot" aria-busy="true" />;
   if (session.status === "signedOut") return <WelcomeScreen />;
-  if (plan.sizeClass === "cover" && plan.posture === "flat") return <CoverScreen />;
+  const signedIn = (
+    <>
+      <StatusNoteHost />
+      <LinkRelay />
+      <PushLayer />
+    </>
+  );
+  if (plan.sizeClass === "cover" && plan.posture === "flat") {
+    return (
+      <>
+        <CoverScreen />
+        {signedIn}
+      </>
+    );
+  }
   return (
-    <Shell plan={plan}>
-      <Screen route={router.route} />
-    </Shell>
+    <>
+      <Shell plan={plan}>
+        <Screen route={router.route} />
+      </Shell>
+      {signedIn}
+    </>
   );
 }
 
