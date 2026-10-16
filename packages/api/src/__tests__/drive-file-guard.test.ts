@@ -91,6 +91,22 @@ describe("every DriveFile write states its source, in one place", () => {
     expect(text).toMatch(/\n\s+provider: source\.provider,\n\s+sourceKey: source\.sourceKey,\n/);
   });
 
+  it("the row it creates derives sourceAccountId from the source, in one place (D5a)", () => {
+    const text = fileAt(ROWS_MODULE)?.text ?? "";
+    // The account a connected row came from is its sourceKey; a Klorn row has
+    // none. The migration's two CHECKs hold the same rule in the database.
+    expect(text).toMatch(
+      /\n\s+sourceKey: source\.sourceKey,\n\s+sourceAccountId: klornHeld \? null : source\.sourceKey,\n/,
+    );
+    expect(text).toMatch(/\n\s+readonly sourceAccountId: string \| null;\n/);
+    // A caller cannot choose it: neither the source nor the input it passes has the field.
+    for (const name of ["DriveFileSource", "DriveFileInput"]) {
+      const from = text.slice(text.indexOf(`export interface ${name} {`));
+      expect(from.length, name).toBeLessThan(text.length);
+      expect(from.slice(0, from.indexOf("\n}")), name).not.toMatch(/\bsourceAccountId\b/);
+    }
+  });
+
   it("an update writes only the changes, which cannot name the identity", () => {
     const text = fileAt(ROWS_MODULE)?.text ?? "";
     const windows = callWindows(text, ROW_WRITE);
@@ -99,7 +115,7 @@ describe("every DriveFile write states its source, in one place", () => {
     const from = text.slice(text.indexOf("export interface DriveRowChanges {"));
     const changes = from.slice(0, from.indexOf("\n}"));
     expect(changes).toMatch(/readonly name: string;/);
-    expect(changes).not.toMatch(/\b(userId|provider|sourceKey|externalId)\b/);
+    expect(changes).not.toMatch(/\b(userId|provider|sourceKey|sourceAccountId|externalId)\b/);
   });
 
   it("every field of the changes but the two a create needs is optional: an update is partial", () => {
@@ -147,6 +163,61 @@ describe("every DriveFile write states its source, in one place", () => {
   it("no module outside the drive modules names the row's unique key", () => {
     const keyed = files.filter((f) => f.text.includes("driveFileIdentity")).map((f) => f.path);
     expect(keyed).toEqual([ROWS_MODULE]);
+  });
+});
+
+describe("the linked drive accounts (D5a): no reader or writer yet but the purge and the key sweep", () => {
+  const ACCOUNT_CALL =
+    /\blinkedDriveAccount\s*\.\s*(findMany|findFirst|findUnique|findFirstOrThrow|findUniqueOrThrow|count|aggregate|groupBy|create|createMany|createManyAndReturn|upsert|update|updateMany|delete|deleteMany)\s*\(/g;
+
+  it("only the user purge and the key-rotation sweep touch the table", () => {
+    // D5b adds drive/linked-drive-accounts.ts, the one module the connector uses.
+    expect(pathsWith(ACCOUNT_CALL)).toEqual(["purge-user-data.ts", "scripts/reencrypt-tokens.ts"]);
+    expect(fileAt("purge-user-data.ts")?.text).toContain(
+      "await tx.linkedDriveAccount.deleteMany(scope);",
+    );
+  });
+
+  it("no source file names the table in a raw statement", () => {
+    const raw = files
+      .filter((f) => /\$(queryRaw|executeRaw|queryRawUnsafe|executeRawUnsafe)\b/.test(f.text))
+      .filter((f) => /\bLinkedDriveAccount\b/.test(f.text))
+      .map((f) => f.path);
+    expect(raw).toEqual([]);
+  });
+
+  // A row holds an OAuth token pair, so a relation read is as much a leak as a
+  // direct query: `include: { linkedDriveAccounts: true }` on a user, or
+  // `include: { sourceAccount: true }` / `select: { sourceAccount: ... }` on a
+  // drive file, returns the tokens. Code only: a comment may name the table.
+  const ACCOUNT_NAME = /\b(linkedDriveAccounts?|LinkedDriveAccount)\b/;
+  const FILE_TO_ACCOUNT = /\bsourceAccount\b/;
+  const codeOf = (text: string) =>
+    text.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+  it("only the purge and the sweep name the account table or its relations in code, so no include or select reaches the tokens", () => {
+    const naming = files.filter((f) => ACCOUNT_NAME.test(codeOf(f.text))).map((f) => f.path);
+    expect(naming.sort()).toEqual(["purge-user-data.ts", "scripts/reencrypt-tokens.ts"]);
+    const relation = files.filter((f) => FILE_TO_ACCOUNT.test(codeOf(f.text))).map((f) => f.path);
+    expect(relation).toEqual([]);
+  });
+
+  it("the detector sees every relation read and ignores the column and comments (so the list cannot pass by scanning nothing)", () => {
+    const seen = (text: string) =>
+      ACCOUNT_NAME.test(codeOf(text)) || FILE_TO_ACCOUNT.test(codeOf(text));
+    expect(
+      seen("prisma.user.findUnique({ where: { id }, include: { linkedDriveAccounts: true } })"),
+    ).toBe(true);
+    expect(seen("select: { linkedDriveAccounts: { select: { accessToken: true } } }")).toBe(true);
+    expect(seen("prisma.driveFile.findMany({ include: { sourceAccount: true } })")).toBe(true);
+    expect(seen("select: { sourceAccount: { select: { refreshToken: true } } }")).toBe(true);
+    expect(seen('import type { LinkedDriveAccount } from "@prisma/client";')).toBe(true);
+    expect(seen("tx.linkedDriveAccount.findFirst({ where: { id } })")).toBe(true);
+    expect(seen("const a = { sourceAccountId: row.sourceKey };")).toBe(false);
+    expect(
+      seen("// the cascade from LinkedDriveAccount\n/** sourceAccount: see the schema */"),
+    ).toBe(false);
+    expect(seen('const url = "https://x.test"; tx.linkedDriveAccount.count()')).toBe(true);
   });
 });
 
