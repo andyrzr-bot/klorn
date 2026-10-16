@@ -17,6 +17,16 @@ in code).
 
 ---
 
+> **Update (2026-10-16, bundled app):** push registration (priming screen,
+> `POST /api/notifications/push/device-token/register`), RevenueCat IAP
+> (Settings › Plan, `VITE_REVENUECAT_IOS_KEY` / `_ANDROID_KEY`; no external
+> purchase link anywhere — 3.1.1), self-service account deletion (Settings ›
+> Delete account → `DELETE /api/auth/account`, typed address — 5.1.1(v)),
+> settings and legal links are now in the bundled app. The device checks in
+> `README.md` ("Verify on device / CI") still gate a submission. Note the IAP
+> keys are now `VITE_*` build variables of `apps/mobile`, not
+> `NEXT_PUBLIC_*` of the web build.
+
 ## 🔦 Pre-submission scan — verified 2026-07-21 (greenlight-style)
 
 Audited the code against the Apple review categories a pre-submission scanner

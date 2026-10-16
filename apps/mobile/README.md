@@ -11,12 +11,12 @@ are shared with the web (`src/styles/tokens.css` mirrors
 > `apps/desktop-mac`). Wire types come from `packages/contract` through a
 > tsconfig path alias, as `import type` only (pinned by `src/config.test.ts`).
 
-> **Status (2026-10-16): foundation.** Shell at every size class, auth, data
-> layer, offline cache, i18n and the Today screen are built. Mail, Calendar,
-> Files and Assistant are placeholder routes. The previous WebView shell got
-> push registration, IAP and account deletion from the web app — those are
-> **not yet** in the bundled app, so do not submit a store build from here
-> until they are (see `STORE_SUBMISSION.md`).
+> **Status (2026-10-16).** Shell at every size class, auth, data layer,
+> offline cache, i18n, Today, Calendar, Assistant (chat / Approvals /
+> Activity), Files, Accounts & sources, Settings, push (priming, registration,
+> tap routing, iOS action categories), in-app purchase (RevenueCat) and
+> self-service account deletion are built. Store builds still need the
+> device / CI checks listed below (see `STORE_SUBMISSION.md`).
 
 ## Commands
 
@@ -26,7 +26,7 @@ npm ci
 npm run dev          # Vite dev server against http://localhost:3001 (local API)
 npm run dev:mock     # Vite dev server against the in-app mock API (fixtures)
 npm run typecheck
-npm test             # vitest: router, size classes, API client, i18n parity, Today model, tokens
+npm test             # vitest: router, size classes, API client, i18n parity, screen models, push routing
 npm run lint         # biome with the repo-root biome.json, errors only
 npm run build        # typecheck + vite build → dist/ (what Capacitor bundles)
 npm run e2e          # Playwright screenshots + behaviour against the mock build
@@ -68,8 +68,11 @@ src/
   i18n/                        en ko ja zh es fr de; device locale default; plural forms
   router/                      typed routes + deep links, tab memory, Android back decision
   layout/                      size classes, fold posture, Shell (tabs / rail / sidebar), ListDetail
-  screens/                     today (built), cover (Flip), login (Welcome), mail (scaffold),
-                               accounts, placeholder
+  screens/                     today, cover (Flip), login (Welcome), mail, calendar,
+                               assistant, files, accounts, settings (+ plans, delete)
+  push/                        priming screen, foreground banner, tap/action routing
+  api/queries-hub.ts           hooks for calendar/assistant/files/accounts/settings
+  api/mock/*-hub.ts            fixtures + stateful mock routes for those screens
   ui/                          icons (artboard paths), states, pull-to-refresh, source badges
   styles/                      tokens.css (light + dark), base.css
   assets/fonts/                Geist + Instrument Serif woff2 (OFL 1.1, licences alongside)
@@ -121,6 +124,84 @@ tab → background the app.
 | `GET /api/briefing/status` | routes/briefing | typed, not rendered yet |
 | `POST /api/inbox/firewall/:id/dismiss` · `/:id/snooze` · `/email/:emailId` · `/:id/undo` | routes/firewall.ts | typed for Mail's swipe rows / lane sheet (next) |
 | `POST` / `DELETE /api/email/:id/pin-tier` | routes/email.ts | "keep this sender here" (next) |
+| `GET /api/calendar?start&end` · `GET /:id` · `POST /` · `POST /parse-event` | routes/calendar.ts | week agenda, event detail; **the only calendar write** (after the confirm card); "Describe it" prefill |
+| `GET /api/teams` · `GET /:id/availability` | routes/teams.ts | "Team free time" (403 TEAM_REQUIRED → hidden) |
+| `GET` / `POST /api/chat/conversations` · `GET` / `POST /:id/messages` | routes/chat-conversations.ts | chat (resumes the latest thread; `context.emailId`; `eventDraft` → confirm card) |
+| `POST /api/chat/pending-actions/:id/approve` · `/reject` · `/snooze` | routes/chat-pending-actions.ts | Approvals (a send mints its ActionReceipt server-side) |
+| `GET /api/inbox/receipt/today` · `GET /api/briefing/status` | routes/receipt.ts, routes/briefing | Activity |
+| `GET /api/drive/files` · `/files/:id` · `POST /files/:id/summarize` · `GET /files/:id/download` · `GET /limits` · `POST /files` | routes/drive.ts, klorn-drive.ts | Files (404 while the drive flags are off → source hidden) |
+| `GET /api/drive/google/accounts` · `POST /link` · `DELETE /accounts/:id` | routes/google-drive-link.ts | Google Drive source and account rows |
+| `GET /api/email?filter=attachments` · `GET /api/email/:id` | routes/email.ts | the "Mail attachments" source |
+| `POST /api/auth/google/{start,link-inbox,link-calendar}` · `POST /api/auth/outlook/link-inbox` (`?appScheme=ai.klorn.app`) · `POST /api/auth/link/complete` | routes/auth.ts, outlook-auth.ts, link-complete.ts | add Gmail / Outlook / calendar / Drive in the system browser, finished by the `link-complete` deep link |
+| `GET /api/{naver,icloud,generic}-imap/status` · `POST /connect` · `POST /disconnect` | routes/imap-connect.ts | Naver / iCloud / other IMAP (beta; 404 → hidden) |
+| `DELETE /api/auth/google` · `/google/linked-inboxes/:id` · `/outlook/linked-inboxes/:id` · `…/linked-calendars[/:id]` | routes/auth.ts, outlook-*.ts, caldav-calendar.ts | disconnect (behind a confirmation) |
+| `GET` / `PATCH /api/automations` | routes/automations.ts | notification toggles, quiet hours, notification language |
+| `DELETE /api/auth/account` | routes/auth.ts | account deletion (typed address; App Store 5.1.1(v)) |
+| `POST /api/notifications/push/device-token/register` · `DELETE /push/device-token` | routes/notifications.ts | push token (FCM Android / APNs iOS); removed on sign-out |
+| `GET /api/billing/status` | routes/billing.ts | Plans (never a web checkout on native — App Store 3.1.1) |
+
+### Calendar · Assistant · Files · Accounts · Settings
+
+- **Writes need a confirmation, always.** New event and team free slots go
+  form → confirm card ("which calendar, who is invited") → `POST
+  /api/calendar`. Chat only ever drafts. Approvals approve/reject one card at a
+  time; reject asks for an optional reason in a sheet. Disconnect and account
+  deletion are two-step. "Send draft" from a notification opens the approval
+  card — it never sends.
+- **Flag-gated sources hide on 404** (drive, Google Drive, Outlook, iCloud,
+  generic IMAP, CalDAV) and team mode on 403; the mock's `?scenario=featuresOff`
+  reproduces production's default flags.
+- Calendar: week strip (swipe; arrows on wide layouts and for screen readers),
+  legend per connected calendar (colour = the account's SourceBadge colour),
+  current-time line, past events dimmed, overlap chip → the assistant with a
+  pre-filled (not sent) question (`screens/assistant/handoff.ts`).
+- Assistant: the expanded layout's floating button opens the same thread in a
+  side sheet; on a vertical hinge chat and Activity sit one per segment.
+  Voice input uses `@capacitor-community/speech-recognition` (hidden where the
+  plugin is not linked, e.g. iOS SPM) or the Web Speech API.
+- Files: one list across Klorn Drive / Google Drive / mail attachments, search
+  by name and content (drive: server `q`, which matches summaries while D4 is
+  on; attachments: client-side), open = system browser (Google page, Klorn
+  signed download link) or the mail. Upload: `<input type=file>` → Klorn Drive.
+- Accounts: Outlook, Naver and iCloud are marked beta; the device calendar row
+  explains it is coming and asks for no permission.
+
+### Push payload (what the server should send)
+
+Today the device payload carries only `url` (a web path) and a top-level
+`category`; the app maps `/email/:id`, `/inbox/firewall`, `/briefing`,
+`/chat`, `/inbox` to its routes (`src/push/route.ts`). For the full design:
+
+```jsonc
+{
+  "aps": { "alert": { "title": "…", "body": "…" }, "category": "KLORN_PUSH_DRAFT" }, // or KLORN_PUSH
+  "route": "/mail/<emailId>",          // an app path; wins over everything else
+  "emailId": "<EmailMessage.id>",
+  "attentionItemId": "<AttentionItem.id>", // needed by "In 1 hour" / "Done"
+  "pendingActionId": "<PendingAction.id>"  // needed by "Send draft" (opens the approval)
+}
+```
+
+iOS registers `KLORN_PUSH_DRAFT` (Send draft · In 1 hour · Done) and
+`KLORN_PUSH` (In 1 hour · Done) in `AppDelegate.swift`; "Send draft" is
+`.authenticationRequired + .foreground`. Android FCM *notification* messages
+cannot carry action buttons through `@capacitor/push-notifications`; they need
+data-only messages displayed by `@capacitor/local-notifications` with actions
+(not installed) — until then an Android tap opens the route.
+
+### Server gaps found while building these screens
+
+- No attachment index: Files reads `GET /api/email?filter=attachments` and then
+  `GET /api/email/:id` for the newest 8 mails.
+- `GET /api/drive/files` has no summaries; the first 10 rows read
+  `GET /api/drive/files/:id` each (rate limit 60/min).
+- Chat returns one `eventDraft`, not structured slots, so the artboard's slot
+  picker appears in Calendar's "Team free time" (from `/api/teams/:id/availability`)
+  rather than in the thread.
+- The device push payload lacks `emailId` / `attentionItemId` /
+  `pendingActionId` / `aps.category` (above), so lock-screen actions only work
+  once the server sends them.
+- `GET /api/teams` needs a saved team; teams are created on the web only.
 
 ## PROBE mode (diagnostics only)
 
@@ -153,6 +234,21 @@ set it.
 - Galaxy Z Fold (flat / half-folded / rotated), Z Flip cover screen, Samsung
   pop-up window, iPad Split View + Stage Manager, Dynamic Type at 200%.
 - Safe areas on notch / Dynamic Island / gesture-nav devices.
+- Account links: Gmail / Outlook / Google Drive consent in the system browser
+  returns through `ai.klorn.app://link-complete?h=…` (new Android intent
+  filter; iOS already registers the scheme), the browser closes and the row
+  appears.
+- Push: priming → OS prompt → token registered (Android FCM, iOS APNs);
+  foreground banner; tap routing; iOS long-press actions (Send draft asks for
+  unlock and opens the approval; In 1 hour / Done run without opening the app
+  — verify the WebView wakes for them, else switch them to `.foreground`).
+  `AppDelegate.swift` was edited without a Swift toolchain here.
+- RevenueCat purchase / restore / manage with `VITE_REVENUECAT_IOS_KEY` /
+  `_ANDROID_KEY` set; plan refresh after the webhook.
+- Multipart upload through CapacitorHttp (`POST /api/drive/files`, `size`
+  before `file`) and the `<input type=file>` picker on both platforms.
+- Keyboard: the composer rides above the keyboard, the tab bar hides.
+- Speech recognition on Android; hidden on iOS while the plugin is unlinked.
 
 ## Native setup (unchanged from the WebView shell)
 
