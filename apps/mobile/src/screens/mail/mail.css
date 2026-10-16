@@ -1,0 +1,134 @@
+/* Mail scaffold — row style from the FoldOpen / TabletLandscape artboards. */
+.mail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.shell[data-nav="rail"] .mail-list,
+.shell[data-nav="sidebar"] .mail-list {
+  padding-left: 14px;
+  padding-right: 14px;
+}
+
+.mail-list__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mail-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  min-height: var(--touch);
+  border-radius: var(--radius-row);
+  background: var(--surface-card);
+  border: 1px solid var(--line-nav);
+  color: var(--ink);
+}
+
+.mail-row[aria-current="true"] {
+  background: var(--surface-selected);
+  border-color: var(--line-selected);
+}
+
+.mail-row__top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mail-row__from {
+  font-size: var(--type-callout);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mail-row__time {
+  margin-left: auto;
+  flex: none;
+  font-size: calc(11.5 * var(--u));
+  color: var(--ink-dim);
+}
+
+.mail-row__subject {
+  font-size: var(--type-subhead);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mail-row__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mail-row__reason {
+  font-size: var(--type-footnote);
+  color: var(--ink-mid);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reader {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--surface-card);
+}
+
+.reader--empty {
+  justify-content: center;
+}
+
+.reader--empty .empty-state {
+  border: 0;
+  background: transparent;
+}
+
+.reader__back {
+  align-self: flex-start;
+  min-height: var(--touch);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--accent);
+  font-size: calc(17 * var(--u));
+  margin-left: -6px;
+}
+
+.shell:not([data-nav="tabs"]) .reader__back {
+  display: none;
+}
+
+.reader__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.reader__subject {
+  font-size: calc(22 * var(--u));
+  line-height: calc(28 * var(--u));
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.reader__from {
+  font-size: var(--type-body);
+  font-weight: 600;
+}
+
+.reader__text {
+  font-size: var(--type-headline);
+  line-height: calc(26 * var(--u));
+  color: var(--ink-strong);
+  white-space: pre-wrap;
+}

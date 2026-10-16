@@ -1,0 +1,95 @@
+.accounts {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.accounts__who {
+  color: var(--ink-mid);
+  font-size: var(--type-callout);
+  margin-top: -12px;
+}
+
+.accounts__group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.accounts__heading {
+  padding: 0 4px;
+  font-size: var(--type-subhead);
+  line-height: var(--type-subhead-lh);
+  font-weight: 600;
+  color: var(--ink-mid);
+}
+
+.accounts__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.accounts__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 0 16px;
+}
+
+.accounts__row + .accounts__row {
+  border-top: 1px solid var(--line);
+}
+
+.accounts__email {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--type-body);
+}
+
+.accounts__warn {
+  flex: none;
+  font-size: var(--type-footnote);
+  font-weight: 600;
+  color: var(--state-warn-ink);
+}
+
+.accounts__settings {
+  padding: 4px 16px;
+  gap: 0;
+}
+
+.accounts__field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  font-size: var(--type-body);
+}
+
+.accounts__field + .accounts__field {
+  border-top: 1px solid var(--line);
+}
+
+.accounts__field select {
+  min-height: var(--touch);
+  max-width: 55%;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 16px; /* ≥16px: no iOS zoom on focus */
+  text-align: right;
+}
+
+.accounts__signout {
+  align-self: stretch;
+  color: var(--state-danger-ink);
+}
