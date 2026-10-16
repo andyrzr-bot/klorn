@@ -3,7 +3,8 @@
  *
  *   /today                     Today (home; "/" lands here)
  *   /mail  /mail?lane=PUSH     Mail, optionally filtered to one lane (or ALL)
- *   /mail/:id                  Mail with that email open in the reader
+ *   /mail/:id                  Mail with that email open in the reader (push taps land here)
+ *   /mail/subscriptions        Subscriptions (from Mail's header menu)
  *   /calendar  /calendar/:id   Calendar, optionally with an event open
  *   /files  /files/:id         Files
  *   /assistant[/:section]      Assistant hub: approvals | briefing | activity | chat
@@ -26,12 +27,16 @@ export const LIVE_LANES = [
 ] as const satisfies readonly LiveTier[];
 export type LaneParam = LiveTier | "ALL";
 
+/** Mail's secondary pages, shown where the reader would be. */
+export const MAIL_VIEWS = ["subscriptions"] as const;
+export type MailView = (typeof MAIL_VIEWS)[number];
+
 export const ASSISTANT_SECTIONS = ["approvals", "briefing", "activity", "chat"] as const;
 export type AssistantSection = (typeof ASSISTANT_SECTIONS)[number];
 
 export type Route =
   | { name: "today" }
-  | { name: "mail"; lane?: LaneParam; id?: string }
+  | { name: "mail"; lane?: LaneParam; id?: string; view?: MailView }
   | { name: "calendar"; id?: string }
   | { name: "files"; id?: string }
   | { name: "assistant"; section?: AssistantSection; id?: string }
@@ -71,6 +76,10 @@ export function parseRoute(pathname: string, search = ""): Route {
       const laneRaw = params.get("lane")?.toUpperCase();
       const lane = isLaneParam(laneRaw) ? laneRaw : undefined;
       if (second === undefined) return lane ? { name: "mail", lane } : { name: "mail" };
+      if ((MAIL_VIEWS as readonly string[]).includes(second)) {
+        const view = second as MailView;
+        return lane ? { name: "mail", lane, view } : { name: "mail", view };
+      }
       const id = validId(second);
       if (!id) return notFound;
       return lane ? { name: "mail", lane, id } : { name: "mail", id };
@@ -103,7 +112,11 @@ export function formatRoute(route: Route): string {
     case "today":
       return "/today";
     case "mail": {
-      const base = route.id ? `/mail/${encodeURIComponent(route.id)}` : "/mail";
+      const base = route.id
+        ? `/mail/${encodeURIComponent(route.id)}`
+        : route.view
+          ? `/mail/${route.view}`
+          : "/mail";
       return route.lane ? `${base}?lane=${route.lane}` : base;
     }
     case "calendar":
@@ -140,15 +153,16 @@ export function tabRoot(tab: Tab): Route {
   return { name: tab };
 }
 
-/** True when the route shows a detail (reader, event, file, approval). */
+/** True when the route shows a detail (reader, event, file, approval, a Mail page). */
 export function hasDetail(route: Route): boolean {
+  if (route.name === "mail" && route.view !== undefined) return true;
   return "id" in route && route.id !== undefined;
 }
 
 /** The same view with its detail closed (keeps list filters such as the lane). */
 export function withoutDetail(route: Route): Route {
   if (!hasDetail(route)) return route;
-  const { id: _drop, ...rest } = route as Route & { id?: string };
+  const { id: _drop, view: _view, ...rest } = route as Route & { id?: string; view?: MailView };
   return rest as Route;
 }
 
