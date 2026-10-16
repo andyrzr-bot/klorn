@@ -144,10 +144,23 @@ export function comparePaddlePrice(opts: { advertised: string; price: unknown })
   // --- plus tax, or including it -------------------------------------------
   // tax_mode "external" means the customer pays the quoted price PLUS tax, so
   // the amount above is not what lands on the card. The pages quote one number.
+  //
+  // "account_setting" is the Paddle default and defers to the account-level
+  // choice, which this object cannot tell us — so it could BE exclusive, and
+  // the case above would slip through. It is logged rather than raised: the
+  // default value would alarm on most correctly-configured accounts, and a
+  // check that fires on the normal case gets ignored, which is how the sandbox
+  // branch above is argued too. Verifying the account default is a one-off
+  // founder step recorded in the PR, not something to re-alarm on every boot.
   if (price.tax_mode === "external") {
     problems.push(
       'Paddle tax_mode is "external" — tax is added on top of the quoted price, ' +
         "so the customer pays more than any page says",
+    );
+  } else if (price.tax_mode === "account_setting") {
+    console.log(
+      "[PADDLE] price tax_mode is account_setting — inclusive vs exclusive is set " +
+        "on the account and cannot be confirmed from the price object",
     );
   }
 

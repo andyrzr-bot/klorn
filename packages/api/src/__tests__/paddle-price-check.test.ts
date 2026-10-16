@@ -219,3 +219,32 @@ describe("amount formatting and precision", () => {
     expect(result.ok).toBe(false);
   });
 });
+
+describe("tax_mode account_setting", () => {
+  // The Paddle default defers to the account-level choice, which the price
+  // object does not carry. Accepted rather than raised — alarming on the
+  // default value would fire for most correctly-configured accounts and teach
+  // everyone to ignore this check. Verifying the account default is a one-off
+  // founder step, not a per-boot alarm.
+  it("does not fail the comparison", () => {
+    const result = comparePaddlePrice({
+      advertised: "$29.99",
+      price: paddlePrice({
+        unit_price: { amount: "2999", currency_code: "USD" },
+        tax_mode: "account_setting",
+      }),
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("still fails on an explicitly external price", () => {
+    const result = comparePaddlePrice({
+      advertised: "$29.99",
+      price: paddlePrice({
+        unit_price: { amount: "2999", currency_code: "USD" },
+        tax_mode: "external",
+      }),
+    });
+    expect(result.ok).toBe(false);
+  });
+});
