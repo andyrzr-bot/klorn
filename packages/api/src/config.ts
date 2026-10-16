@@ -587,8 +587,10 @@ export const FREE_DAILY_COST_CAP_CENTS = intEnv("FREE_DAILY_COST_CAP_CENTS", 10)
 // 2026-10-15: chat/agent on claude-sonnet-5 spent 101¢ of a 100¢ cap in 21
 // minutes, the gate blocked every paid call until UTC midnight, and the judge
 // degraded to the keyword fallback — which cannot emit PUSH at all. Mail kept
-// being sorted, so nothing looked broken. Classification is ~700 tokens/email
-// (~0.02¢ on gemini-2.5-flash), so 25¢ covers ~1000 emails/day.
+// being sorted, so nothing looked broken. Each call pre-bills a nominal
+// 2000+500 tokens (llm-usage.ts) and the floor is never refunded, so at
+// gemini-2.5-flash rates a classification costs ~0.185¢ — 25¢ buys ~135 a day.
+// Size it against the mailbox: 25 suits a light inbox, a heavy one needs more.
 // Default 0 = OFF. Turning it on narrows what chat/agent may spend, so it is
 // a deliberate flip per deploy rather than a behaviour change that arrives
 // with an upgrade. Recommended first value: 25.

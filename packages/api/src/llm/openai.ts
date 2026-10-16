@@ -124,8 +124,10 @@ export interface CompletionOptions {
    * Draw on the judge's reserved slice of the daily cap
    * (JUDGE_BUDGET_RESERVE_CENTS). Only the firewall judge sets this: it is the
    * one surface whose failure is invisible, because mail keeps being sorted —
-   * just without the lane the product is sold on. Everything else stops at
-   * (cap - reserve) so it cannot spend the judge's budget.
+   * just without the lane the product is sold on. Everything else is admitted
+   * only below (cap - reserve). Calls already in flight settle against the full
+   * cap, so concurrent ordinary calls can overshoot a few cents into the
+   * reserve: it is a floor under contention, not a wall.
    */
   reserved?: boolean;
   /**
@@ -223,7 +225,7 @@ async function enforceCostGates(
       // re-check the post-increment total: concurrent calls that both passed
       // the read-side gate above can't both slip past the cap (closes the
       // check-then-act TOCTOU under concurrency / multi-dyno).
-      const usage = await recordCostUsage(userId, estCents, model);
+      const usage = await recordCostUsage(userId, estCents, model, { reserved });
       if (usage?.overCap) {
         throw new DailyCostCapExceededError(dailyCostCapMessageFor(gate.freeCapApplied === true));
       }
@@ -769,13 +771,10 @@ async function createVisionCompletionWithFailover(
 
   // Daily-cost gate: vision/OCR calls bill the same ledgers as chat. Without
   // this, a runaway attachment-analysis batch can blow past the cap.
-  await enforceCostGates(
-    params.model,
-    options.userId,
-    playgroundOnly,
-    userKeyAvailable,
-    options.reserved,
-  );
+  // Deliberately NOT passing options.reserved: the judge never goes through
+  // the vision path, and the reserve exists for exactly one surface. Honouring
+  // it here would widen who can reach the judge's budget for no caller.
+  await enforceCostGates(params.model, options.userId, playgroundOnly, userKeyAvailable);
 
   // Vision prefers Gemini (best OCR), but a BYOK user's OWN key must keep
   // priority — otherwise env Gemini gets hoisted ahead of the user's

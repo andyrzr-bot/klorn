@@ -22,17 +22,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let mockRow: { cents: number } | null = null;
 let mockUser: { plan: string; role: string | null } | null = null;
+let upsertTotal = 0;
 
 vi.mock("../db.js", () => ({
   prisma: {
     user: { findUnique: vi.fn(async () => mockUser) },
-    llmCostLedger: { findUnique: vi.fn(async () => mockRow) },
+    llmCostLedger: {
+      findUnique: vi.fn(async () => mockRow),
+      upsert: vi.fn(async () => ({ cents: upsertTotal })),
+    },
     globalCostLedger: { findUnique: vi.fn(async () => null), upsert: vi.fn(async () => ({})) },
   },
 }));
 
 vi.mock("../sentry.js", () => ({ captureError: vi.fn() }));
-vi.mock("../billing/cost-trip-alert.js", () => ({ notifyCostCapTrip: vi.fn() }));
+const alerts = vi.hoisted(() => ({ notify: vi.fn() }));
+vi.mock("../billing/cost-trip-alert.js", () => ({ notifyCostCapTrip: alerts.notify }));
 
 const ENV = [
   "DAILY_COST_CAP_CENTS",
@@ -54,6 +59,8 @@ afterEach(() => {
   }
   mockRow = null;
   mockUser = null;
+  upsertTotal = 0;
+  alerts.notify.mockClear();
   vi.restoreAllMocks();
 });
 
@@ -145,8 +152,10 @@ describe("judge budget reserve — edges", () => {
     mockRow = { cents: 0 };
     const result = await gate();
     expect(result.allowed).toBe(true);
-    expect(result.capCents).toBeGreaterThan(0);
-    expect(result.capCents).toBeLessThanOrEqual(10);
+    // Pinned, not just bounded: the clamp HALVES the free tier's ordinary
+    // budget (min(25, floor(10/2)) = 5). That is a real cost of turning the
+    // reserve on and it should break this test if it ever changes silently.
+    expect(result.capCents).toBe(5);
   });
 });
 
@@ -182,5 +191,82 @@ describe("the judge is actually wired to the reserve", () => {
     };
     walk(root);
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("cap-trip alerting with a reserve active", () => {
+  beforeEach(() => {
+    process.env.DAILY_COST_CAP_CENTS = "100";
+    process.env.JUDGE_BUDGET_RESERVE_CENTS = "25";
+    delete process.env.PAYWALL_ENABLED;
+  });
+
+  // The alert dedupes once per user per UTC day. If the ordinary trip at 75¢
+  // spends that budget, the real ceiling alert at 100¢ — the one that means
+  // the judge has gone dark — is swallowed for the rest of the day. That is
+  // this PR's own failure mode ("nothing looked broken") reappearing in the
+  // alerting layer. It is also false at 75¢: the judge still has 25¢, so the
+  // alert's "judge degrades to keyword fallback" wording would be a lie.
+  it("does not alert when an ordinary call stops at the reserve boundary", async () => {
+    mockRow = { cents: 80 };
+    const result = await gate();
+    expect(result.allowed).toBe(false);
+    expect(alerts.notify).not.toHaveBeenCalled();
+  });
+
+  it("alerts when the real ceiling is reached", async () => {
+    mockRow = { cents: 100 };
+    const result = await gate({ reserved: true });
+    expect(result.allowed).toBe(false);
+    expect(alerts.notify).toHaveBeenCalledTimes(1);
+    expect(alerts.notify.mock.calls[0][0]).toMatchObject({ capCents: 100 });
+  });
+
+  it("still alerts at the cap when no reserve is configured", async () => {
+    process.env.JUDGE_BUDGET_RESERVE_CENTS = "0";
+    mockRow = { cents: 100 };
+    await gate();
+    expect(alerts.notify).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the post-increment re-check honours the reserve", () => {
+  beforeEach(() => {
+    process.env.DAILY_COST_CAP_CENTS = "100";
+    process.env.JUDGE_BUDGET_RESERVE_CENTS = "25";
+    delete process.env.PAYWALL_ENABLED;
+  });
+
+  // Without this, the reserve lived only on the read side: several ordinary
+  // calls that all passed checkCostGate at 74¢ could each pre-bill and settle
+  // past 75¢, eating the judge's slice before the judge ever asked for it.
+  it("reports overCap for an ordinary call that lands past the reserve line", async () => {
+    upsertTotal = 80;
+    const { recordCostUsage } = await import("../billing/cost-guard.js");
+    const usage = await recordCostUsage("user-1", 1, "google/gemini-2.5-flash");
+    expect(usage?.overCap).toBe(true);
+  });
+
+  it("does not report overCap for a reserved call at the same total", async () => {
+    upsertTotal = 80;
+    const { recordCostUsage } = await import("../billing/cost-guard.js");
+    const usage = await recordCostUsage("user-1", 1, "google/gemini-2.5-flash", {
+      reserved: true,
+    });
+    expect(usage?.overCap).toBe(false);
+  });
+
+  it("does not alert when an ordinary call crosses only the reserve line", async () => {
+    upsertTotal = 80;
+    const { recordCostUsage } = await import("../billing/cost-guard.js");
+    await recordCostUsage("user-1", 1, "google/gemini-2.5-flash");
+    expect(alerts.notify).not.toHaveBeenCalled();
+  });
+
+  it("alerts when a reserved call crosses the real ceiling", async () => {
+    upsertTotal = 101;
+    const { recordCostUsage } = await import("../billing/cost-guard.js");
+    await recordCostUsage("user-1", 1, "google/gemini-2.5-flash", { reserved: true });
+    expect(alerts.notify).toHaveBeenCalledTimes(1);
   });
 });
