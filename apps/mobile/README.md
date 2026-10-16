@@ -53,8 +53,10 @@ tabletop), 744×1133, 1024×1366 and 1366×1024, light and dark, plus Welcome an
 the loading / empty / error / no-account / offline states. The hinge is
 emulated with Chromium's display-feature override, so the real Viewport
 Segments API is exercised. Mock builds accept `?insets=top,right,bottom,left`
-to fake safe areas and `?scenario=` to pick a fixture set
-(`src/api/mock/transport.ts`). `@playwright/test` is pinned to the Chromium
+to fake safe areas, `?scenario=` to pick a fixture set
+(`src/api/mock/transport.ts`; `sendReceipts` = the server's send receipts on),
+`?iap=ios|android` to fake a store offer on Plans (`src/platform/iap.ts`) and
+`?signup=closed` for invite-only sign-up. `@playwright/test` is pinned to the Chromium
 revision preinstalled in our images — never run `playwright install` there.
 
 Every screenshot goes through `snap()` (`e2e/helpers.ts`), which waits on a
@@ -126,7 +128,13 @@ tab → background the app.
   `POST /api/auth/exchange-code`. No native Sign in with Apple plugin is needed;
   the Apple button shows only when `GET /api/auth/providers` lists it. In a
   browser (dev) the PKCE poll (`/api/auth/desktop-token/:nonce`) is used.
-- **Email/password**: `POST /api/auth/login`.
+- **Email/password**: `POST /api/auth/login`; **sign-up** `POST
+  /api/auth/register` (name optional, password ≥ 8). `GET
+  /api/auth/signup-status` says when sign-up is invite-only
+  (`BETA_GATE_ENABLED`): the form says so up front, and the server's 403 is
+  shown as an invite-only refusal with a link to the waitlist; 409 points to
+  sign-in. So the app works without a third-party login (4.8 still needs
+  Sign in with Apple in production).
 - The JWT is stored with `@aparajita/capacitor-secure-storage` (Keychain /
   Keystore, not iCloud-synced) — never localStorage on native. A 401 on a data
   call signs out and Welcome says the session ended.
@@ -135,7 +143,7 @@ tab → background the app.
 
 | Route | Server file | Used for |
 |---|---|---|
-| `GET /api/auth/providers` · `POST /login` · `GET /me` · `POST /logout` | routes/auth.ts | Welcome, session |
+| `GET /api/auth/providers` · `POST /login` · `POST /register` · `GET /signup-status` · `GET /me` · `POST /logout` | routes/auth.ts | Welcome (sign-in, sign-up), session |
 | `GET /api/auth/desktop-nonce` · `GET /desktop-token/:nonce` · `POST /exchange-code` | routes/auth.ts | Google / Apple sign-in |
 | `GET /api/auth/{google,apple}/login` | routes/auth.ts, routes/social-auth.ts | system-browser leg |
 | `GET /api/inbox/firewall` | routes/firewall.ts | "Needs you now" (PUSH/MEETING items + reasons), replies owed, cover screen |
@@ -171,7 +179,7 @@ tab → background the app.
 | `GET` / `PATCH /api/automations` | routes/automations.ts | notification toggles, quiet hours, notification language |
 | `DELETE /api/auth/account` | routes/auth.ts | account deletion (typed address; App Store 5.1.1(v)) |
 | `POST /api/notifications/push/device-token/register` · `DELETE /push/device-token` | routes/notifications.ts | push token (FCM Android / APNs iOS); removed on sign-out |
-| `GET /api/billing/status` | routes/billing.ts | Plans (never a web checkout on native — App Store 3.1.1) |
+| `GET /api/billing/status` | routes/billing.ts | Plans (never a web checkout on native — App Store 3.1.1; store offer + 3.1.2 disclosures from RevenueCat) |
 
 ### Mail (`src/screens/mail/`)
 
@@ -419,7 +427,14 @@ Calendar · Assistant · Files · push:
   the channel shows as "PUSH mail" with importance high in system settings;
   killed app → nothing (documented above).
 - RevenueCat purchase / restore / manage with `VITE_REVENUECAT_IOS_KEY` /
-  `_ANDROID_KEY` set; plan refresh after the webhook.
+  `_ANDROID_KEY` set (release builds get them from `mobile-release.yml`); the
+  offer card's length / price per period from the real package; plan refresh
+  after the webhook.
+- iOS: an archive signs with `App.entitlements` (`aps-environment` →
+  production on export) and carries `PrivacyInfo.xcprivacy` (Organizer →
+  Generate Privacy Report); the pbxproj was edited without Xcode here.
+- Android: `allowBackup="false"` + `dataExtractionRules` build cleanly (lint
+  may warn that the attribute is API 31+, which is expected).
 - Multipart upload through CapacitorHttp (`POST /api/drive/files`, `size`
   before `file`) and the `<input type=file>` picker on both platforms.
 - Keyboard: the composer rides above the keyboard, the tab bar hides.

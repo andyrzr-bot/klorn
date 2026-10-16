@@ -38,7 +38,7 @@ Re-count if you edit: `python3 -c "print(len(open('x.txt').read().rstrip('\n')))
 | Claim in the copy | True only if | Where |
 |---|---|---|
 | "Sign in with Apple" | `APPLE_LOGIN_ENABLED=true` (+ the `APPLE_*` keys) on the API; the app shows the button only when `GET /api/auth/providers` lists Apple | `packages/api/src/auth/apple.ts`, `WelcomeScreen.tsx` |
-| The Klorn Pro paragraph | `VITE_REVENUECAT_IOS_KEY` / `VITE_REVENUECAT_ANDROID_KEY` are passed to `npm run build` in `mobile-release.yml` (today they are **not** — see `submission-checklist.md`) and the subscription product is approved | `src/platform/iap.ts` |
+| The Klorn Pro paragraph | `VITE_REVENUECAT_IOS_KEY` / `VITE_REVENUECAT_ANDROID_KEY` are set as GitHub secrets (or variables) — `mobile-release.yml` passes them to `npm run build` — and the subscription product is approved | `src/platform/iap.ts` |
 | Naver Mail / iCloud Mail (beta) | the IMAP routes answer in production (the landing says they do; the app hides each row on a 404) | `routes/imap-connect.ts` |
 
 If IAP does not ship in the first build, replace the Pro paragraph with
@@ -50,8 +50,10 @@ Deliberately **not** claimed (dark or unverified in production): Outlook,
 Subscriptions / bulk unsubscribe (`BULK_UNSUBSCRIBE_ENABLED`), Klorn Drive and
 Google Drive files (`DRIVE_ENABLED` / `GOOGLE_DRIVE_ENABLED`), team free time
 (needs a team made on the web), voice input on iOS (the speech plugin is not
-linked under SPM, so the mic is hidden), lock-screen notification actions (the
-server does not send the needed ids yet — README "Gaps").
+linked under SPM, so the mic is hidden), lock-screen notification actions (In 1 hour /
+Done work on iOS now, but Send draft needs a `pendingActionId` the server does
+not set yet, and Android shows no buttons on notification messages — README
+"Gaps").
 
 ---
 

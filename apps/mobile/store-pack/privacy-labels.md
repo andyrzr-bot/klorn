@@ -44,8 +44,10 @@ store, but it is described here because reviewers and the privacy policy ask.
   `@aparajita/capacitor-secure-storage`, not iCloud-synced; removed on
   sign-out.
 - **Done / Later list** (`src/screens/mail/hidden-store.ts`): email ids and
-  "hide until" times, up to 30 days, no content. ⚠️ Not cleared on sign-out
-  (`clearHidden()` exists but nothing calls it) — see §5.
+  "hide until" times, no content — an optimistic layer over the server's
+  `hideHandled` list (an hour once the server confirmed; up to 30 days for
+  mail the server had nothing to clear for). Cleared on sign-out, on a 401 and
+  after account deletion (`clearHidden()` in `session.tsx` `wipe()`).
 - Push token copy, "push primed" flag, theme and language choice (Preferences).
 
 ---
@@ -83,97 +85,24 @@ account id, only with a key), **Apple APNs** (the token). Service providers on
 the server side — Render, Supabase, Vercel, Google Gemini API, OpenRouter,
 Resend — process data for Klorn and are listed in the privacy policy.
 
-### `PrivacyInfo.xcprivacy` — needs updating (exact edit)
+### `PrivacyInfo.xcprivacy` — matches the table (done 2026-10-16)
 
-`apps/mobile/ios/App/App/PrivacyInfo.xcprivacy` currently declares Name, Email
-Address and Other User Content only. The manifest must match the questionnaire,
-so add these dicts inside `NSPrivacyCollectedDataTypes` (after the
-`OtherUserContent` dict):
+`apps/mobile/ios/App/App/PrivacyInfo.xcprivacy` is a member of the App target
+(`project.pbxproj`: PBXFileReference, PBXBuildFile, Resources phase), so every
+archive carries it. It declares Name, Email Address, Other User Content,
+Emails or Text Messages, User ID, Device ID, Product Interaction (App
+Functionality + Analytics) and Purchase History — every one linked, none used
+for tracking — with `NSPrivacyTracking` false, no tracking domains, and the
+UserDefaults required-reason entry (`CA92.1`, Capacitor Preferences).
 
-```xml
-		<dict>
-			<!-- Mail from the connected accounts: synced, classified,
-			     summarised and sent on the user's confirmation. -->
-			<key>NSPrivacyCollectedDataType</key>
-			<string>NSPrivacyCollectedDataTypeEmailsOrTextMessages</string>
-			<key>NSPrivacyCollectedDataTypeLinked</key>
-			<true/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
-			<key>NSPrivacyCollectedDataTypePurposes</key>
-			<array>
-				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
-			</array>
-		</dict>
-		<dict>
-			<!-- Klorn account id; RevenueCat appUserID. -->
-			<key>NSPrivacyCollectedDataType</key>
-			<string>NSPrivacyCollectedDataTypeUserID</string>
-			<key>NSPrivacyCollectedDataTypeLinked</key>
-			<true/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
-			<key>NSPrivacyCollectedDataTypePurposes</key>
-			<array>
-				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
-			</array>
-		</dict>
-		<dict>
-			<!-- APNs push token, used only to deliver notifications. -->
-			<key>NSPrivacyCollectedDataType</key>
-			<string>NSPrivacyCollectedDataTypeDeviceID</string>
-			<key>NSPrivacyCollectedDataTypeLinked</key>
-			<true/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
-			<key>NSPrivacyCollectedDataTypePurposes</key>
-			<array>
-				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
-			</array>
-		</dict>
-		<dict>
-			<!-- Done / Later / lane moves / approvals and first-party
-			     server events (push_sent, queue_action). -->
-			<key>NSPrivacyCollectedDataType</key>
-			<string>NSPrivacyCollectedDataTypeProductInteraction</string>
-			<key>NSPrivacyCollectedDataTypeLinked</key>
-			<true/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
-			<key>NSPrivacyCollectedDataTypePurposes</key>
-			<array>
-				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
-				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
-			</array>
-		</dict>
-		<!-- Only when the store build carries VITE_REVENUECAT_IOS_KEY: -->
-		<dict>
-			<key>NSPrivacyCollectedDataType</key>
-			<string>NSPrivacyCollectedDataTypePurchaseHistory</string>
-			<key>NSPrivacyCollectedDataTypeLinked</key>
-			<true/>
-			<key>NSPrivacyCollectedDataTypeTracking</key>
-			<false/>
-			<key>NSPrivacyCollectedDataTypePurposes</key>
-			<array>
-				<string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
-			</array>
-		</dict>
-```
+Keep it in step with the questionnaire:
 
-(and, only if Klorn Drive upload is on, the same shape with
-`NSPrivacyCollectedDataTypePhotosorVideos`). Also:
-
-- Change the Name dict's comment from "collected at signup" to "from the
-  Google / Apple profile at sign-in" — the bundled app has no signup form.
-- Change "run the mail firewall" in the Email Address comment to "sort the
-  connected accounts' mail" (retired term).
-- `NSPrivacyAccessedAPITypes` (UserDefaults `CA92.1`) stays — Capacitor
-  Preferences uses `UserDefaults`.
-- The file is still **not in the App target** (`project.pbxproj` has no
-  `PrivacyInfo.xcprivacy` reference), so it is not copied into the bundle.
-  Add it to the target (Xcode → right-click `App` group → *Add Files…* → tick
-  *App*) and commit the `project.pbxproj` change, so CI archives carry it.
+- **Purchase History** is declared because store builds carry
+  `VITE_REVENUECAT_IOS_KEY` (`mobile-release.yml`). For a build uploaded
+  without it, remove that dict and the questionnaire row.
+- **Photos or Videos**: add the same shape
+  (`NSPrivacyCollectedDataTypePhotosorVideos`) only if Klorn Drive upload is
+  on in production.
 - After the first archive, run Xcode Organizer → the archive → **Generate
   Privacy Report**. It merges the SDKs' own manifests (Capacitor, RevenueCat,
   secure storage); if it lists a type or a required-reason API not in the
@@ -232,14 +161,12 @@ Data safety form, so add (founder or a web PR — outside this folder):
 4. Korean: the policy is English only. Not a store requirement, but the KO
    listing links to it.
 
-## 5. Code-side privacy items (not editable from this folder)
+## 5. Code-side privacy items (done 2026-10-16)
 
-- `hidden-store.ts`: call `clearHidden()` from `session.tsx`'s `wipe()` so the
-  Done / Later ids do not outlive the session on a shared device.
-- `android/app/src/main/AndroidManifest.xml` has `android:allowBackup="true"`,
-  so Android Auto Backup can copy `SharedPreferences` — including the 24 h
-  mail cache — to the user's Google Drive backup. Set it to `false`, or add
-  `dataExtractionRules` / `fullBackupContent` that exclude
-  `sharedpref/CapacitorStorage.xml`. Not a Data safety item (the backup goes
-  to the user's own Google account, not to Klorn), but it contradicts "cleared
-  on sign-out" for a restored device.
+- `hidden-store.ts`: `clearHidden()` runs in `session.tsx`'s `wipe()` (sign-out,
+  401, account deletion), so the Done / Later ids do not outlive the session.
+- `android/app/src/main/AndroidManifest.xml`: `android:allowBackup="false"` and
+  `android:dataExtractionRules="@xml/data_extraction_rules"`, which excludes
+  every domain from cloud backup and device-to-device transfer — the 24 h mail
+  cache (`sharedpref/CapacitorStorage.xml`) never reaches a backup or a new
+  phone, matching "cleared on sign-out".

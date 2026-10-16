@@ -13,9 +13,11 @@ account with real-looking mail. Reviewers sign in from unusual networks, so
 sharing credentials against Google's terms). Instead:
 
 **Demo account = a Klorn email/password account with a demo Gmail already
-linked.** The app's "Continue with email" signs in to an existing account
-(`POST /api/auth/login`); it has no sign-up form, so create the account on the
-web first.
+linked.** The app's "Continue with email" signs in (`POST /api/auth/login`)
+and can also create an account (`POST /api/auth/register`); while sign-up is
+invite-only (`BETA_GATE_ENABLED`) only an approved waitlist address can
+register, so create the demo account on the web (or approve its address
+first).
 
 Prep (founder, ~1 h):
 
@@ -110,9 +112,11 @@ Edit the notes to match the build before pasting:
 - **PURCHASES**: delete the block (and the Plans line) if the build carries no
   `VITE_REVENUECAT_IOS_KEY`; Plans then says in-app subscription is not ready
   yet and offers nothing to buy.
-- **Notification actions** (Send draft / In 1 hour / Done on long-press) are
-  not mentioned on purpose: the server push payload does not carry the ids
-  they need yet (README "Gaps").
+- **Notification actions**: a mail push now carries the email id and the
+  `KLORN_PUSH_MAIL` category, so long-press In 1 hour / Done work on iOS. They
+  are still not mentioned: Send draft needs a `pendingActionId` the server
+  does not set at push time yet (README "Gaps"), and a reviewer cannot
+  trigger a PUSH-lane mail on demand.
 - **Voice input** is not mentioned: the speech plugin is not linked on iOS, so
   the mic is hidden. `Info.plist` still carries the microphone / speech usage
   strings; that is allowed, but if a reviewer asks, the answer is "used for
@@ -153,9 +157,9 @@ News app — No; Government app — No; Financial features — None; Health — 
 
 | Risk | Status in the code | What to do |
 |---|---|---|
-| **4.8 Login services** — the app offers Google sign-in, so Apple expects an equivalent privacy-preserving option | The Apple button exists but is shown only when the API lists Apple (`APPLE_LOGIN_ENABLED`, dark by default). The email login is for existing accounts only and does not hide the address, so it does not count as the equivalent option | **Turn on Sign in with Apple in production before the iOS submission** (`APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`, `APPLE_REDIRECT_URI` on Render, then `APPLE_LOGIN_ENABLED=true`). It runs as Apple's web flow in the browser sheet that `@capacitor/browser` opens (SFSafariViewController), not the native Sign in with Apple sheet; Apple accepts the web flow, but test the round trip on a device |
+| **4.8 Login services** — the app offers Google sign-in, so Apple expects an equivalent privacy-preserving option | The Apple button exists but is shown only when the API lists Apple (`APPLE_LOGIN_ENABLED`, dark by default). Email sign-in and sign-up make the app usable without a third-party login, but they do not hide the address, so they do not count as the equivalent option | **Turn on Sign in with Apple in production before the iOS submission** (`APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`, `APPLE_REDIRECT_URI` on Render, then `APPLE_LOGIN_ENABLED=true`). It runs as Apple's web flow in the browser sheet that `@capacitor/browser` opens (SFSafariViewController), not the native Sign in with Apple sheet; Apple accepts the web flow, but test the round trip on a device |
 | **5.1.1(v) Account deletion** | Self-service, in the app (`DeleteAccountScreen.tsx` → `DELETE /api/auth/account`) | The path is three taps deep (Today → initials → Accounts & sources → Settings). It is reachable; the notes spell it out |
-| **3.1.1 / 3.1.2 Subscriptions** | IAP only, no external links; "Manage" opens RevenueCat's `managementURL` (the store's page) | ⚠️ The Plans screen shows the store price but not the **subscription length**, an **auto-renew** statement, or **Terms of Use / Privacy Policy links** (`PlansScreen.tsx`). Apple's 3.1.2 asks for all three in the purchase flow — add them before the first IAP submission |
+| **3.1.1 / 3.1.2 Subscriptions** | IAP only, no external links; "Manage" opens RevenueCat's `managementURL` (the store's page). Plans shows the product title, length and price per period, the auto-renew statement, how to cancel, Terms of Use + Privacy Policy links and Restore (`PlansScreen.tsx`) | Also fill the subscription's own metadata (display name, description, review screenshot) in App Store Connect, and the Terms of Use link in App Information |
 | **4.2 Minimum functionality** | Bundled UI, push, offline cache, iPad layouts, Keychain session | Keep the notes' native list; attach the video |
 | **2.1 Completeness** | Flag-gated sources hide on 404, so no dead buttons | Re-check the demo account the day of submission |
-| **2.3 Accurate metadata** | Store copy names only accounts the landing offers | The Welcome screen's illustration and body copy name **Outlook** and "work mail … with one sign-in" (`i18n` `welcome.body`, `WelcomeScreen.tsx` chips) while Outlook is dark in production — align the app copy with the landing, or a reviewer may look for an Outlook option that isn't there |
+| **2.3 Accurate metadata** | Store copy and the Welcome screen name only accounts production connects (Gmail, Google Workspace, Naver and iCloud in beta); screenshot fixtures use fictional senders and no Outlook | Keep it so if `OUTLOOK_INBOX_ENABLED` stays dark |

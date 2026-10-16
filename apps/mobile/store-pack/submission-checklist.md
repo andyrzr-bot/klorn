@@ -32,45 +32,61 @@ build). There is no Xcode archive / Organizer upload step any more.
 - [ ] RevenueCat account and project (iOS + Android apps, bundle / package
       `ai.klorn.app`).
 
-## Phase 1 — Code items still open (one PR, before the first store build)
+## Phase 1 — Code items (resolved in the repo; one left for after the first upload)
 
-Each is small; none can be done from the store consoles.
+Done on 2026-10-16 (paths under `apps/mobile/` unless noted):
 
-- [ ] **Push entitlement (iOS)**: the project has no `.entitlements` file and
-      no `CODE_SIGN_ENTITLEMENTS`, so CI-signed builds carry no
-      `aps-environment` and APNs registration fails. In Xcode → App target →
-      Signing & Capabilities → **+ Push Notifications** (Background Modes →
-      Remote notifications is already in `Info.plist`) → commit
-      `App/App.entitlements` and the `project.pbxproj` change.
-- [ ] **Privacy manifest in the target**: add `App/PrivacyInfo.xcprivacy` to
-      the App target and apply the data-type additions listed in
-      `privacy-labels.md` §2. Commit.
-- [ ] **IAP keys in the release build**: `mobile-release.yml` runs
-      `npm run build` with no `VITE_REVENUECAT_IOS_KEY` /
-      `VITE_REVENUECAT_ANDROID_KEY`, so release builds have IAP switched off.
-      Add them as `env:` on both "Build the app and sync" steps (from GitHub
-      secrets or variables — they are public SDK keys, a variable is fine).
-- [ ] **Plans screen disclosures (3.1.2)**: show the subscription length, an
-      auto-renew sentence and links to Terms of Use and Privacy Policy next to
-      "Subscribe" (`src/screens/settings/PlansScreen.tsx`).
-- [ ] **Welcome copy**: `welcome.body` and the illustration chips name
-      Outlook / work mail "with one sign-in"; Outlook is dark in production.
-      Align with the landing (Gmail, Google Calendar, Naver Mail and iCloud
-      Mail in beta).
-- [ ] **Store fixtures**: remove the Outlook account and real brand names from
-      the screenshot fixtures (`src/api/mock/`), or plan frames without them
-      (`screenshots-plan.md`, "Check before you upload").
-- [ ] **Unused calendar plugin**: `@ebarooni/capacitor-calendar` is still a
-      dependency (only `probe/` uses it), so it is linked into both binaries
-      (`ios/App/CapApp-SPM/Package.swift`, `android/capacitor.settings.gradle`).
-      On iOS that links EventKit while `Info.plist` has no calendar usage
-      string — App Store Connect can reject the upload with ITMS-90683
-      ("Missing purpose string"). Remove the plugin from store builds (keep
-      the probe on a branch) rather than adding a calendar string for a
-      feature that does not exist (5.1.1).
-- [ ] Optional privacy hardening: `clearHidden()` on sign-out; Android
-      `allowBackup` (`privacy-labels.md` §5). The privacy-policy additions in
-      `privacy-labels.md` §4 are a web PR.
+- [x] **Push entitlement (iOS)**: `ios/App/App/App.entitlements`
+      (`aps-environment` = development; the App Store / TestFlight export
+      re-signs it as production) and `CODE_SIGN_ENTITLEMENTS = App/App.entitlements`
+      on the App target's Debug and Release configurations
+      (`ios/App/App.xcodeproj/project.pbxproj`). Background Modes → Remote
+      notifications was already in `Info.plist`. Still yours: the App ID
+      `ai.klorn.app` needs **Push Notifications** enabled in the Developer
+      portal (Phase 2), or automatic signing fails on the capability.
+- [x] **Privacy manifest in the target**: `ios/App/App/PrivacyInfo.xcprivacy`
+      is in the App target's Resources phase (`project.pbxproj`) and declares
+      the `privacy-labels.md` §2 types (Emails or Text Messages, User ID,
+      Device ID, Product Interaction, Purchase History, plus Name, Email
+      Address, Other User Content), all linked, none tracking.
+- [x] **IAP keys in the release build**: `.github/workflows/mobile-release.yml`
+      passes `VITE_REVENUECAT_IOS_KEY` / `VITE_REVENUECAT_ANDROID_KEY`
+      (secret, else repository variable) to both "Build the app and sync"
+      steps; documented in the workflow header and
+      `docs/launch/mobile-store-setup.md` → "In-app purchase keys". Still
+      yours: create the two secrets (Phase 2).
+- [x] **Plans screen disclosures (3.1.2)**: title, length and price per period
+      from the store package, the auto-renew sentence, how to cancel in the
+      store's settings, Terms of Use + Privacy Policy links, Restore
+      purchases (`src/screens/settings/PlansScreen.tsx`,
+      `src/screens/settings/plans-model.ts`; 7 languages).
+- [x] **Welcome copy**: `welcome.body` and the illustration chips list Gmail,
+      a company Google Workspace, Naver (beta) and iCloud (beta) — no Outlook,
+      no "one sign-in" (`src/screens/login/WelcomeScreen.tsx`,
+      `src/i18n/locales/*.ts`).
+- [x] **Store fixtures**: fictional third-party senders only, no Outlook
+      account or calendar (`src/api/mock/`); see `screenshots-plan.md`
+      "Check before you upload".
+- [x] **Unused calendar plugin**: `@ebarooni/capacitor-calendar`, `probe/` and
+      `KLORN_PROBE` are gone; `cap sync` regenerated
+      `android/capacitor.settings.gradle`, `android/app/capacitor.build.gradle`
+      and `ios/App/CapApp-SPM/Package.swift` without it (no EventKit, no
+      calendar usage string needed).
+- [x] **Email sign-up**: Welcome → "Continue with email" → "create an account"
+      (`POST /api/auth/register`; invite-only state from
+      `GET /api/auth/signup-status`), so the app works without a third-party
+      login. This does **not** satisfy 4.8 by itself — Sign in with Apple in
+      production (Phase 2) still does.
+- [x] Privacy hardening: `clearHidden()` runs in `src/auth/session.tsx`
+      `wipe()` (sign-out, 401, account deletion); Android
+      `android:allowBackup="false"` + `dataExtractionRules`
+      (`android/app/src/main/AndroidManifest.xml`,
+      `android/app/src/main/res/xml/data_extraction_rules.xml`).
+- [ ] Android App Links: add the Play **app signing** SHA-256 to
+      `website/.well-known/assetlinks.json` after the first Play upload
+      (Phase 3).
+- [ ] The privacy-policy additions in `privacy-labels.md` §4 are a web PR
+      (`packages/web/src/app/privacy/page.tsx`).
 
 ## Phase 2 — Signing, secrets and server env (≈1 h; `docs/launch/mobile-store-setup.md`)
 
@@ -110,8 +126,10 @@ Purchases (both):
 - [ ] RevenueCat webhook → `https://klorn-api.onrender.com/api/webhook/revenuecat`
       with an Authorization value; the same value as Render
       `REVENUECAT_WEBHOOK_AUTH`.
-- [ ] RevenueCat public SDK keys → the variables used in Phase 1's workflow
-      change.
+- [ ] RevenueCat public SDK keys → GitHub secrets (or variables)
+      `VITE_REVENUECAT_IOS_KEY` / `VITE_REVENUECAT_ANDROID_KEY`
+      (`docs/launch/mobile-store-setup.md` → "In-app purchase keys"). Without
+      them the release build ships with IAP off.
 
 ## Phase 3 — First release build (≈30 min + processing)
 
@@ -131,11 +149,16 @@ Purchases (both):
 On a real iPhone (TestFlight) and a real Android phone (internal track),
 ideally also an iPad and a Galaxy Fold / Flip:
 
-- [ ] Sign in with Google, Apple and email; relaunch (Keychain / Keystore
-      session survives); sign out (cache and token gone).
+- [ ] Sign in with Google, Apple and email, and create an account with email
+      (Welcome → Continue with email → create an account); relaunch
+      (Keychain / Keystore session survives); sign out (cache and token gone).
 - [ ] Push: priming → OS prompt → send yourself a PUSH-lane mail → a visible
       notification with the app closed → tap opens that message. Foreground
-      banner while the app is open.
+      banner while the app is open. iOS: long-press → In 1 hour / Done act on
+      that mail (category `KLORN_PUSH_MAIL`).
+- [ ] Plans (sandbox): the offer card shows the product title, length and
+      price per period; auto-renew and cancel text; Terms / Privacy links open
+      the browser.
 - [ ] Mail: swipe right (Done, undo), swipe left (lane sheet), long-press
       select; open a mail, links open in the system browser, an attachment
       opens in the share sheet; Edit draft → Review & send → receipt.
@@ -184,7 +207,9 @@ The full list lives in `apps/mobile/README.md` → "Verify on device / CI".
   smoke test → rotate the demo password.
 - **Rejected** → read the message; likely ones and the prepared answers:
   - **4.8** → Sign in with Apple not visible: `APPLE_LOGIN_ENABLED` off.
-  - **3.1.2** → missing subscription disclosures on Plans (Phase 1).
+  - **3.1.2** → point to Settings › Plans: length, price per period,
+    auto-renew and cancel text, Terms / Privacy links sit next to Subscribe
+    (if the product's own metadata is missing, fix it in App Store Connect).
   - **2.1** → demo account empty or Gmail link expired: refresh, reply in
     Resolution Center (no new build needed).
   - **4.2** → reply with the "Native functionality" block of

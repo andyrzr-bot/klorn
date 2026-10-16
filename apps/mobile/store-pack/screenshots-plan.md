@@ -137,17 +137,16 @@ Note the two iPad mini names (`ipad-mini-portrait-744x1133` in screens,
 
 ## Check before you upload
 
-- [ ] **Outlook in frame.** The fixtures show an Outlook account badge ("O"),
-      "All accounts" with three badges, and a MEETING reason mentioning an
-      Outlook calendar (`02-mail`, `08-swipe-done`, `01-today`). Outlook is not
-      connectable in production and the listing does not claim it (2.3.1 /
-      Play's misleading-claims policy). Either change the fixture (an app-side
-      edit in `src/api/mock/mail-fixtures.ts` / `fixtures.ts` — not in this
-      folder) or crop / choose frames without it. Recommended: change the
-      fixture, then re-run the capture.
-- [ ] **Third-party brand names** in fixture senders (쿠팡이츠, 무신사,
-      네이버페이, 토스, 대한항공, Apple, GitHub). Brands in screenshots can draw a
-      5.2 trademark question; prefer fictional senders for the hero shots.
+- [x] **Outlook in frame** (fixed 2026-10-16). The fixtures connect no
+      Outlook account or calendar: the second work account is a Google
+      Workspace one ("파트너스"), so badges, "All accounts" and the MEETING
+      reason name only connectable providers (`src/api/mock/fixtures.ts`,
+      `fixtures-hub.ts`, `mail-fixtures.ts`). Look once more after a fixture
+      change.
+- [x] **Third-party brand names** (fixed 2026-10-16). Every third-party
+      sender is fictional (한끼배달, 옷장마켓, 모아페이, 구름보관함, 새벽카드,
+      누리항공, the Subscriptions list); the user's own Gmail / Naver / iCloud
+      accounts keep their provider names, which are factual integrations.
 - [ ] The English set shows English chrome over Korean fixture mail. Fine for
       the Korean storefront; for the English listing, consider English
       fixtures or captions that carry the message.
