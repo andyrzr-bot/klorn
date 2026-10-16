@@ -94,6 +94,21 @@ export function endpoints(api: ApiClient) {
       /** routes/auth.ts POST /login */
       login: (email: string, password: string) =>
         api.post<LoginResponse>("/api/auth/login", { email, password }, { anonymous: true }),
+      /**
+       * routes/auth.ts POST /register — email sign-up (201 { token, user }).
+       * 403 while BETA_GATE_ENABLED keeps sign-up to approved waitlist
+       * addresses, 409 for a registered address, 400 for a short password,
+       * 429 after 5 tries in 15 minutes.
+       */
+      register: (email: string, password: string, name?: string) =>
+        api.post<LoginResponse>(
+          "/api/auth/register",
+          { email, password, ...(name ? { name } : {}) },
+          { anonymous: true },
+        ),
+      /** routes/auth.ts GET /signup-status — false while sign-up is invite-only (BETA_GATE). */
+      signupStatus: (o?: RequestOptions) =>
+        api.get<{ open: boolean }>("/api/auth/signup-status", { anonymous: true, ...o }),
       /** routes/auth.ts GET /me */
       me: (o?: RequestOptions) => api.get<MeResponse>("/api/auth/me", o),
       /** routes/auth.ts POST /logout — drops this device's session row. */

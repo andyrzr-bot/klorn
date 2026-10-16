@@ -106,6 +106,22 @@ export const de: Messages = {
   "login.error.network": "Klorn ist nicht erreichbar. Prüfe deine Verbindung.",
   "login.error.timeout": "Die Anmeldung hat zu lange gedauert. Versuch es noch einmal.",
   "login.error.generic": "Die Anmeldung hat nicht geklappt. Versuch es noch einmal.",
+  "login.toRegister": "Neu bei Klorn? Konto mit E-Mail erstellen",
+  "login.toLogin": "Schon ein Konto? Anmelden",
+  "register.title": "Konto erstellen",
+  "register.name": "Name (optional)",
+  "register.passwordHint": "Mindestens 8 Zeichen",
+  "register.submit": "Konto erstellen",
+  "register.inviteOnly":
+    "Klorn ist gerade nur auf Einladung nutzbar. Registriere dich mit der Adresse, für die deine Einladung bestätigt wurde.",
+  "register.requestAccess": "Einladung anfragen",
+  "register.error.inviteOnly":
+    "Mit dieser Adresse ist noch keine Registrierung möglich – Klorn ist gerade nur auf Einladung nutzbar.",
+  "register.error.exists": "Für diese Adresse gibt es schon ein Konto. Melde dich stattdessen an.",
+  "register.error.password": "Das Passwort braucht mindestens 8 Zeichen.",
+  "register.error.server": "Konto konnte nicht erstellt werden: {message}",
+  "register.done":
+    "Konto erstellt. Öffne die Bestätigungsmail, die wir an {email} geschickt haben.",
   "session.expired": "Deine Sitzung ist abgelaufen. Bitte melde dich erneut an.",
 
   "cover.review": "Prüfen",

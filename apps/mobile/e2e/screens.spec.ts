@@ -103,6 +103,19 @@ for (const theme of ["light", "dark"] as const) {
     await snap(page, `${SHOTS_DIR}/welcome-390x844-${theme}.png`);
   });
 
+  test(`welcome sign-up · invite-only · 390x844 · ${theme}`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openApp(page, "/today?signup=closed", {
+      scenario: "signedOut",
+      theme,
+      insets: "47,0,34,0",
+    });
+    await page.getByRole("button", { name: "이메일로 계속하기" }).click();
+    await page.getByRole("button", { name: "계정이 없나요? 이메일로 가입하기" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "초대받은 분만" })).toBeVisible();
+    await snap(page, `${SHOTS_DIR}/welcome-signup-390x844-${theme}.png`);
+  });
+
   test(`mail split · fold hinge · ${theme}`, async ({ page }) => {
     await page.setViewportSize({ width: 884, height: 1104 });
     await openApp(page, "/mail/email-att-push-1", { theme });

@@ -1,9 +1,13 @@
 /**
- * Welcome (Welcome artboard) + email sign-in. Google and Apple go through the
- * system browser and the server's desktop relay (auth/oauth.ts); the Apple
- * button appears only when the API lists it (GET /api/auth/providers).
+ * Welcome (Welcome artboard) + email sign-in and sign-up. Google and Apple go
+ * through the system browser and the server's desktop relay (auth/oauth.ts);
+ * the Apple button appears only when the API lists it (GET
+ * /api/auth/providers). Email sign-up (POST /api/auth/register) makes the app
+ * usable without a third-party login; while the server keeps sign-up
+ * invite-only (BETA_GATE_ENABLED, GET /api/auth/signup-status) the form says
+ * so up front and shows the server's refusal as it is.
  */
-import { type FormEvent, useRef, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { isApiError } from "../../api/client";
 import { useAuthProviders } from "../../api/queries";
 import { getServices } from "../../app/services";
@@ -13,10 +17,32 @@ import { isLocale, LOCALE_NAMES, LOCALES, type MessageKey } from "../../i18n";
 import { useI18n } from "../../i18n/I18nProvider";
 import { openExternal } from "../../platform/external";
 import { Icon } from "../../ui/Icon";
+import { notify } from "../../ui/StatusNote";
 import "./welcome.css";
 
 const TERMS_URL = "https://klorn.ai/terms/";
 const PRIVACY_URL = "https://klorn.ai/privacy/";
+/** The waitlist the server's invite-only refusal points to (routes/auth.ts "/early-access"). */
+const EARLY_ACCESS_URL = "https://app.klorn.ai/early-access";
+const MIN_PASSWORD = 8;
+
+type FormError = { key: MessageKey; values?: Record<string, string> };
+
+/** POST /api/auth/register refusals, as the server words them (routes/auth.ts). */
+function registerError(err: unknown): FormError {
+  if (isApiError(err)) {
+    if (err.isOffline) return { key: "login.error.network" };
+    if (err.status === 403) return { key: "register.error.inviteOnly" };
+    if (err.status === 409) return { key: "register.error.exists" };
+    if (err.status === 429) return { key: "login.error.rateLimited" };
+    if (err.status === 400 && err.serverMessage) {
+      return /8 characters/i.test(err.serverMessage)
+        ? { key: "register.error.password" }
+        : { key: "register.error.server", values: { message: err.serverMessage } };
+    }
+  }
+  return { key: "login.error.generic" };
+}
 
 function errorKey(err: unknown): MessageKey {
   if (err instanceof OAuthError)
@@ -122,24 +148,63 @@ function Illustration() {
 function EmailForm({ onBack }: { onBack: () => void }) {
   const { t } = useI18n();
   const { signIn } = useSession();
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<MessageKey | null>(null);
+  const [error, setError] = useState<FormError | null>(null);
+  const [inviteOnly, setInviteOnly] = useState(false);
+  const register = mode === "register";
+
+  useEffect(() => {
+    if (!register) return;
+    let alive = true;
+    // Best effort: an older server without the probe just shows no notice.
+    getServices()
+      .ep.auth.signupStatus()
+      .then((res) => {
+        if (alive) setInviteOnly(res.open === false);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [register]);
+
+  const switchMode = () => {
+    setMode(register ? "login" : "register");
+    setError(null);
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (busy) return;
+    if (register && password.length < MIN_PASSWORD) {
+      setError({ key: "register.error.password" });
+      return;
+    }
     setBusy(true);
     setError(null);
+    const address = email.trim();
     try {
-      const { token } = await getServices().ep.auth.login(email.trim(), password);
+      const { ep } = getServices();
+      const { token } = register
+        ? await ep.auth.register(address, password, name.trim() || undefined)
+        : await ep.auth.login(address, password);
       await signIn(token);
+      if (register) notify(t("register.done", { email: address }));
     } catch (err) {
-      setError(errorKey(err));
+      setError(register ? registerError(err) : { key: errorKey(err) });
       setBusy(false);
     }
   };
+
+  const openEarlyAccess = (e: { preventDefault: () => void }) => {
+    e.preventDefault();
+    void openExternal(EARLY_ACCESS_URL);
+  };
+  const refusedInvite = error?.key === "register.error.inviteOnly";
 
   return (
     <form className="welcome__form" onSubmit={(e) => void submit(e)} noValidate>
@@ -147,16 +212,37 @@ function EmailForm({ onBack }: { onBack: () => void }) {
         <Icon name="chevronLeft" size={22} strokeWidth={2.2} />
         {t("login.back")}
       </button>
-      <h1 className="welcome__form-title">{t("login.title")}</h1>
+      <h1 className="welcome__form-title">{t(register ? "register.title" : "login.title")}</h1>
+      {register && inviteOnly && !refusedInvite ? (
+        <p className="welcome__notice" role="status">
+          {t("register.inviteOnly")}{" "}
+          <a href={EARLY_ACCESS_URL} onClick={openEarlyAccess}>
+            {t("register.requestAccess")}
+          </a>
+        </p>
+      ) : null}
+      {register ? (
+        <label className="field">
+          <span className="field__label">{t("register.name")}</span>
+          <input
+            type="text"
+            autoComplete="name"
+            maxLength={120}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </label>
+      ) : null}
       <label className="field">
         <span className="field__label">{t("login.email")}</span>
         <input
           type="email"
           inputMode="email"
-          autoComplete="username"
+          autoComplete={register ? "email" : "username"}
           autoCapitalize="none"
           spellCheck={false}
           required
+          maxLength={320}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
@@ -165,15 +251,31 @@ function EmailForm({ onBack }: { onBack: () => void }) {
         <span className="field__label">{t("login.password")}</span>
         <input
           type="password"
-          autoComplete="current-password"
+          autoComplete={register ? "new-password" : "current-password"}
           required
+          minLength={register ? MIN_PASSWORD : undefined}
+          maxLength={200}
+          aria-describedby={register ? "register-password-hint" : undefined}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
+        {register ? (
+          <span id="register-password-hint" className="field__hint">
+            {t("register.passwordHint")}
+          </span>
+        ) : null}
       </label>
       {error ? (
         <p className="welcome__error" role="alert">
-          {t(error)}
+          {t(error.key, error.values)}
+          {refusedInvite ? (
+            <>
+              {" "}
+              <a href={EARLY_ACCESS_URL} onClick={openEarlyAccess}>
+                {t("register.requestAccess")}
+              </a>
+            </>
+          ) : null}
         </p>
       ) : null}
       <button
@@ -181,18 +283,23 @@ function EmailForm({ onBack }: { onBack: () => void }) {
         className="button button--primary welcome__submit"
         disabled={busy || !email.trim() || !password}
       >
-        {t("login.submit")}
+        {t(register ? "register.submit" : "login.submit")}
       </button>
-      <a
-        className="welcome__forgot"
-        href="https://app.klorn.ai/reset-password"
-        onClick={(e) => {
-          e.preventDefault();
-          void openExternal("https://app.klorn.ai/reset-password");
-        }}
-      >
-        {t("login.forgot")}
-      </a>
+      {register ? null : (
+        <a
+          className="welcome__forgot"
+          href="https://app.klorn.ai/reset-password"
+          onClick={(e) => {
+            e.preventDefault();
+            void openExternal("https://app.klorn.ai/reset-password");
+          }}
+        >
+          {t("login.forgot")}
+        </a>
+      )}
+      <button type="button" className="welcome__switch" onClick={switchMode}>
+        {t(register ? "login.toLogin" : "login.toRegister")}
+      </button>
     </form>
   );
 }

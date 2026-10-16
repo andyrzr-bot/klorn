@@ -104,6 +104,21 @@ export const ko: Messages = {
   "login.error.network": "Klorn에 연결할 수 없어요. 인터넷 연결을 확인해 주세요.",
   "login.error.timeout": "로그인 시간이 지났어요. 다시 시도해 주세요.",
   "login.error.generic": "로그인하지 못했어요. 다시 시도해 주세요.",
+  "login.toRegister": "계정이 없나요? 이메일로 가입하기",
+  "login.toLogin": "이미 계정이 있나요? 로그인",
+  "register.title": "이메일로 가입",
+  "register.name": "이름 (선택)",
+  "register.passwordHint": "8자 이상",
+  "register.submit": "가입하기",
+  "register.inviteOnly":
+    "지금은 초대받은 분만 가입할 수 있어요. 초대가 승인된 주소로 가입해 주세요.",
+  "register.requestAccess": "초대 요청하기",
+  "register.error.inviteOnly":
+    "이 주소로는 아직 가입할 수 없어요 — 지금은 초대받은 분만 가입할 수 있어요.",
+  "register.error.exists": "이미 가입된 주소예요. 로그인해 주세요.",
+  "register.error.password": "비밀번호는 8자 이상이어야 해요.",
+  "register.error.server": "가입하지 못했어요: {message}",
+  "register.done": "가입했어요. {email}(으)로 보낸 확인 메일을 열어 주세요.",
   "session.expired": "로그인이 만료됐어요. 다시 로그인해 주세요.",
 
   "cover.review": "검토하기",

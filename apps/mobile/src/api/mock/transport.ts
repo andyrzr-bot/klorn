@@ -57,6 +57,15 @@ export function currentScenario(): MockScenario {
   }
 }
 
+function signupIsClosed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return new URLSearchParams(window.location.search).get("signup") === "closed";
+  } catch {
+    return false;
+  }
+}
+
 function json(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -104,6 +113,32 @@ export function createMockTransport(options: MockOptions = {}): Transport {
       return json(200, { token: MOCK_TOKEN, user: MOCK_USER });
     }
     if (pathname === "/api/auth/logout") return json(200, { success: true });
+    // Sign-up (routes/auth.ts). `?signup=closed` = BETA_GATE_ENABLED: invite-only,
+    // and only an approved waitlist address (here: …@approved.example) may register.
+    const signupClosed = signupIsClosed();
+    if (pathname === "/api/auth/signup-status") return json(200, { open: !signupClosed });
+    if (pathname === "/api/auth/register" && method === "POST") {
+      const body = JSON.parse(String(init.body ?? "{}")) as {
+        email?: string;
+        password?: string;
+        name?: string;
+      };
+      const email = (body.email ?? "").trim().toLowerCase();
+      if (!email || !body.password) return json(400, { error: "Email and password required" });
+      if (body.password.length < 8) {
+        return json(400, { error: "Password must be at least 8 characters" });
+      }
+      if (signupClosed && !email.endsWith("@approved.example")) {
+        return json(403, {
+          error: "Early access is invite-only. Request access at /early-access.",
+        });
+      }
+      if (email === MOCK_USER.email) return json(409, { error: "Email already registered" });
+      return json(201, {
+        token: MOCK_TOKEN,
+        user: { ...MOCK_USER, email, name: body.name ?? email.split("@")[0] ?? null, plan: "FREE" },
+      });
+    }
 
     if (!authed) return json(401, { error: "Not authenticated" });
 

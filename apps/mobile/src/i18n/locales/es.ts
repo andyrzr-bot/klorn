@@ -106,6 +106,21 @@ export const es: Messages = {
   "login.error.network": "No se puede conectar con Klorn. Revisa tu conexión.",
   "login.error.timeout": "Se agotó el tiempo de inicio de sesión. Inténtalo de nuevo.",
   "login.error.generic": "No se pudo iniciar sesión. Inténtalo de nuevo.",
+  "login.toRegister": "¿Nuevo en Klorn? Crea una cuenta con tu correo",
+  "login.toLogin": "¿Ya tienes una cuenta? Inicia sesión",
+  "register.title": "Crear una cuenta",
+  "register.name": "Nombre (opcional)",
+  "register.passwordHint": "Al menos 8 caracteres",
+  "register.submit": "Crear cuenta",
+  "register.inviteOnly":
+    "Por ahora Klorn es solo por invitación. Regístrate con la dirección cuya invitación se aprobó.",
+  "register.requestAccess": "Solicitar una invitación",
+  "register.error.inviteOnly":
+    "Esta dirección aún no puede registrarse: por ahora Klorn es solo por invitación.",
+  "register.error.exists": "Esa dirección ya tiene una cuenta. Inicia sesión.",
+  "register.error.password": "La contraseña necesita al menos 8 caracteres.",
+  "register.error.server": "No se pudo crear la cuenta: {message}",
+  "register.done": "Cuenta creada. Abre el correo de confirmación que enviamos a {email}.",
   "session.expired": "Tu sesión terminó. Vuelve a iniciar sesión.",
 
   "cover.review": "Revisar",
