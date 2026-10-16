@@ -12,6 +12,7 @@ import { useI18n } from "../../i18n/I18nProvider";
 import { MailGlyph, type MailGlyphName } from "../../ui/MailGlyph";
 import { Sheet } from "../../ui/Sheet";
 import { SourceBadge } from "../../ui/SourceBadge";
+import { Switch } from "../../ui/Switch";
 import type { MailTarget } from "./controller";
 import {
   canSubmit,
@@ -162,15 +163,7 @@ export function LaneSheet({
           </span>
           <span className="pin-toggle__hint">{t("lane.pin.hint")}</span>
         </span>
-        <input
-          id={pinId}
-          type="checkbox"
-          role="switch"
-          aria-checked={pin}
-          className="lane-switch"
-          checked={pin}
-          onChange={(e) => setPin(e.target.checked)}
-        />
+        <Switch id={pinId} checked={pin} onChange={setPin} />
       </label>
     </Sheet>
   );

@@ -795,13 +795,9 @@
 .new-event__switch {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   min-height: var(--touch);
   font-size: var(--type-body);
-}
-
-.new-event__switch input {
-  width: 20px;
-  height: 20px;
-  accent-color: var(--accent);
+  cursor: pointer;
 }
