@@ -199,9 +199,6 @@ enum PreviewRender {
         shot("assistant-dock", size: CGSize(width: 440, height: 560), align: .bottomTrailing) {
             AssistantDockRenderProbe()
         }
-        shot("compose", size: CGSize(width: 600, height: 470), align: .top) {
-            ComposePanelRenderProbe()
-        }
         shot("briefing", size: CGSize(width: 380, height: 260), align: .top) {
             BriefingCardRenderProbe()
         }
@@ -209,14 +206,6 @@ enum PreviewRender {
         // card must survive it, not just the roomy probe.
         shot("briefing-narrow", size: CGSize(width: 220, height: 340), align: .top) {
             BriefingCardRenderProbe()
-        }
-        shot("expanded", size: TopBarMetrics.size(for: .expanded)) {
-            TopBarRoot(state: .expanded, actions: actions)
-        }
-        shot("collapsed", size: CGSize(
-            width: TopBarMetrics.size(for: .collapsed).width + 80,
-            height: TopBarMetrics.size(for: .collapsed).height + 40)) {
-            TopBarRoot(state: .collapsed, actions: actions)
         }
         // ImageRenderer draws nothing inside a ScrollView, so the mail rows —
         // the densest and most design-critical surface in the app — are composed
@@ -230,8 +219,9 @@ enum PreviewRender {
         shot("rows", size: CGSize(width: tourW, height: 430), align: .top) {
             VStack(spacing: 0) {
                 ForEach(model.queue?.items(for: .push) ?? []) { item in
-                    FullRow(item: item, actions: actions)
-                    Divider().overlay(Theme.line).padding(.leading, 24)
+                    WindowMailRow(item: item, actions: actions)
+                    Rectangle().fill(Theme.line).frame(height: Theme.hairline)
+                        .padding(.horizontal, Theme.s4 + Theme.s1)
                 }
                 Spacer(minLength: 0)
             }
@@ -279,9 +269,6 @@ enum PreviewRender {
             .background(Theme.panel, in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.line))
             .padding(14)
-        }
-        shot("tier-guide", size: CGSize(width: tourW, height: 520)) {
-            TierGuide {}
         }
         // The main window's sections (M4b), on their own model so the
         // shots above keep their state.
@@ -333,14 +320,12 @@ enum PreviewRender {
 
     /// No-op actions: the renderer never interacts, and a fixture must not be
     /// able to fire a real network call.
-    static func previewActions() -> TopBarActions {
-        TopBarActions(
-            onExpand: {}, onExpandFull: {}, onRestore: {}, onCollapse: {}, onClose: {},
+    static func previewActions() -> ShellActions {
+        ShellActions(
             onSignIn: {}, onSignOut: {},
             onOpenInApp: { _ in }, onOpenTier: { _ in }, onOpenFull: {}, onOpenProposals: {},
             onDismiss: { _ in }, onSnooze: { _, _ in }, onSetTier: { _, _ in },
             onPinSender: { _, _ in }, onUnpinSender: { _ in },
-            onSelect: { _ in }, onOpenPreferences: {}, onOpenMainWindowSettings: {},
-            onHideBar: {}, onQuit: {})
+            onSelect: { _ in }, onOpenPreferences: {}, onQuit: {})
     }
 }

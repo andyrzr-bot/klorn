@@ -6,7 +6,7 @@ import SwiftUI
 /// silenced" (productization plan §1, FD-3).
 struct MailSection: View {
     @Environment(AppModel.self) private var model
-    let actions: TopBarActions
+    let actions: ShellActions
     /// Which pane this window's list keys address (M3). Per window, so it
     /// never lives on the shared model.
     @State private var keyZone: MailKeyZone = .list
@@ -23,12 +23,11 @@ struct MailSection: View {
                     Rectangle().fill(Theme.line).frame(height: 1)
                     FullList(
                         mode: model.listMode, actions: actions, keyZone: $keyZone,
-                        hidesLaneTitle: NavRules.laneFilter(for: model.listMode) != nil,
-                        rowStyle: .window)
+                        hidesLaneTitle: NavRules.laneFilter(for: model.listMode) != nil)
                 }
                 .frame(width: NavRules.listColumnWidth)
                 Rectangle().fill(Theme.line).frame(width: 1)
-                ReadingPane(actions: actions, keyZone: keyZone, style: .window).frame(maxWidth: .infinity)
+                ReadingPane(actions: actions, keyZone: keyZone).frame(maxWidth: .infinity)
             }
             // Any new selection (click, key, card) starts in the list.
             .onChange(of: model.selectedItemId) { _, _ in keyZone = .list }

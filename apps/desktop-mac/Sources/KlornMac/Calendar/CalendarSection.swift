@@ -5,7 +5,7 @@ import SwiftUI
 /// while the server grants team mode (productization plan §4).
 struct CalendarSection: View {
     @Environment(AppModel.self) private var model
-    let actions: TopBarActions
+    let actions: ShellActions
     /// Render seam: the offscreen shots pin the visible month.
     var initialScope: CalendarScreen.Scope = .month
     var initialAnchor = Date()
@@ -33,8 +33,7 @@ struct CalendarSection: View {
             switch pane {
             case .calendar:
                 CalendarScreen(
-                    actions: actions, initialScope: initialScope, initialAnchor: initialAnchor,
-                    style: .window)
+                    actions: actions, initialScope: initialScope, initialAnchor: initialAnchor)
             case .teams:
                 // Built for the list column; keep its measure readable.
                 TeamsColumn()

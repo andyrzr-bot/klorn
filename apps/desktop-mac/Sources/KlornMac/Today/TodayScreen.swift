@@ -6,7 +6,7 @@ import SwiftUI
 /// nothing of its own.
 struct TodayScreen: View {
     @Environment(AppModel.self) private var model
-    let actions: TopBarActions
+    let actions: ShellActions
     /// Injectable so the offscreen renderer shows a fixed date.
     var now = Date()
 
@@ -54,7 +54,7 @@ struct TodayScreen: View {
                 if lanes.isEmpty {
                     EmptyState(
                         icon: "checkmark.circle", title: L("today.clear.title"),
-                        hint: L("today.clear.detail"), style: .window)
+                        hint: L("today.clear.detail"))
                         .padding(.vertical, Theme.s12)
                 } else {
                     ForEach(lanes, id: \.tier) { lane in

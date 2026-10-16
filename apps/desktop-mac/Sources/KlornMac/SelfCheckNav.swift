@@ -3,8 +3,7 @@ import SwiftUI
 
 // Self-check for the main window's navigation and Today (M4b), run by
 // `KlornMac --self-check`. Pure rules first, then the model wiring on an
-// in-memory model, then source pins that keep the bar's surfaces off the
-// main window's views.
+// in-memory model, then source pins on the main window's views.
 
 private let navCheckQueueJSON = """
 {"tiers":{
@@ -215,7 +214,7 @@ func navSelfChecks(sourceDir: URL) -> [(String, Bool)] {
               model.mainNav.section == .today && model.listMode == .inbox)
         model.go(to: .proposals)
         model.navigate(to: .today)
-        // The same list mode again (the pill's "N awaiting approval").
+        // The same list mode again (a deep link to approvals).
         model.listMode = .proposals
         check("model: a deep link to the mode already set still brings its section forward",
               model.mainNav.section == .assistant && model.mainNav.assistantPane == .approvals)
@@ -231,17 +230,14 @@ func navSelfChecks(sourceDir: URL) -> [(String, Bool)] {
     }
 
     // MARK: the Message menu never acts on a mail that is not on screen
-    check("reader: always there in the bar's full view, only in Mail in the main window",
-          NavSection.allCases.allSatisfy { NavRules.readerVisible(macMainWindow: false, section: $0) }
-          && NavRules.readerVisible(macMainWindow: true, section: .mail)
+    check("reader: only in Mail in the main window",
+          NavRules.readerVisible(section: .mail)
           && [NavSection.today, .calendar, .assistant]
-              .allSatisfy { !NavRules.readerVisible(macMainWindow: true, section: $0) })
-    check("leaving Mail drops the selection in the main window, never in the bar",
+              .allSatisfy { !NavRules.readerVisible(section: $0) })
+    check("leaving Mail drops the selection",
           [NavSection.today, .calendar, .assistant]
-              .allSatisfy { NavRules.clearsSelection(macMainWindow: true, section: $0) }
-          && !NavRules.clearsSelection(macMainWindow: true, section: .mail)
-          && NavSection.allCases
-              .allSatisfy { !NavRules.clearsSelection(macMainWindow: false, section: $0) })
+              .allSatisfy { NavRules.clearsSelection(section: $0) }
+          && !NavRules.clearsSelection(section: .mail))
     do {
         var onMail = MenuState(
             signedIn: true, fullViewOpen: true, mailSurfaceIsKey: true, modalOpen: false,
@@ -307,25 +303,26 @@ func navSelfChecks(sourceDir: URL) -> [(String, Bool)] {
     let shell = "Main" + "Shell("
     let shellUsers = files.map(\.lastPathComponent)
         .filter { !$0.hasPrefix("SelfCheck") && text($0).contains(shell) }.sorted()
-    check("flag off: only the main window (and its render shots) builds the new shell",
+    check("only the main window (and its render shots) builds the shell",
           shellUsers == ["MainWindow.swift", "PreviewRenderFiles.swift", "PreviewRenderNav.swift"])
     let newViews = ["NavSidebar(", "TodayScreen(", "MailSection(", "CalendarSection(", "AssistantSection(", "FilesSection("]
-    let barFiles = [
-        "TopBarRoot.swift", "ExpandedDashboard.swift", "CollapsedPill.swift",
-    ]
-    check("no bar surface mounts a main-window view",
-          barFiles.allSatisfy { file in !newViews.contains { text(file).contains($0) } })
+    check("only the shell mounts the main-window views",
+          files.map(\.lastPathComponent)
+              .filter { !$0.hasPrefix("SelfCheck") && !$0.hasPrefix("PreviewRender") }
+              .filter { file in newViews.contains { text(file).contains(" " + $0) } }
+              .allSatisfy { ["MainShell.swift", "NavSidebar.swift", "TodayScreen.swift",
+                             "MailSection.swift", "CalendarSection.swift", "AssistantSection.swift",
+                             "FilesSection.swift"].contains($0) })
     check("flag off: shared views default to their pre-M4b behaviour",
           text("ProposalsList.swift").contains("var title = L(\"proposals.title\")")
           && text("AssistantThread.swift").contains("var inlineWhenOffscreen = false"))
-    check("flag off: the model reveals mail in the window only behind the flag",
-          text("TopBarController.swift")
-              .contains("if model.settings.macMainWindow { model.revealInMail(item) }"))
-    // A deep link that writes the list mode (the pill's "awaiting approval"
-    // sets .proposals) leaves Mail through the didSet rule, behind the flag.
+    check("opening an item in-app reveals it in Mail",
+          text("WindowRouter.swift").contains("model.revealInMail(item)"))
+    // A deep link that writes the list mode (Approvals sets .proposals)
+    // leaves Mail through the didSet rule.
     let modelSource = text("AppModel.swift")
-    check("a list-mode write that leaves Mail drops the selection, behind the flag",
-          modelSource.contains("macMainWindow: settings.macMainWindow, section: mainNav.section)")
+    check("a list-mode write that leaves Mail drops the selection",
+          modelSource.contains("NavRules.clearsSelection(section: mainNav.section)")
           && modelSource.contains("guard readerVisible else { return nil }"))
     // Every listMode write moves the main window, so every writer must be
     // user intent. A new writer has to be added here on purpose.
@@ -343,7 +340,7 @@ func navSelfChecks(sourceDir: URL) -> [(String, Bool)] {
     check("listMode has only its known, user-driven writers",
           writers == [
               "AppModel.swift": 2,  // go(to:), showTier(_:)
-              "TopBarController.swift": 1,  // onOpenProposals
+              "WindowRouter.swift": 1,  // onOpenProposals
               "MainNav.swift": 2,  // revealInMail(_:), prepareMainNavigation()
           ])
     let m4bFiles = [

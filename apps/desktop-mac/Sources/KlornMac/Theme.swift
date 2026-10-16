@@ -41,19 +41,6 @@ enum Theme {
     static let onAccentSolid = dyn(light: (1, 1, 1, 1), dark: (0.039, 0.039, 0.045, 1))
     /// slate-200-grade hairline on the glass panel; faint white line in dark.
     static let line = dyn(light: (0, 0, 0, 0.08), dark: (1, 1, 1, 0.10))
-    /// Panel bevel (GlassPanel edge): a top highlight that FADES DOWN the rim
-    /// instead of outlining it — the Raycast/Sonoma panel edge. A flat stroke
-    /// on a dark desktop reads as a drawn box; a fading bevel reads as light
-    /// catching the material (founder feedback 2026-08-22: the border made
-    /// the design worse).
-    /// Light mode: white-on-near-white is invisible (~1.02:1, render-verified)
-    /// — the light rim is a faint NEUTRAL hairline instead, still fading down
-    /// so it never reads as a drawn box. Dark keeps the white bevel.
-    static let bevelTop = dyn(light: (0, 0, 0, 0.07), dark: (1, 1, 1, 0.16))
-    static let bevelBottom = dyn(light: (0, 0, 0, 0.03), dark: (1, 1, 1, 0.02))
-    /// Interior top-edge light. Was a hardcoded white 0.9 — glaring in dark.
-    static let edgeLight = dyn(light: (1, 1, 1, 0.90), dark: (1, 1, 1, 0.14))
-
     /// The floating surface. Dark is a neutral raised gray one step above the
     /// canvas — not navy (see `bg`).
     static let panel = dyn(light: panelLight, dark: panelDark)
@@ -102,8 +89,8 @@ enum Theme {
     ///
     /// Light deliberately uses the ink, not the 400 hue, for dots AND text:
     /// the 400 hues are 1.5–2.7:1 on the light canvas, below even the 3:1
-    /// non-text floor (WCAG 1.4.11), and `tint` already colors text (LaneChip,
-    /// inline error lines). One theme-aware token keeps every call site AA.
+    /// non-text floor (WCAG 1.4.11), and `tint` already colors text (inline
+    /// error lines). One theme-aware token keeps every call site AA.
     ///
     /// Measured text contrast (WCAG 2.2, 4.5:1 floor) — light on bg #FAFAFA /
     /// raised card; dark on bg / panel / raised card:
@@ -112,11 +99,9 @@ enum Theme {
     ///   QUEUE    #b45309 4.81 / 4.40   |  #fbbf24 11.86 / 11.11 / 10.56
     ///   INFO     #0e7490 5.13 / 4.70   |  #22d3ee 10.95 / 10.26 / 9.75
     ///   SILENT   #57534e 7.30 / 6.69   |  #a8a29e 7.85 / 7.35 / 6.99
-    /// The bar's LaneChip sets 10pt text on a 13% wash of the same tint;
-    /// light QUEUE measures 4.19:1 and INFO 4.46:1 there (dark: all ≥ 5.2).
-    /// The main window's chip uses `chipInk` instead (DesignTokens.swift),
-    /// which clears 4.5:1 on every surface; the bar's chip goes with the bar
-    /// in M8. The self-check pins the inks on `bg` in both appearances and
+    /// The lane chip does not use `tint` for its text: it uses `chipInk`
+    /// (DesignTokens.swift), which clears 4.5:1 on its 13% wash over every
+    /// surface. The self-check pins the inks on `bg` in both appearances and
     /// the pairwise distinctness.
     static func tint(_ tier: Tier) -> Color {
         dyn(light: laneComponents(tier, dark: false), dark: laneComponents(tier, dark: true))
@@ -178,47 +163,9 @@ enum Theme {
         }
     }
 
-    /// The chip color for a row's signal — same ramps as the sidebar rows via
-    /// labelTint, so a chip and its category row always match. Replied is the
-    /// relationship signal: a pink RAMP of its own (engage itself measures
-    /// ~4.3:1 and is documented never-for-text).
-    static func signalTint(_ signal: RowSignal) -> Color {
-        switch signal {
-        case .category(let name):
-            // One lookup for both families — LabelFilter's raw values ARE the
-            // wire's category strings, so a new category needs one enum case
-            // and its tint, nowhere else.
-            LabelFilter(rawValue: name).map { labelTint($0) } ?? textDim
-        case .replied:
-            dyn(light: (0.60, 0.14, 0.40, 1), dark: (0.96, 0.56, 0.76, 1))
-        case .first:
-            labelTint(.firstContact)
-        }
-    }
-
     /// Neutral panel shadow — one shadow color for every floating surface.
     /// (Was the web's navy-tinted shadow; a colored shadow is a hue cast.)
     static let panelShadow = dyn(light: (0, 0, 0, 0.18), dark: (0, 0, 0, 0.55))
-
-    /// Glass tint, layered OVER the real blur material. Neutral top→bottom —
-    /// barely darker at the foot so the surface still reads as lit material,
-    /// with no color cast in either mode. Opacity applied by the caller
-    /// (reduce-transparency mode raises it to near-solid, where the blur
-    /// behind barely shows).
-    static func panelGradient(opacity: Double) -> LinearGradient {
-        LinearGradient(
-            colors: [
-                dyn(light: (1, 1, 1, opacity * 0.99), dark: (0.078, 0.078, 0.086, opacity * 0.99)),
-                dyn(light: (0.975, 0.975, 0.978, opacity), dark: (0.055, 0.055, 0.063, opacity)),
-            ],
-            startPoint: .top, endPoint: .bottom)
-    }
-
-    /// Glass tint opacity: lighter than the old solid panel so the real blur
-    /// shows through; near-solid when the user asked to reduce transparency.
-    static func glassTintOpacity(reduceTransparency: Bool) -> Double {
-        reduceTransparency ? 0.98 : 0.72
-    }
 
     // MARK: Surface ladder (design pass 2026-07-20)
     // One opacity scale for every interactive rest→hover→selected state, so
@@ -244,7 +191,8 @@ enum Theme {
     static let warning = Color(nsColor: .systemOrange)
     static let danger = Color(nsColor: .systemRed)
 
-    /// True only while `--render-previews` is drawing. See GlassPanel.
+    /// True only while `--render-previews` is drawing (views swap AppKit-backed
+    /// pieces for flat stand-ins that ImageRenderer can draw).
     nonisolated(unsafe) static var isRenderingOffscreen = false
 
     // MARK: Typography — the six-step scale (productization plan §2,
@@ -280,7 +228,7 @@ enum Theme {
 
     // MARK: Radius (productization plan §2)
     // 6 controls, 10 rows/cards/popovers, 16 sheets/windows. Pills and
-    // LaneChip use the Capsule SHAPE, not a radius token. Call sites migrate
+    // the lane chip use the Capsule SHAPE, not a radius token. Call sites migrate
     // in M7 — new code picks a rung instead of a raw cornerRadius literal.
     enum Radius {
         /// Controls: buttons, fields, small toggles.
@@ -302,122 +250,6 @@ enum Theme {
     static let s12: CGFloat = 48
 }
 
-/// Real macOS blur behind the panel — the difference between "a white
-/// rectangle" and "glass floating over your desk". `.popover` is a light
-/// system material; `.behindWindow` samples whatever is under the panel. The
-/// white tint gradient layers on top of this. The forced `.aqua` appearance
-/// keeps the glass light even when the system is in dark mode — the panel is
-/// always a light surface, matching the web v2 theme.
-///
-/// The blur region does NOT follow SwiftUI clipShape (the effect view's
-/// backdrop is masked by AppKit, not the layer tree) — without `maskImage`
-/// the glass bleeds square past the rounded corner (the corner artifact,
-/// screenshot 2026-07-20). A stretchable rounded-rect mask fixes it.
-struct GlassMaterial: NSViewRepresentable {
-    var cornerRadius: CGFloat
-
-    func makeNSView(context _: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        // Inherit the app appearance — dark mode turns the glass dark.
-        view.material = .popover
-        view.blendingMode = .behindWindow
-        view.state = .active
-        view.maskImage = .roundedCornerMask(radius: cornerRadius)
-        return view
-    }
-
-    func updateNSView(_ view: NSVisualEffectView, context _: Context) {
-        view.maskImage = .roundedCornerMask(radius: cornerRadius)
-    }
-}
-
-extension NSImage {
-    /// A stretchable rounded-rect mask for NSVisualEffectView.maskImage.
-    ///
-    /// capInsets must sum to LESS than the smallest dimension being masked. A
-    /// true capsule view is exactly radius×2 tall, so full-radius caps are
-    /// degenerate there (52pt pill vs 53px mask image → the mask fails and the
-    /// square blur backdrop bleeds out as a light corner line — dogfood zoom
-    /// 2026-07-20). Half-point caps keep the stretch valid for every surface.
-    static func roundedCornerMask(radius: CGFloat) -> NSImage {
-        let cap = radius - 0.5
-        let edge = cap * 2 + 1
-        let image = NSImage(size: NSSize(width: edge, height: edge), flipped: false) { rect in
-            NSColor.black.setFill()
-            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
-            return true
-        }
-        image.capInsets = NSEdgeInsets(top: cap, left: cap, bottom: cap, right: cap)
-        image.resizingMode = .stretch
-        return image
-    }
-}
-
-/// The Light Glass surface, as ONE reusable treatment: masked system blur,
-/// white tint, top-edge light, hairline border, navy-tinted drop shadow. The
-/// top bar, the PushCard, and the MeetingCard all wear exactly this — one
-/// glass, everywhere.
-struct GlassPanel: ViewModifier {
-    var cornerRadius: CGFloat
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-
-    func body(content: Content) -> some View {
-        content
-            .background {
-                ZStack {
-                    // ImageRenderer cannot draw an NSViewRepresentable — it emits a
-                    // placeholder that swamps the whole surface — so the offscreen
-                    // design renderer substitutes a flat stand-in for the blur.
-                    // Runtime behaviour is untouched.
-                    if Theme.isRenderingOffscreen {
-                        Rectangle().fill(Theme.bg)
-                    } else {
-                        GlassMaterial(cornerRadius: cornerRadius)
-                    }
-                    Theme.panelGradient(
-                        opacity: Theme.glassTintOpacity(reduceTransparency: reduceTransparency))
-                    LinearGradient(
-                        colors: [Theme.edgeLight, .clear],
-                        startPoint: .top, endPoint: .center)
-                        .frame(height: 1.5, alignment: .top)
-                        .frame(maxHeight: .infinity, alignment: .top)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-                // No outline. The rim is a bevel — light catching the top of
-                // the material, gone by the bottom — and the shadow does the
-                // figure-ground separation.
-                .overlay(
-                    RoundedRectangle(cornerRadius: cornerRadius)
-                        .strokeBorder(
-                            LinearGradient(
-                                colors: [Theme.bevelTop, Theme.bevelBottom],
-                                startPoint: .top, endPoint: .bottom)))
-            }
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
-            .shadow(color: Theme.panelShadow, radius: 28, y: 10)
-    }
-}
-
-extension View {
-    func glassPanel(cornerRadius: CGFloat) -> some View {
-        modifier(GlassPanel(cornerRadius: cornerRadius))
-    }
-}
-
-extension NSPanel {
-    /// Round the WINDOW itself, not just the SwiftUI content: clip the content
-    /// view's layer and re-derive the window shadow. Without this the shadow
-    /// rim follows the square window frame and pokes out past the glass corner
-    /// (the corner-hairline artifact, dogfood zoom 2026-07-20). Call after
-    /// every contentView swap or frame change.
-    func applyGlassShape(cornerRadius: CGFloat) {
-        guard let view = contentView else { return }
-        view.wantsLayer = true
-        view.layer?.cornerRadius = cornerRadius
-        view.layer?.masksToBounds = true
-        invalidateShadow()
-    }
-}
 
 /// Dim at rest, full text on hover — the standard treatment for every
 /// secondary icon/text control (header buttons, row utilities). One modifier
@@ -513,9 +345,6 @@ struct EmptyState: View {
     let icon: String
     let title: String
     var hint: String? = nil
-    /// `.window`: the type roles (13pt / 11pt) instead of the bar's system
-    /// styles, whose caption is the retired 10pt.
-    var style: ShellStyle = .bar
 
     var body: some View {
         VStack(spacing: Theme.s3) {
@@ -524,10 +353,10 @@ struct EmptyState: View {
                 .foregroundStyle(Theme.textDim)
                 .opacity(0.7)
                 .accessibilityHidden(true)
-            Text(title).font(style == .window ? Theme.Typo.body : .callout)
+            Text(title).font(Theme.Typo.body)
                 .foregroundStyle(Theme.textDim)
             if let hint {
-                Text(hint).font(style == .window ? Theme.Typo.caption : .caption)
+                Text(hint).font(Theme.Typo.caption)
                     .foregroundStyle(Theme.textDim)
                     .multilineTextAlignment(.center)
             }

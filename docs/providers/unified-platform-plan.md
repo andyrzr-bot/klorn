@@ -89,7 +89,7 @@ readable after one permission grant.
 | # | Decision | Value |
 |---|---|---|
 | V1 | Service order | finish mail, then calendar, then drive |
-| V2 | New Google Drive scope | only after the current Google verification passes |
+| V2 | New Google Drive scope | only after the current Google verification passes (2026-10-15, founder: lifted for D5's code behind a flag OFF; the flip still waits) |
 | V3 | Device bridge | in scope, required |
 | V4 | External drive connectors v1 | list, search, summarise. No upload or edit |
 | V5 | Klorn mailbox | auxiliary path, not the product |
@@ -2638,9 +2638,13 @@ needs FA-9 and the admin guidance from F0.
     from an account whose own zone is on the other side, and record whether Graph
     returns it at midnight or converted (the code handles both; the converted case
     needs `originalStartTimeZone` to be a name in the table). An event cancelled
-    AFTER its first sync stays as a row: removal of upstream-cancelled events
-    (C2b, in flight, Google only) must be extended to Outlook before the flip,
-    or the calendar shows meetings that were cancelled. (d) `Prefer: outlook.timezone` accepts an
+    or deleted AFTER its first sync: done 2026-10-15 through the C3 window
+    reconcile. The Outlook session lists through `listWindow`; a calendarView
+    read to its last page and under `OUTLOOK_LISTING_MAX_EVENTS` (500) is the
+    window's whole set, rows carry the key `outlook:default`, and the rows it
+    lacks go with the deletion valve and the empty-calendar wait (#1425), behind
+    `OUTLOOK_CALENDAR_ENABLED`. Check it here: cancel one meeting and delete one
+    event after their first sync; both rows go on the next sync. (d) `Prefer: outlook.timezone` accepts an
     IANA name and echoes it; a moved event keeps its id. (e) getSchedule on the
     work account returns the account's own busy time; record the exact status a
     personal account answers, because the fallback rule (any 4xx except 401, 408
@@ -4052,8 +4056,335 @@ both.
   `LlmUsageLog` and `DriveSummaryUsage` the first days.
 - Rollback: revert the PR. The tables and the enum can stay; nothing reads them.
   With the flag off nothing writes them.
-**D5 — Google Drive connector** (*outline*). Depends on: D2. Blocked by V2.
-Scope path per P5.
+**D5 — Google Drive connector.** Depends on: D2 (D4 for summaries). Scope path per P5.
+Founder decision 2026-10-15: built now, code only, flag OFF. This lifts V2 for the
+code, not for the flip: the flip still waits on the current Google verification and
+on `drive.file` being approved. D5 never changes the production consent screen or
+the scopes that sign-in, Gmail, Calendar and the inbox links request
+(`mail/gmail.ts:59-143`).
+- Flow. /files (`web/src/app/files/files-view.tsx`) offers "Connect Google Drive":
+  `POST /api/drive/google/link` → consent for `openid`, `userinfo.email` and
+  `drive.file` → `/files?drive=success`. "Add from Google Drive" opens the Google
+  Picker for that account. Only the picked ids reach the server, which reads their
+  metadata from Google and indexes them as GOOGLE rows. Klorn lists, searches and
+  summarises them, and never changes them (V4).
+- Flag `GOOGLE_DRIVE_ENABLED`, OFF, read per request. GOOGLE joins
+  `DRIVE_PROVIDER_ENABLED` (`drive/drive-scope.ts:45`) and the dispatcher
+  (`providers/dispatch.ts:35`), so its rows show only while `DRIVE_ENABLED` is on
+  too. /files opens through `user.files` (`routes/auth.ts:750`). The routes sit
+  behind `darkRouteGate`.
+- Decisions.
+  - Accounts: `LinkedDriveAccount`, as D2 deferred. Not `LinkedCalendarAccount`
+    (`schema.prisma:404`) and not `UserToken` (`:337`), so unlinking a drive
+    unlinks nothing else.
+    - Columns: `provider DriveProvider` (no default; CHECK not KLORN; D6 reuses
+      it), the verified and normalised `email`, encrypted `accessToken` and
+      `refreshToken`, `expiresAt`, `grantedScopes`, `needsReconnect`,
+      `lastRefreshedAt`. Unique (userId, provider, email).
+    - `DriveFile.sourceAccountId`: a nullable FK, ON DELETE CASCADE, indexed on
+      its own (C2's reason). CHECK `(provider = 'KLORN') = (sourceAccountId IS
+      NULL)`, and `sourceAccountId = sourceKey` when set. `driveRowData`
+      (`drive-rows.ts:224`) sets it on create only, never in `changes`.
+    - The FK proves the account exists, not who owns it, so every write first
+      loads the account by (id, userId, provider).
+  - Grant: separate and incremental.
+    - `getLinkDriveAuthUrl` asks for exactly those three scopes, with
+      `access_type=offline`, `prompt=consent` and the state `__link_drive__`
+      (10 min).
+    - No `include_granted_scopes`. With it, picking the primary's Google account
+      would return a token that also carries the Gmail and Calendar scopes.
+    - Same client and redirect URI, so the redirect needs no console change
+      (C4's precedent).
+    - Bound to the session that started it, like every account link (#1451):
+      `routes/auth.ts` gains one branch after the state check and before the
+      code exchange that parks the code (`routes/link-handoff.ts`) and never
+      exchanges it; while `DRIVE_ENABLED` or `GOOGLE_DRIVE_ENABLED` is off it
+      parks nothing and lands on `/files?drive=failed`. `__link_drive__` is in
+      `LINK_MARKERS` (`auth/pending-links.ts`), and POST
+      `/api/auth/link/complete` (`routes/link-complete.ts`) calls
+      `completeGoogleDriveLink` only for the session of the user who started
+      the flow (another session: 409, nothing exchanged or written). The code
+      exchange happens there, built like `outlook-calendar-link.ts:129`:
+      - flag off → `failed`, with no code exchange;
+      - `verified_email` is required;
+      - the returned `scope` must include `drive.file` (granular consent lets the
+        user untick it), else `scope-missing` and nothing is stored;
+      - no refresh token → `failed`;
+      - entitlement is checked again;
+      - at most 5 accounts;
+      - a granted scope beyond `openid`, `email`, `userinfo.email` and
+        `drive.file` (a Gmail or Calendar scope) is warned about and reported to
+        Sentry, scope names only; the account is still stored, since
+        `drive.file` is present.
+    - Plan gate: `requireEntitled`, as link-calendar (default 2026-10-15; the
+      founder may change it — open question, not yet answered). The callback
+      checks the plan again; listing and unlinking need a session only, so a
+      downgraded user can still unlink.
+  - Tokens: `encryptToken` under the `TOKEN_ENCRYPTION_KEYS` ring.
+    - `buildLinkedDriveClient` copies `gmail.ts:502`. An undecryptable or empty
+      token sets `needsReconnect`. A refreshed token is saved through
+      `decideRefreshTokenWrite` (`:412`), scoped by (id, userId).
+    - A revoked grant (C2's `isRevokedGrantError`,
+      `pim/linked-calendar-failure.ts:70`) sets `needsReconnect`: refresh stops,
+      the rows stay.
+    - The key-rotation sweep (`scripts/reencrypt-tokens.ts:122`) and
+      `purgeUserData` (`purge-user-data.ts:27`) cover the table.
+  - Unlink: the rows (through the writer's `deleteLinkedAccountDriveRows`, by
+    sourceKey), then the account, in one transaction; the cascade covers a
+    refresh still in flight. Klorn does not call
+    Google's revoke endpoint: Google revokes a combined grant whole (prior
+    knowledge), and for the primary's account that would cut Gmail.
+  - Picker: the browser needs a `drive.file` token, a developer key and the app id.
+    - `POST /api/drive/google/accounts/:id/picker-session` returns all three,
+      `no-store`. The token is minted on click. An unset variable answers 503
+      `picker-not-configured`.
+    - `GOOGLE_PICKER_API_KEY`: public by design, restricted in the console to the
+      web origin's referrers and the Picker API.
+    - `GOOGLE_CLOUD_PROJECT_NUMBER`: public, the `setAppId` value that ties picked
+      files to this project's grant.
+    - Both stay server-side, so a flag-off bundle holds neither.
+      `GOOGLE_CLIENT_ID` (public) and `GOOGLE_CLIENT_SECRET` (secret) are
+      unchanged.
+    - The web build switch `NEXT_PUBLIC_GOOGLE_DRIVE_PICKER=on` adds
+      `https://apis.google.com` to `script-src` and `https://docs.google.com` to
+      `frame-src` (`web/next.config.ts:18,35`) and compiles the Picker in. Unset,
+      the CSP and the bundle are unchanged.
+  - Metadata: picked files only.
+    - The client sends ids only, at most 50. The server calls `files.get` with
+      `fields=id,name,mimeType,size,md5Checksum,version,modifiedTime,webViewLink,parents,trashed`
+      and `supportsAllDrives`. A 404 means "not granted".
+    - Rows go through `upsertDriveFileRow` with
+      `connectedDriveSource("GOOGLE", account.id, id)` (`drive-rows.ts:65,265`),
+      then `enqueueSummaryOnWrite` (`summary-triggers.ts:29`).
+    - The parent is `parents[0]`, usually one that is not indexed (D2 foresaw
+      this). `webUrl` is kept only on docs.google.com or drive.google.com.
+    - The etag is `md5:<md5Checksum>` when Drive reports one (a rename keeps it),
+      else `v:<version>`.
+    - 500 rows per account. Folders and shortcuts cannot be picked.
+  - Refresh: an hourly job `drive-google-refresh` with a heartbeat; it reads
+    nothing while the flag is off.
+    - Each sweep takes up to 20 accounts not refreshed for 6 h: one `files.get`
+      per row, 4 in flight.
+    - Trashed → `trashed`. 404 → the row is deleted (`deleteConnectedDriveRows`,
+      a per-file delete in the writer, by externalId; not D5b's account-wide
+      `deleteLinkedAccountDriveRows`). A 429, a 403 rate-limit reason or a 5xx
+      ends that account's pass.
+    - `lastRefreshedAt` is this job's alone: only a pass through every row
+      stamps it. D5b's token save stamped it too; D5d removed that, so a token
+      refreshed during a pass that a 429 then ends does not count as a refresh.
+    - Drive's limits (prior knowledge, not re-verified: 12,000 queries a minute
+      per project and per user) are far above this. `changes.list` is deferred.
+  - Summaries.
+    - `fetchForSummary` exports Docs and Slides as `text/plain` and Sheets as
+      `text/csv`, and reads other files with `alt=media`. The bytes stream into
+      `readCappedBytes` within D4's deadline, through googleapis only.
+      `webContentLink`, `exportLinks` and `thumbnailLink` are never requested.
+    - `exportSizeLimitExceeded` → `too-large`. A 429, a 5xx or a network error
+      throws a retryable `StorageError`, which `summary-run.ts:239` defers
+      instead of failing.
+    - `summary-extract.ts:34,46` map the three Google types to their export
+      types; otherwise a Doc is SKIPPED.
+  - Read-only (V4): `drive.file` has no read-only variant, so the code enforces it.
+    - The seam has no write method (D2's test).
+    - A guard fails if the connector names
+      `files.create|update|delete|copy|emptyTrash`, `permissions.` or
+      `revisions.`.
+    - D3 answers 409 `read-only`.
+- Slices: one PR each, flag OFF, full gate.
+  - D5a, schema.
+    - Migration `20261015020000_linked_drive_account`, sorted after
+      `20261015010000_auto_unsubscribe_caps`: `lock_timeout`, the table, the FKs,
+      the index, the CHECKs and RLS in the `20260806033517_add_user_identity`
+      form. Also `drive-rows.ts`, the purge and the sweep.
+    - Tests first: the migration SQL, pinned; how sourceAccountId is derived;
+      `reencrypt-tokens-drive`; the purge; `drive-file-guard.test.ts:89,102`;
+      `rls-coverage-guard`, which must fail for each RLS statement removed.
+    - On a scratch Postgres: deploy, the drift check, each CHECK, the cascade
+      account → file → summary, the policies. Preflight: no non-KLORN DriveFile
+      row.
+    - Prod impact: an empty table and a NULL column that nothing reads.
+  - D5b, grant and unlink.
+    - Files: `config.ts`, `drive-scope.ts`, `dispatch.ts`;
+      `drive/linked-drive-accounts.ts` (the only module that touches the table);
+      `drive/providers/google-auth.ts`; `drive/providers/google.ts`, whose
+      `connect` returns a session only for an owned, unflagged account, else
+      null; `routes/google-drive-link.ts` (`POST /link`, `GET /accounts`,
+      `DELETE /accounts/:id`); `routes/auth.ts`, `index.ts`, the contract types;
+      the writer's account-wide `deleteLinkedAccountDriveRows` (`drive-rows.ts`),
+      reached only by the unlink.
+    - Tests first: a characterisation test pinning the four existing auth URLs
+      and the callback's existing branches to main; the new URL's exact scopes;
+      each callback case above; a dark 404 with either flag off; no token on the
+      wire; another user's sourceKey → null; the guard lists
+      (`drive-file-guard.test.ts:370`, `calendar-provider-writers-guard.test.ts:110`,
+      `drive-scope.test.ts:54`).
+    - Prod impact: dark routes. The new branch needs a state that only the dark
+      route signs, and parks nothing while the flags are off.
+  - D5c, Picker and ingest.
+    - Files: `google.ts` (`getMetadata`, `list`, `search`, and `fetchForSummary`
+      for files with bytes); `picker-session` and `POST /accounts/:id/picked`,
+      answering `{ added, refused: [{ id, code }] }`; web
+      `app/files/google-drive-connect.tsx` and `lib/google-picker.ts` (the script
+      loads on click; `setMaxItems(50)`); `next.config.ts`; the 7 locale files;
+      a vocabulary row **Google Drive**.
+    - Tests first: the fields mask, the host allowlist, the write guard; client
+      metadata ignored; 404 → `not-accessible`; the cap; Playwright: hidden on the
+      dark 404, no script loaded before the click; a script in
+      `packages/web/scripts` that checks the CSP is unchanged without the switch
+      (the web package has no unit-test runner).
+    - Summaries before D5d: `DRIVE_SUMMARY_READABLE_PROVIDERS` (`summary-policy.ts`)
+      held KLORN only, so a GOOGLE row's queued summary waited `source-unavailable`
+      (PENDING, no attempt spent, never SKIPPED as a Google type) without
+      connecting; D5d added GOOGLE there.
+    - Picking and its session need the plan (`requireEntitled`), like the link.
+    - Prod impact: none.
+  - D5d, refresh and Google-format summaries. Built 2026-10-15 (branch
+    `feat/drive-d5d-refresh`), flag OFF.
+    - Refresh: `drive/google-drive-refresh-job.ts` (the sweep and the scheduler,
+      `drive-google-refresh`, hourly, in `EXPECTED_SCHEDULERS`, started in
+      `index.ts` unless BACKGROUND_AGENTS_DISABLED) and
+      `drive/google-drive-refresh.ts` (one account's pass).
+      - Off (`DRIVE_ENABLED` or `GOOGLE_DRIVE_ENABLED`, read per sweep and per
+        account): no query, no client, no Google call; the heartbeat is still
+        recorded after each sweep (not while one is still running).
+      - The pick: `dueDriveRefreshAccounts` (`linked-drive-accounts.ts`, the
+        module's one `system:` query, pinned by the guard), GOOGLE, not
+        `needsReconnect`, `lastRefreshedAt` NULL or ≤ now − 6 h, NULLS FIRST then
+        the oldest, 20; it carries out (id, userId) only, and the pass loads
+        each account by (id, userId, provider). No index on `lastRefreshedAt`:
+        at most 5 accounts of a provider per user, scanned once an hour.
+      - The rows: `connectedAccountFiles` (`drive-read.ts`, scoped like every
+        read, trashed ones included), at most twice the 500 cap (the cap is soft
+        by a few concurrent picks).
+      - A file → `updateDriveFileRow` (update-only, so a row an unlink removed
+        meanwhile never comes back), `trashed` included; its summary is queued
+        again only when the etag moved and the file is not trashed (an unchanged
+        `md5:` or `v:` etag writes nothing to the summary table).
+      - 404 → `deleteConnectedDriveRows(userId, provider, sourceKey,
+        externalIds)` (`drive-rows.ts`; refuses KLORN); the refresh is its only
+        caller (guard).
+      - A 403 about the file (`appNotAuthorizedToFile`,
+        `insufficientFilePermissions`, the Picker's set, now shared in
+        `google-files.ts`) leaves the row. Any other refusal of one call (a
+        400, a 403 that is neither about the file, a rate limit nor the
+        project) leaves that row too, is logged and reported to Sentry once per
+        pass and label (status and reason only), and the pass goes on and
+        stamps: one bad row cannot hold its account back for good. A revoked
+        grant → `needsReconnect` (`handleDriveGrantFailure`), pass ended, the
+        sweep goes on.
+      - A 429, a 403 `userRateLimitExceeded`/`rateLimitExceeded`/
+        `dailyLimitExceeded`, a 5xx, no answer or a timeout ends the pass (no
+        further call starts, the ones in flight finish, no stamp) and the
+        WHOLE sweep, so a retry never fans out over 20 accounts. A 403
+        `accessNotConfigured` (the Drive API off for the project, prior
+        knowledge) ends the sweep too, and is reported at most once an hour per
+        process, not per account.
+      - Each `files.get` (the Picker's too) has googleapis' own `timeout`, 30 s
+        (`GOOGLE_METADATA_TIMEOUT_MS`); a timeout is an outage.
+    - Summaries: `fetchForSummary` (`providers/google.ts`) takes the row's type
+      (the seam's options gain `mimeType`; `drive-provider-dispatch.test.ts`
+      pins it). Docs and Slides → `files.export` text/plain, Sheets → text/csv
+      (first sheet only), anything else `files.get` `alt=media`; `responseType:
+      "stream"` into `readCappedBytes`; D4's 60 s deadline aborts the request
+      and releases the body. No field is requested, so no `webContentLink`,
+      `exportLinks` or `thumbnailLink`. 404 → null; `exportSizeLimitExceeded`
+      → `too-large`; a 429, a
+      rate-limit 403, a 5xx, no answer, the deadline, or a revoked grant (the
+      refresh flags the account later) → a retryable `StorageError`; anything
+      else a non-retryable one. A Google format with no text export (a form, a
+      drawing) is never fetched. `summary-extract.ts` reads the three Google
+      types as their export type under a neutral name (`export.txt`,
+      `export.csv`), so a Doc named `notes.docx` is plain text; any other
+      Google type is `unsupported-type`. `DRIVE_SUMMARY_READABLE_PROVIDERS` is
+      {KLORN, GOOGLE}.
+    - Reasons on the streamed path (review fix). A refused streamed request
+      carries its JSON body in the error's message only: gaxios 7 leaves
+      `errors` and `response.data` unset (reproduced against a local server in
+      `google-drive-stream-errors.test.ts`, through the real googleapis). So
+      `googleErrorReason` also parses the message (JSON.parse from its first
+      `{`, bounded to 64 KiB, in try/catch; a reason must be a plain name), and
+      a body still left as a stream is read, bounded and within D4's deadline,
+      then released. Without it `exportSizeLimitExceeded` was never
+      `too-large` and a rate-limit 403 was never retried.
+    - Known limit, as D4's no-backfill rule: an etag change the refresh writes
+      while summaries are off is not queued when they are turned on (the row
+      already holds the new etag, so the next refresh sees no change); that file
+      is summarised on demand (`POST /api/drive/files/:id/summarize`
+      re-queues it, its etag differing from the summary's).
+    - Read-only: `google-drive-readonly-guard.test.ts` now allows `files.get`,
+      `files.list` and `files.export`, `export` only in `google.ts`, once; both
+      new modules are scanned. No write method.
+    - Tests (each failed first): `google-drive-refresh.test.ts` (idle while
+      off; the pick: 6 h, 20, NULLS FIRST, `needsReconnect` and ONEDRIVE left
+      out; trashed; 404 deletes only that row; revoked; 429 / 403 rate limit /
+      5xx / network end the pass after the 4 in flight, unstamped, the next
+      account still runs; a file-level 403; an unexpected 403 reported without
+      the error; ≤ 4 in flight; both etag forms, moved and unchanged; trashed
+      not queued; busy; the heartbeat in the health report; a sweep that
+      throws; the review fix: a rate limit or outage ends the whole sweep, a
+      revoked account does not, a 400 or an unexpected 403 skips its row and
+      stamps, `accessNotConfigured` reported once an hour, the per-call
+      timeout), `google-drive-files.test.ts` (the exports per type, alt=media,
+      no field or link, the cap, the size error and the rate-limit 403s in
+      gaxios' real streamed shape, a refusal body left as a stream read
+      bounded, a body past the bound, a message that is not JSON, 404, the
+      retryable and non-retryable mappings, the deadline for the body and for
+      a refusal's body, no call for a form or a non-id),
+      `google-drive-stream-errors.test.ts` (a local HTTP server: the real
+      error shape, too-large, the rate-limit 403s, 404, a JSON request's
+      refusals), `drive-summary-pure.test.ts` (the Google types),
+      `drive-summary-run.test.ts` (a Doc summarised from its export, an outage
+      deferred with the attempt given back, too-large SKIPPED),
+      `linked-drive-accounts.test.ts` (the pick, the stamp, no stamp on a token
+      save), and the guards. Written after the code they pin:
+      `drive-rows.test.ts` (the per-file delete, already covered by the refresh
+      test's 404 case) and `fake-db.test.ts` (orderBy `{ sort, nulls }`, added to
+      the fake for the pick).
+    - Not done: googleapis-common turns googleapis' retry on by default
+      (`apirequest.js`), so gaxios may retry one `files.get` on a 429 or 5xx
+      (its defaults, prior knowledge) before the pass sees the error; the
+      refresh does not turn it off.
+    - Prod impact: none (no migration; the job idles while the flags are off).
+- Before the flip, in order:
+  1. The current Google verification has passed (V2).
+  2. FA-10 (new): (a) now, a separate Testing-mode Cloud project and OAuth client
+     with test users, for development and the live checks; (b) at the flip, on
+     production: the Drive and Picker APIs enabled, the restricted key created
+     (restricted to the Picker API under "API restrictions", not only to the web
+     origin's referrers: a Referer header can be forged outside a browser), and
+     `drive.file` added to the consent screen and approved.
+  3. FA-5 covers Drive metadata and the file text sent for summaries.
+  4. Live checks on the Testing client, each recorded here with its date: the
+     scopes of a token for the primary's account; `drive.file` unticked at
+     consent; a picked file readable and an unpicked id 404; `parents`,
+     `md5Checksum` and `version` after a rename and an edit; the exports and their
+     size error; a revocation → `needsReconnect`; Gmail still working after an
+     unlink; no CSP violation; the numbers on the quota page.
+     - The Picker opens and picks in a production build (the switch on) under
+       the CSP, with only `https://apis.google.com` in `script-src` and
+       `https://docs.google.com` in `frame-src`. Any origin it turns out to need
+       is added at this check, in `next.config.ts` and in the pin of
+       `packages/web/scripts/check-csp.mjs`, before step 5.
+  5. Env set, the web built with the switch, then `GOOGLE_DRIVE_ENABLED` on,
+     founder account first (L23).
+- Risks and limits.
+  - The browser holds a `drive.file` token (which can read and write the picked
+    files) for up to an hour; an XSS could write to them. It is minted on click,
+    never stored or logged, and bounded by the CSP.
+  - Picked files only: no folder contents, and nothing added later. P5's fallback
+    is a restricted scope, which brings CASA back.
+  - A revocation in Google deletes nothing in Klorn until the user unlinks.
+  - Metadata can be up to 6 h old, and a transient 404 deletes a row.
+  - Renaming a Google-format file re-queues its summary (version etag), within
+    D4's per-file cap. Sheets export one sheet only (prior knowledge).
+  - Web desktop only. Workspace admins can block the app (F0).
+  - Facts marked "prior knowledge" were not re-verified against Google's docs for
+    this text; the live checks in step 4 cover each one.
+  - Shared-files table: add D5 to the `routes/auth.ts`, `contract/src/drive.ts`
+    and `summary-extract.ts` rows.
+  - Rollback: revert. If the flag was ever on: turn it off, delete the
+    `LinkedDriveAccount` rows (the cascade takes the files and summaries), then
+    revert.
 **D6 — OneDrive connector** (*outline*). Depends on: D2, FA-9 with file
 permissions.
 **D7 — device import.** Depends on: D3. Upload policy per P4. Landed 2026-10-14
@@ -4287,6 +4618,7 @@ time, whatever the graph says. The later step rebases, reruns
 | FA-7 | Create the object storage account: Cloudflare R2, one private bucket, an API token with object read and write on that bucket only, and the S3 endpoint. No CORS rule (details in D1) | D1 flip |
 | FA-8 | Run the Samsung calendar probe on a Galaxy device and record the result here | C5 |
 | FA-9 | Azure app registration (existing action B). That action lists `Mail.*` permissions only; calendar and file permissions must be added for C4 and D6. For C4: add delegated `Calendars.Read` (and `User.Read` if it is not already listed); the calendar link requests exactly `openid email offline_access User.Read Calendars.Read`, reuses the existing redirect URI, and asks for no `Mail.*`. Existing inbox links keep their consent unchanged | B5, C4, D6 |
+| FA-10 | Google Drive (D5). (a) Now: a separate Testing-mode Cloud project and OAuth client with test users, for development and D5's live checks. (b) At the flip, on production: enable the Drive and Picker APIs, create the Picker API key restricted to the web origin's referrers AND, under "API restrictions", to the Picker API only (a Referer header can be forged outside a browser), and add `drive.file` to the consent screen for approval. Nothing changes on the production consent screen before (b) | D5 |
 
 ## Cross-cutting rules
 
