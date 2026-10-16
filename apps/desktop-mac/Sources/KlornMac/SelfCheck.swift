@@ -1527,6 +1527,8 @@ func runSelfChecks() async -> Bool {
     for (name, ok) in await noPillSelfChecks(sourceDir: sourceDir) { check(name, ok) }
     print("Files and team free-time (P12):")
     for (name, ok) in await filesSelfChecks(sourceDir: sourceDir) { check(name, ok) }
+    print("Account-link hand-off (link binding):")
+    for (name, ok) in await linkHandoffSelfChecks(sourceDir: sourceDir) { check(name, ok) }
 
     print("States and first launch (M6):")
     for (name, ok) in await stateSelfChecks(sourceDir: sourceDir) { check(name, ok) }
@@ -2253,6 +2255,12 @@ func runSelfChecks() async -> Bool {
         swiftFiles.first { $0.lastPathComponent == name }
             .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
     }
+    // "Get update" must install in place; the release page is only
+    // SelfUpdate's fallback (0.4.80105 shipped a button that just opened it).
+    let prefsSource = source(named: "PreferencesView.swift")
+    check("Settings update button runs SelfUpdate",
+          prefsSource.contains("SelfUpdate.run(version: version)")
+          && !prefsSource.contains("UpdateCheck.openReleasePage()"))
     let mailSectionSource = source(named: "MailSection.swift")
     // FullList's own source: the struct is the only declaration in its file.
     let fullListFile = source(named: "FullList.swift")

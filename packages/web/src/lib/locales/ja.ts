@@ -76,6 +76,41 @@ const ja: Record<string, string> = {
   "files.trail.all": "すべてのファイル",
   "files.folderEmpty.title": "このフォルダは空です",
   "files.folderEmpty.body": "このフォルダに入れたファイルがここに表示されます。",
+  "files.google.title": "Google Drive",
+  "files.google.body":
+    "Google Drive で選んだファイルをここで一覧・検索できます。Klorn が見るのは選んだファイルだけで、ファイルを変更することはありません。",
+  "files.google.connect": "Google Drive を接続",
+  "files.google.connect.error": "Google のログインを開始できませんでした。もう一度お試しください。",
+  "files.google.needsReconnect": "アクセスが切れました。ファイルを追加するには再接続してください。",
+  "files.google.reconnect": "再接続",
+  "files.google.reconnect.label": "再接続（{email}）",
+  "files.google.add": "Google Drive から追加",
+  "files.google.add.label": "Google Drive から追加（{email}）",
+  "files.google.disconnect": "接続を解除",
+  "files.google.disconnect.label": "{email} の接続を解除",
+  "files.google.disconnect.title": "Google Drive の接続を解除しますか？",
+  "files.google.disconnect.message":
+    "{email} から追加したファイルは Klorn から削除されます。Google Drive 上のファイルは変わりません。Klorn のアクセス権は Google アカウントの設定で削除できます。",
+  "files.google.disconnect.confirm": "接続を解除",
+  "files.google.disconnect.done": "Google Drive の接続を解除しました。",
+  "files.google.disconnect.error": "接続を解除できませんでした。もう一度お試しください。",
+  "files.google.pick.added": "Google Drive から追加したファイル: {count} 件",
+  "files.google.pick.skipped":
+    "追加できなかったもの: {count} 件。フォルダ、ショートカット、Google が Klorn に共有しないファイルは追加できません。",
+  "files.google.pick.cap":
+    "追加できなかったもの: {count} 件。Google アカウント 1 つにつき追加できるファイルは 500 件までです。",
+  "files.google.pick.reconnect":
+    "ファイルを追加するには、この Google アカウントを再接続してください。",
+  "files.google.pick.notConfigured": "Google Drive からの追加はまだ設定されていません。",
+  "files.google.pick.error":
+    "Google Drive からファイルを追加できませんでした。もう一度お試しください。",
+  "files.google.link.success": "Google Drive を接続しました。",
+  "files.google.link.failed": "Google Drive を接続できませんでした。もう一度お試しください。",
+  "files.google.link.unverified":
+    "Google が確認していないメールアドレスのため、接続しませんでした。",
+  "files.google.link.scopeMissing":
+    "選んだファイルへのアクセス権が必要です。もう一度接続し、その項目のチェックを外さないでください。",
+  "files.google.link.limit": "Drive 用に接続できる Google アカウントは 5 つまでです。",
   "today.files.title": "最近のファイル",
   "today.files.open": "ファイルを開く",
   "today.files.none": "ファイルはまだありません。",
@@ -1782,6 +1817,16 @@ const ja: Record<string, string> = {
   "onboardingV2.finish.addAccount": "アカウントをもう 1 つ追加",
   "onboardingV2.finish.openToday": "「今日」を開く",
   "onboardingV2.finish.openHome": "Klorn を開く",
+  // Account-link completion (/link/complete)
+  "linkComplete.working": "接続を完了しています...",
+  "linkComplete.signIn": "このブラウザで Klorn にサインインするか、アプリからやり直してください。",
+  "linkComplete.mismatch":
+    "この接続は、ここでサインインしているアカウントとは別の Klorn アカウントから開始されたため、何も接続されていません。接続したいアカウントからやり直してください。",
+  "linkComplete.expired":
+    "この接続リンクは期限切れか、すでに使用されています。設定からやり直してください。",
+  "linkComplete.failed": "接続を完了できませんでした。もう一度お試しください。",
+  "linkComplete.signInToContinue": "サインインして続ける",
+  "linkComplete.continue": "続ける",
 };
 
 export default ja;

@@ -76,6 +76,41 @@ const es: Record<string, string> = {
   "files.trail.all": "Todos los archivos",
   "files.folderEmpty.title": "Esta carpeta está vacía",
   "files.folderEmpty.body": "Los archivos que pongas en esta carpeta aparecen aquí.",
+  "files.google.title": "Google Drive",
+  "files.google.body":
+    "Elige archivos de Google Drive para verlos y buscarlos aquí. Klorn solo ve los archivos que eliges y nunca los modifica.",
+  "files.google.connect": "Conectar Google Drive",
+  "files.google.connect.error": "No se pudo iniciar el acceso con Google. Inténtalo de nuevo.",
+  "files.google.needsReconnect":
+    "El acceso dejó de funcionar. Vuelve a conectar para añadir archivos.",
+  "files.google.reconnect": "Volver a conectar",
+  "files.google.reconnect.label": "Volver a conectar ({email})",
+  "files.google.add": "Añadir desde Google Drive",
+  "files.google.add.label": "Añadir desde Google Drive ({email})",
+  "files.google.disconnect": "Desconectar",
+  "files.google.disconnect.label": "Desconectar {email}",
+  "files.google.disconnect.title": "¿Desconectar Google Drive?",
+  "files.google.disconnect.message":
+    "Los archivos añadidos desde {email} se quitan de Klorn. En tu Google Drive no cambia nada. Para retirar el acceso de Klorn, usa la configuración de tu cuenta de Google.",
+  "files.google.disconnect.confirm": "Desconectar",
+  "files.google.disconnect.done": "Google Drive desconectado.",
+  "files.google.disconnect.error": "No se pudo desconectar. Inténtalo de nuevo.",
+  "files.google.pick.added": "Archivos añadidos desde Google Drive: {count}.",
+  "files.google.pick.skipped":
+    "No añadidos: {count}. No se pueden añadir carpetas, accesos directos ni archivos que Google no comparte con Klorn.",
+  "files.google.pick.cap":
+    "No añadidos: {count}. Cada cuenta de Google puede añadir hasta 500 archivos.",
+  "files.google.pick.reconnect": "Vuelve a conectar esta cuenta de Google para añadir archivos.",
+  "files.google.pick.notConfigured": "Añadir desde Google Drive aún no está configurado.",
+  "files.google.pick.error":
+    "No se pudieron añadir archivos desde Google Drive. Inténtalo de nuevo.",
+  "files.google.link.success": "Google Drive conectado.",
+  "files.google.link.failed": "No se pudo conectar Google Drive. Inténtalo de nuevo.",
+  "files.google.link.unverified":
+    "Google no ha verificado esa dirección de correo, así que no se conectó.",
+  "files.google.link.scopeMissing":
+    "Klorn necesita acceso a los archivos que eliges. Vuelve a conectar y deja esa casilla marcada.",
+  "files.google.link.limit": "Has conectado el máximo de cuentas de Google para Drive (5).",
   "today.files.title": "Archivos recientes",
   "today.files.open": "Abrir Archivos",
   "today.files.none": "Aún no hay archivos.",
@@ -1817,6 +1852,17 @@ const es: Record<string, string> = {
   "onboardingV2.finish.addAccount": "Añadir otra cuenta",
   "onboardingV2.finish.openToday": "Abrir Hoy",
   "onboardingV2.finish.openHome": "Abrir Klorn",
+  // Account-link completion (/link/complete)
+  "linkComplete.working": "Finalizando la conexión...",
+  "linkComplete.signIn":
+    "Inicia sesión en Klorn en este navegador o vuelve a empezar desde la app.",
+  "linkComplete.mismatch":
+    "Esta conexión se inició desde una cuenta de Klorn distinta de la que tiene la sesión iniciada aquí, así que no se conectó nada. Vuelve a empezar desde la cuenta que quieres conectar.",
+  "linkComplete.expired":
+    "Este enlace de conexión caducó o ya se usó. Vuelve a empezar desde Ajustes.",
+  "linkComplete.failed": "No se pudo finalizar la conexión. Inténtalo de nuevo.",
+  "linkComplete.signInToContinue": "Inicia sesión para continuar",
+  "linkComplete.continue": "Continuar",
 };
 
 export default es;
