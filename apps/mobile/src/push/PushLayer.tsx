@@ -1,0 +1,206 @@
+/**
+ * Push, app side: the priming screen (asked once, after sign-in, before the
+ * OS prompt — and only PUSH-lane mail rings), the in-app banner for a push
+ * that arrives while the app is open, and what a tap or an action button
+ * does. "Send draft" never sends: it opens the approval card, where sending
+ * is one more explicit tap (and on iOS the button already required unlock).
+ */
+import { useEffect, useState } from "react";
+import { getServices } from "../app/services";
+import { MOCK_API } from "../config";
+import { useI18n } from "../i18n/I18nProvider";
+import {
+  enablePush,
+  type IncomingPush,
+  installPushListeners,
+  markPrimed,
+  pushPermission,
+  wasPrimed,
+} from "../platform/push";
+import { useRouter } from "../router/Router";
+import { Icon } from "../ui/Icon";
+import { notify } from "../ui/StatusNote";
+import { intentOf, routeFromPush } from "./route";
+import "./push.css";
+
+const BANNER_MS = 6000;
+
+function useForcedPriming(): boolean {
+  // Mock / dev builds: `?priming=1` shows the screen (screenshots, review).
+  if (!(MOCK_API || import.meta.env.DEV)) return false;
+  try {
+    return new URLSearchParams(window.location.search).get("priming") === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function PushPriming({ open, onDone }: { open: boolean; onDone: () => void }) {
+  const { t } = useI18n();
+  const [busy, setBusy] = useState(false);
+  if (!open) return null;
+  const enable = async () => {
+    setBusy(true);
+    const { ep } = getServices();
+    const result = await enablePush((token, platform) => ep.push.register(token, platform), {
+      prompt: true,
+    });
+    await markPrimed(result === "granted" ? "enabled" : "later");
+    setBusy(false);
+    if (result === "denied") notify(t("push.denied"), "info");
+    onDone();
+  };
+  const later = async () => {
+    await markPrimed("later");
+    onDone();
+  };
+  return (
+    <div className="priming" role="dialog" aria-modal="true" aria-labelledby="priming-h">
+      <div className="priming__art" aria-hidden="true">
+        <div className="priming__note priming__note--push">
+          <span className="priming__app">K</span>
+          <span className="priming__note-text">
+            <span className="priming__note-head">
+              <strong>{t("push.priming.sampleTitle")}</strong>
+              <span>{t("push.priming.now")}</span>
+            </span>
+            <span>{t("push.priming.sampleBody")}</span>
+          </span>
+        </div>
+        <div className="priming__note priming__note--quiet">
+          <span className="priming__quiet-lanes">QUEUE · INFO · SILENT</span>
+          <span>{t("push.priming.quietSample")}</span>
+        </div>
+      </div>
+      <div className="priming__text">
+        <h1 id="priming-h" className="priming__title">
+          {t("push.priming.title")}
+        </h1>
+        <p className="priming__body">{t("push.priming.body")}</p>
+        <ul className="priming__points">
+          <li>
+            <Icon name="bell" size={18} />
+            {t("push.priming.point.push")}
+          </li>
+          <li>
+            <Icon name="lock" size={18} />
+            {t("push.priming.point.actions")}
+          </li>
+          <li>
+            <Icon name="gear" size={18} />
+            {t("push.priming.point.settings")}
+          </li>
+        </ul>
+      </div>
+      <div className="priming__actions">
+        <button
+          type="button"
+          className="button button--primary priming__enable"
+          disabled={busy}
+          onClick={() => void enable()}
+          data-autofocus
+        >
+          {t("push.priming.enable")}
+        </button>
+        <button type="button" className="button button--plain" onClick={() => void later()}>
+          {t("push.priming.later")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ForegroundBanner({ push, onClose }: { push: IncomingPush | null; onClose: () => void }) {
+  const { t } = useI18n();
+  const { navigate } = useRouter();
+  useEffect(() => {
+    if (!push) return;
+    const timer = setTimeout(onClose, BANNER_MS);
+    return () => clearTimeout(timer);
+  }, [push, onClose]);
+  if (!push) return null;
+  return (
+    <div className="push-banner" role="status" aria-live="polite">
+      <button
+        type="button"
+        className="push-banner__body"
+        onClick={() => {
+          navigate(routeFromPush(push.data));
+          onClose();
+        }}
+      >
+        <span className="priming__app" aria-hidden="true">
+          K
+        </span>
+        <span className="push-banner__text">
+          <span className="push-banner__head">
+            <strong>{push.title}</strong>
+            <span>{t("push.priming.now")}</span>
+          </span>
+          <span className="push-banner__line">{push.body}</span>
+        </span>
+      </button>
+      <button type="button" className="push-banner__close" onClick={onClose}>
+        <Icon name="close" size={18} label={t("settings.ui.close")} />
+      </button>
+    </div>
+  );
+}
+
+/** Mount once inside the signed-in app. */
+export function PushLayer() {
+  const { t } = useI18n();
+  const { navigate } = useRouter();
+  const forced = useForcedPriming();
+  const [priming, setPriming] = useState(forced);
+  const [banner, setBanner] = useState<IncomingPush | null>(null);
+
+  // Ask once: only on a device that has not answered (and never on launch by itself).
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const state = await pushPermission();
+      if (!alive) return;
+      const { ep } = getServices();
+      if (state === "granted") {
+        // Tokens rotate: re-register silently on every launch.
+        await enablePush((token, platform) => ep.push.register(token, platform), { prompt: false });
+      } else if (state === "prompt" && !(await wasPrimed())) {
+        if (alive) setPriming(true);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(
+    () =>
+      installPushListeners({
+        onForeground: (push) => setBanner(push),
+        onAction: (actionId, push) => {
+          const intent = intentOf(actionId, push.data);
+          const { ep } = getServices();
+          if (intent.kind === "open" || intent.kind === "review") {
+            navigate(intent.route);
+            return;
+          }
+          const run =
+            intent.kind === "snooze"
+              ? ep.triage.snooze(intent.attentionItemId, new Date(Date.now() + 3_600_000))
+              : ep.triage.done(intent.attentionItemId);
+          void run
+            .then(() => notify(t(intent.kind === "snooze" ? "push.snoozed" : "push.done")))
+            .catch(() => navigate(intent.fallback));
+        },
+      }),
+    [navigate, t],
+  );
+
+  return (
+    <>
+      <PushPriming open={priming} onDone={() => setPriming(false)} />
+      <ForegroundBanner push={banner} onClose={() => setBanner(null)} />
+    </>
+  );
+}

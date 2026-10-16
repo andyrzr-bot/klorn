@@ -40,6 +40,11 @@ const config: CapacitorConfig = {
       launchShowDuration: 3000,
       backgroundColor: "#fafafa",
     },
+    PushNotifications: {
+      // In the foreground the app shows its own banner (src/push/PushLayer.tsx);
+      // the OS banner would duplicate it.
+      presentationOptions: ["badge"],
+    },
     Keyboard: {
       // Resize the body, so composers and their buttons ride above the
       // keyboard (canvas notes.gestures).
