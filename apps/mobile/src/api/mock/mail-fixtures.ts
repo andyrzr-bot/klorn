@@ -359,6 +359,8 @@ export function mockReaderContext(
     linkedInboxAccountId: row.inbox,
     firstContact: false,
     repliedCount: row.id === "email-att-push-1" ? 6 : null,
+    // The contract's demo-mail value; the app does not render sender labels yet.
+    senderLabel: null,
     newerId: rows[i - 1]?.id ?? null,
     olderId: rows[i + 1]?.id ?? null,
   };
