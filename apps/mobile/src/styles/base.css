@@ -100,3 +100,19 @@ a {
   height: 100%;
   background: var(--surface-app);
 }
+
+/* A screen's large title (canvas: 30/36 Bold, -0.02em). */
+.screen-title {
+  font-size: var(--type-large-title);
+  line-height: var(--type-large-title-lh);
+  font-weight: 700;
+  letter-spacing: var(--tracking-title);
+}
+
+/* A vertical hinge: single-column pages stay on the left segment, never across the fold. */
+.shell[data-posture="book"] .screen > .settings,
+.shell[data-posture="book"] .screen > .accounts,
+.shell[data-posture="book"] .screen > .placeholder {
+  max-width: calc(var(--hinge-start, 50vw) - var(--rail-width) - 56px);
+  margin-left: 0;
+}
