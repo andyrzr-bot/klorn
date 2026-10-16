@@ -113,4 +113,113 @@ export interface EmailDetailWire {
   needsReplyReason?: string | null;
   attachmentCount: number;
   tier?: LiveTier | null;
+  /**
+   * Sanitized HTML (server sanitize-html allowlist) for clients that render
+   * mail as designed; null for genuinely plain mail. The reader sanitizes it
+   * again (screens/mail/mail-html.ts) and shows it in a script-less frame.
+   */
+  renderHtml?: string | null;
+  /** Stored attachment rows (mail/email-attachments.ts EmailAttachmentView). */
+  attachments?: EmailAttachmentWire[];
+  /** A reply written ahead of time (proactive drafts); null once answered. */
+  proactiveDraft?: string | null;
+  labels?: string[];
 }
+
+/** One attachment of GET /api/email/:id (`attachments`), the fields the reader shows. */
+export interface EmailAttachmentWire {
+  id: string;
+  emailId: string;
+  filename: string;
+  mimeType: string;
+  size: number | null;
+  /** The AI summary of the file, when analysis ran. */
+  summary: string | null;
+  analysisStatus: string;
+}
+
+/** GET /api/email/:id/thread-brief (routes/email.ts, mail/thread-brief.ts). */
+export interface ThreadBriefWire {
+  whyNow: string;
+  asks: string[];
+  weOwe: string | null;
+  theyOwe: string | null;
+  stance: string | null;
+  messageCount: number;
+  lastMessageAt: string | null;
+}
+
+export interface ThreadBriefResponse {
+  brief: ThreadBriefWire | null;
+}
+
+/** GET /api/email/:id/sender-dossier (routes/email.ts, mail/sender-dossier.ts). */
+export interface SenderDossierWire {
+  summary: string;
+  openThreads: string[];
+  lastPromise: string | null;
+  emailCount: number;
+  lastEmailAt: string | null;
+}
+
+/** POST /api/email/:id/reply-draft (routes/email-replies.ts). */
+export interface ReplyDraftResponse {
+  to: string;
+  subject: string;
+  body: string;
+}
+
+/**
+ * POST /api/email/:id/reply and POST /api/email/send — the provider's answer
+ * (mail/providers/types.ts SendMailResult, success branch). `to` is echoed by
+ * /reply only: the address the server actually sent to.
+ */
+export interface SendMailResponse {
+  success: true;
+  messageId?: string | null;
+  threadId?: string | null;
+  to?: string;
+  threaded?: boolean;
+}
+
+/** POST /api/email/:id/gmail-draft — the draft saved in the mail account. */
+export interface SavedDraftResponse {
+  success?: boolean;
+  draftId?: string | null;
+}
+
+/** GET /api/email/:id/reader-context (routes/email-lanes.ts; dark unless MAIL_V2). */
+export type { EmailReaderContextResponse } from "@klorn/contract";
+
+/**
+ * Subscriptions (routes/email-subscriptions.ts, dark unless
+ * BULK_UNSUBSCRIBE_ENABLED). Not on main's contract yet — mirrored from the
+ * branch that adds the route, field for field.
+ */
+export type EmailUnsubscribeMethod = "one-click" | "mailto" | "link";
+
+export interface EmailSubscriptionWire {
+  /** Normalized sender address. */
+  sender: string;
+  displayName: string | null;
+  /** null = the primary account. Never merged across accounts. */
+  linkedInboxAccountId: string | null;
+  accountLabel: string | null;
+  count: number;
+  unreadCount: number;
+  lastReceivedAt: string;
+  method: EmailUnsubscribeMethod;
+}
+
+export interface EmailSubscriptionsResponse {
+  subscriptions: EmailSubscriptionWire[];
+  windowDays: number;
+}
+
+export type EmailSubscriptionUnsubscribeResponse = (
+  | { method: "one-click" | "mailto"; done: true }
+  | { method: "link"; done: false; url: string }
+) & {
+  archived: number;
+  archiveFailed: number;
+};
