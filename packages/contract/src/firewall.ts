@@ -194,3 +194,40 @@ export interface LaneOverrideErrorResponse {
   code: "not_found" | "undo_expired" | "undo_conflict" | "override_conflict" | "rate_limited";
   message: string;
 }
+
+/**
+ * `POST /api/inbox/firewall/email/:emailId/dismiss` (Done) — the id-keyed
+ * `/:id/dismiss`, keyed by the EmailMessage id the mail list holds. `itemId` is
+ * the attention item acted on. `alreadyClear: true` means nothing changed: the
+ * item was already DISMISSED or RESOLVED (`itemId` set), or the mail has no
+ * attention item yet (`itemId: null`; none is created).
+ */
+export interface AttentionByEmailDismissResponse {
+  ok: true;
+  itemId: string | null;
+  alreadyClear: boolean;
+}
+
+/**
+ * `POST /api/inbox/firewall/email/:emailId/snooze` (Later), body
+ * `{ snoozeUntil: ISO }`. Same `itemId` / `alreadyClear` as the dismiss;
+ * `snoozedUntil` is there only when the item was actually snoozed (an OPEN or
+ * SNOOZED item). A DISMISSED or RESOLVED item is never pulled back into SNOOZED.
+ */
+export interface AttentionByEmailSnoozeResponse {
+  ok: true;
+  itemId: string | null;
+  alreadyClear: boolean;
+  snoozedUntil?: string;
+}
+
+/**
+ * Refusals of the two by-email routes above: `not_found` (404) for mail that is
+ * not the caller's, `invalid_snooze_until` (400) for a snoozeUntil that is not a
+ * future ISO time.
+ */
+export interface AttentionByEmailErrorResponse {
+  ok: false;
+  code: "not_found" | "invalid_snooze_until";
+  message: string;
+}
