@@ -114,7 +114,13 @@ export interface EmailListItem {
   candidateIntake: CandidateIntakeWire | null;
 }
 
-/** `GET /api/email` — the paged inbox list. */
+/**
+ * `GET /api/email` — the paged inbox list. With the opt-in `hideHandled=1`
+ * (or `true`) it leaves out mail whose attention item is DISMISSED (Done) or
+ * SNOOZED with a wake-up time still ahead (Later); `total` then counts the
+ * same rows. Absent, the list is unchanged. `filter=candidates` cannot be
+ * combined with it (400).
+ */
 export interface EmailListResponse {
   emails: EmailListItem[];
   /** "gmail" = the real DB-backed inbox (any connected source, IMAP included). */
@@ -314,4 +320,37 @@ export interface WaitingOnResponse {
   items: WaitingOnItemWire[];
   /** The floor that was applied (the request's `days`, or the default). */
   minDays: number;
+}
+
+/**
+ * `POST /api/email/send` body — a brand-new message (not a reply).
+ * `linkedInboxAccountId` picks the account it leaves from: absent / null /
+ * "primary" = the primary inbox (as before the field existed); otherwise the id
+ * of one of the caller's linked inboxes. An id that is not the caller's is 404
+ * (never a silent primary send), a non-id value 400, and a linked mailbox whose
+ * provider cannot send from Klorn 501.
+ */
+export interface SendEmailRequest {
+  to: string;
+  subject: string;
+  body: string;
+  linkedInboxAccountId?: string | null;
+}
+
+/**
+ * The deterministic-floor receipt of a user-initiated send, added to the
+ * success response of `POST /api/email/send` and `POST /api/email/:id/reply`
+ * while MANUAL_SEND_RECEIPTS_ENABLED is on (absent otherwise). `payloadHash` is
+ * `sendEmailPayloadHash({ to, subject, body })` (packages/api
+ * judge/attention-floor.ts, schema `v`) over the bytes the provider received —
+ * a client that hashes what its confirm sheet showed gets the same hex. `id` is
+ * the server's SendReceipt row. No recipient or content is echoed.
+ */
+export interface SendReceiptWire {
+  id: string;
+  v: "v1";
+  action: "send_email";
+  payloadHash: string;
+  /** ISO time the receipt was minted (the send's approval). */
+  approvedAt: string;
 }

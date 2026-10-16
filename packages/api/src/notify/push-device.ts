@@ -19,6 +19,7 @@
  *   exactly like missing VAPID keys skips Web Push.
  */
 
+import type { NativePushMailFields } from "@klorn/contract";
 import { type App, cert, getApps, initializeApp } from "firebase-admin/app";
 import { type BatchResponse, getMessaging, type Message } from "firebase-admin/messaging";
 import { prisma } from "../db.js";
@@ -41,6 +42,33 @@ export interface DevicePushPayload {
   body: string;
   url?: string;
   notificationId?: string;
+  /**
+   * Mail deep link (native channels only — push.ts never hands these to web push
+   * or Telegram). `emailId` is the Klorn EmailMessage id; it is what makes a push
+   * "mail-driven": without it none of the fields below reach the device, so every
+   * other push is byte-identical to before. `attentionItemId` is the open
+   * firewall item, `pendingActionId` a reply draft / approval when one exists.
+   */
+  emailId?: string;
+  attentionItemId?: string;
+  pendingActionId?: string;
+}
+
+/** Opaque ids and an in-app route — nothing the notification text does not already show. */
+export type MailPushTarget = NativePushMailFields;
+
+/**
+ * The mail deep link of a native push, or null for a push that is not about one
+ * email. The route is the bundled app's reader path for that email.
+ */
+export function mailPushTarget(payload: DevicePushPayload): MailPushTarget | null {
+  if (!payload.emailId) return null;
+  return {
+    emailId: payload.emailId,
+    ...(payload.attentionItemId ? { attentionItemId: payload.attentionItemId } : {}),
+    ...(payload.pendingActionId ? { pendingActionId: payload.pendingActionId } : {}),
+    route: `/mail/${encodeURIComponent(payload.emailId)}`,
+  };
 }
 
 export interface DevicePushSummary {
@@ -99,6 +127,24 @@ function buildDataPayload(payload: DevicePushPayload): Record<string, string> {
   return data;
 }
 
+/**
+ * One FCM message. The keys a push always carried come first and unchanged;
+ * a mail push then appends its deep link (all strings, as FCM requires).
+ */
+export function buildFcmMessage(
+  token: string,
+  payload: DevicePushPayload,
+  category: NotifCategory,
+): Message {
+  const mail = mailPushTarget(payload);
+  return {
+    token,
+    notification: { title: payload.title, body: payload.body },
+    data: { ...buildDataPayload(payload), category, ...(mail ?? {}) },
+    android: { priority: "high" },
+  };
+}
+
 function skipped(reason: string): DevicePushSummary {
   return { status: "skipped", reason, tokens: 0, accepted: 0, failed: 0 };
 }
@@ -131,13 +177,7 @@ export async function sendDevicePush(
     return skipped("no_device_tokens");
   }
 
-  const data = buildDataPayload(payload);
-  const messages: Message[] = rows.map((row) => ({
-    token: row.token,
-    notification: { title: payload.title, body: payload.body },
-    data: { ...data, category },
-    android: { priority: "high" },
-  }));
+  const messages: Message[] = rows.map((row) => buildFcmMessage(row.token, payload, category));
 
   // sendEach throws only on a TOTAL failure (network down, bad service-account
   // key, FCM quota). Treat that as best-effort: log + capture and return a skip

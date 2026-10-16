@@ -633,6 +633,9 @@ const listEmailsQuerySchema = {
     // here, so that with both off any value is ignored exactly as an
     // undeclared param was.
     tier: { type: "string", maxLength: 500 },
+    // Opt-in: leave out mail the user handled (Done / a Later still pending).
+    // Absent = the list as it always was.
+    hideHandled: { type: "string", enum: ["0", "1", "false", "true"] },
   },
 } as const;
 
@@ -702,7 +705,7 @@ export async function emailRoutes(app: FastifyInstance) {
     "/",
     { schema: { querystring: listEmailsQuerySchema } },
     async (request, reply): Promise<EmailListResponse> => {
-      const { filter, search, category, page, inbox, tier } = request.query as {
+      const { filter, search, category, page, inbox, tier, hideHandled } = request.query as {
         filter?: string;
         search?: string;
         category?: string;
@@ -714,8 +717,14 @@ export async function emailRoutes(app: FastifyInstance) {
         // One of the five live lanes, or ALL. Honoured only while a lane
         // reader is on: MAIL_V2 (Mail v2) or UNIFIED_HOME (Today).
         tier?: string;
+        // OPT-IN ("1" / "true"): leave out mail whose attention item is DISMISSED
+        // (Done) or SNOOZED with a wake-up time still ahead (Later), so a Done on
+        // one device is gone on the others. Absent / "0" / "false" = the list
+        // exactly as before; the web and Mac clients never send it.
+        hideHandled?: string;
       };
       const uid = getUserId(request);
+      const hideHandledRows = hideHandled === "1" || hideHandled === "true";
       const pageNum = parsePageNum(page);
       const lane = laneReadsEnabled() && tier !== undefined ? parseLaneFilter(tier) : undefined;
       if (lane === null) {
@@ -728,6 +737,15 @@ export async function emailRoutes(app: FastifyInstance) {
         return reply
           .code(400)
           .send({ error: `filter=${filter} cannot be combined with a lane.` } as never);
+      }
+      // hideHandled pages through the same SQL view as a lane page (the handled
+      // state lives on AttentionItem, which has no Prisma relation to the mail),
+      // so it takes the filters that view can apply — candidates is refused, not
+      // silently dropped.
+      if (hideHandledRows && !isLanePageFilter(filter)) {
+        return reply
+          .code(400)
+          .send({ error: `filter=${filter} cannot be combined with hideHandled.` } as never);
       }
       // Heavy-email users (~200/day) clicking "Load more" 10 times to see one
       // morning's intake was the #1 dogfood friction. 50 keeps the first
@@ -816,7 +834,7 @@ export async function emailRoutes(app: FastifyInstance) {
       // Lane page (MAIL_V2): paged by a join on the lane, so `total` is the
       // lane's own count; the rows are then read by id and put back in the
       // join's order. A failure throws — never the unfiltered list.
-      const lanePage = async (laneView: LiveTier): Promise<[EmailMessage[], number]> => {
+      const lanePage = async (laneView: LiveTier | "ALL"): Promise<[EmailMessage[], number]> => {
         const page = await pageEmailIdsInLane({
           userId: uid,
           lane: laneView,
@@ -824,6 +842,7 @@ export async function emailRoutes(app: FastifyInstance) {
           filter,
           category,
           search,
+          hideHandled: hideHandledRows,
           skip: (pageNum - 1) * pageSize,
           take: pageSize,
         });
@@ -835,7 +854,7 @@ export async function emailRoutes(app: FastifyInstance) {
         return [page.ids.flatMap((id) => byId.get(id) ?? []), page.total];
       };
       const [[emails, total], unreadCount] = await Promise.all([
-        laneOnly ? lanePage(laneOnly) : listPage(),
+        laneOnly ? lanePage(laneOnly) : hideHandledRows ? lanePage("ALL") : listPage(),
         prisma.emailMessage.count({ where: { userId: uid, isRead: false } }),
       ]);
 

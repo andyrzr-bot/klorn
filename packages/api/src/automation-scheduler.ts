@@ -1803,6 +1803,10 @@ async function runUserCycle(
                   body: userBody,
                   url: "/briefing",
                   attentionItemId: attentionItemId ?? undefined,
+                  // Native deep link only when the push is about ONE mail; a
+                  // batch keeps opening the briefing. No pendingActionId at
+                  // this call site (no draft lookup on the sweep's hot path).
+                  ...(newUrgent.length === 1 ? { emailId: newUrgent[0].id } : {}),
                 },
                 "email_urgent",
                 // Unawaited (don't block the tick) but guarded: an

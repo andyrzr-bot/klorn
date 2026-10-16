@@ -21,6 +21,9 @@
  */
 
 import type {
+  AttentionByEmailDismissResponse,
+  AttentionByEmailErrorResponse,
+  AttentionByEmailSnoozeResponse,
   FirewallItem,
   FirewallResponse,
   LaneOverrideByEmailResponse,
@@ -34,6 +37,7 @@ import { getUserId, requireAuth } from "../auth.js";
 import { requireAppAccess } from "../billing/entitlement-guard.js";
 import { keyboardTriageEnabled } from "../config.js";
 import { prisma } from "../db.js";
+import { dismissEmailAttention, snoozeEmailAttention } from "../judge/attention-by-email.js";
 import { dismissAttentionItem } from "../judge/attention-dismiss.js";
 import {
   type AttentionHashInput,
@@ -131,6 +135,14 @@ const undoBodySchema = {
   required: ["undoToken"],
   properties: { undoToken: { type: "string", minLength: 1, maxLength: 64 } },
 } as const;
+
+const snoozeBodySchema = {
+  type: "object",
+  required: ["snoozeUntil"],
+  properties: { snoozeUntil: { type: "string", minLength: 1, maxLength: 64 } },
+} as const;
+
+const EMAIL_NOT_FOUND_MESSAGE = "Email not found.";
 
 const idParamSchema = (name: string) =>
   ({
@@ -1192,6 +1204,67 @@ export async function firewallRoutes(app: FastifyInstance) {
       }
 
       return { ok: true };
+    },
+  );
+
+  // POST /api/inbox/firewall/email/:emailId/dismiss and /snooze — Done and Later
+  // keyed by the EmailMessage id the mail list and reader hold (the bundled
+  // mobile app's Mail list has no attention id for mail outside the board's
+  // newest-200 window). The caller's own email row is resolved first, from any
+  // of their inboxes, then its attention item, and the id-keyed functions above
+  // do the write. Mail with nothing open to clear answers 200 alreadyClear and
+  // nothing is created — see attention-by-email.ts for the full table. Not
+  // flagged: they re-key two live, unflagged mutations and no web or Mac client
+  // calls them, so nothing an existing client does changes.
+  app.post<{ Params: { emailId: string } }>(
+    "/email/:emailId/dismiss",
+    { schema: { params: idParamSchema("emailId") } },
+    async (
+      request,
+      reply,
+    ): Promise<AttentionByEmailDismissResponse | AttentionByEmailErrorResponse> => {
+      const result = await dismissEmailAttention(getUserId(request), request.params.emailId);
+      if (!result.ok) {
+        reply.code(404);
+        return { ok: false, code: "not_found", message: EMAIL_NOT_FOUND_MESSAGE };
+      }
+      return { ok: true, itemId: result.itemId, alreadyClear: result.alreadyClear };
+    },
+  );
+
+  app.post<{ Params: { emailId: string }; Body: { snoozeUntil: string } }>(
+    "/email/:emailId/snooze",
+    { schema: { params: idParamSchema("emailId"), body: snoozeBodySchema } },
+    async (
+      request,
+      reply,
+    ): Promise<AttentionByEmailSnoozeResponse | AttentionByEmailErrorResponse> => {
+      const snoozeDate = new Date(request.body.snoozeUntil);
+      if (!Number.isFinite(snoozeDate.getTime()) || snoozeDate <= new Date()) {
+        reply.code(400);
+        return {
+          ok: false,
+          code: "invalid_snooze_until",
+          message: "snoozeUntil must be a future ISO datetime.",
+        };
+      }
+      const result = await snoozeEmailAttention(
+        getUserId(request),
+        request.params.emailId,
+        snoozeDate,
+      );
+      if (!result.ok) {
+        reply.code(404);
+        return { ok: false, code: "not_found", message: EMAIL_NOT_FOUND_MESSAGE };
+      }
+      return result.alreadyClear
+        ? { ok: true, itemId: result.itemId, alreadyClear: true }
+        : {
+            ok: true,
+            itemId: result.itemId,
+            alreadyClear: false,
+            snoozedUntil: snoozeDate.toISOString(),
+          };
     },
   );
 }

@@ -149,13 +149,35 @@ function searchSql(search: string | undefined): Prisma.Sql {
   )`;
 }
 
+/**
+ * Mail the user already handled: its attention item is DISMISSED (Done), or
+ * SNOOZED (Later) with a wake-up time still ahead. A snooze whose time has
+ * passed shows again before the scheduler's resurrect sweep flips it to OPEN.
+ * The same-owner, EMAIL-source lookup as LANE_JOIN_ON, served by the
+ * (userId, source, sourceId) unique index — one probe per candidate row inside
+ * the page query, never a query per email. `snoozedUntil` is a UTC timestamp
+ * without a zone (how Prisma stores DateTime), so it is compared with UTC now.
+ * RESOLVED is deliberately not excluded: only Done and Later are "handled" here.
+ */
+const HANDLED_EXCLUSION = Prisma.sql`AND NOT EXISTS (
+    SELECT 1 FROM "AttentionItem" h
+    WHERE h."sourceId" = e."id" AND h."userId" = e."userId" AND h."source" = 'EMAIL'
+      AND (
+        h."status" = 'DISMISSED'
+        OR (h."status" = 'SNOOZED' AND h."snoozedUntil" > (now() AT TIME ZONE 'UTC'))
+      )
+  )`;
+
 export interface LanePageQuery {
   userId: string;
-  lane: LiveTier;
+  /** One live lane, or ALL (no lane join; used by `hideHandled` on the All view). */
+  lane: LaneFilter;
   scope: InboxScope;
   filter?: string;
   category?: string;
   search?: string;
+  /** Opt-in (`GET /api/email?hideHandled=1`): leave out DISMISSED / still-SNOOZED mail. */
+  hideHandled?: boolean;
   skip: number;
   take: number;
 }
@@ -189,7 +211,10 @@ export async function pageEmailIdsInLane(
 }
 
 /** What a list view is made of: the FROM / WHERE both the page and the reader's neighbours read. */
-type LaneViewQuery = Pick<LanePageQuery, "userId" | "scope" | "filter" | "category" | "search"> & {
+type LaneViewQuery = Pick<
+  LanePageQuery,
+  "userId" | "scope" | "filter" | "category" | "search" | "hideHandled"
+> & {
   /** One live lane, or ALL for every lane (no join at all). */
   lane: LaneFilter;
 };
@@ -204,7 +229,8 @@ function laneFromSql(query: LaneViewQuery): Prisma.Sql {
       ${inboxSql(query.scope)}
       ${(query.filter && LANE_PAGE_FILTERS.get(query.filter)) || Prisma.empty}
       ${query.category ? Prisma.sql`AND e."category" = ${query.category}` : Prisma.empty}
-      ${searchSql(query.search)}`;
+      ${searchSql(query.search)}
+      ${query.hideHandled ? HANDLED_EXCLUSION : Prisma.empty}`;
 }
 
 export interface LaneNeighbourQuery extends LaneViewQuery {

@@ -190,6 +190,25 @@ describe("judgeAndMirrorEmail — PUSH tier drives a real push", () => {
     expect(notifCreate.mock.calls[0][0].data.message).toContain("[g-hn]");
   });
 
+  it("carries the mail deep link (email row id + open attention item) for the native channels", async () => {
+    pushTier();
+    findOpenEmailAttentionItemId.mockResolvedValue("item-1");
+    await judgeAndMirrorEmail("u1", recent("hn", 5));
+    expect(sendPushNotification.mock.calls[0][1]).toEqual({
+      title: "Klorn — s-hn@x.com",
+      body: "hn",
+      url: "/inbox/firewall",
+      attentionItemId: "item-1",
+      emailId: "hn",
+    });
+  });
+
+  it("a MEETING-tier mail push carries the same deep link", async () => {
+    judgeEmail.mockResolvedValue({ tier: "MEETING", reason: "r", features: {}, source: "llm" });
+    await judgeAndMirrorEmail("u1", recent("mt", 5));
+    expect(sendPushNotification.mock.calls[0][1]).toMatchObject({ emailId: "mt" });
+  });
+
   it("does NOT push a QUEUE/SILENT tier", async () => {
     judgeEmail.mockResolvedValue({ tier: "QUEUE", reason: "r", features: {}, source: "llm" });
     await judgeAndMirrorEmail("u1", recent("q", 5));
