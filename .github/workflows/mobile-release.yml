@@ -25,6 +25,14 @@
 #   ASC_KEY_P8_BASE64            base64 of the AuthKey_<id>.p8 (Admin or App Manager)
 #   The app record (bundle id ai.klorn.app) must exist in App Store Connect.
 #   Signing is automatic and cloud-managed through the API key.
+#
+# In-app purchase (both platforms; optional):
+#   VITE_REVENUECAT_IOS_KEY      RevenueCat public SDK key of the iOS app (appl_…)
+#   VITE_REVENUECAT_ANDROID_KEY  RevenueCat public SDK key of the Android app (goog_…)
+#   Read at `npm run build` (Vite inlines them; src/platform/iap.ts). They are
+#   PUBLIC SDK keys, so a repository secret or a repository variable both work
+#   (a secret wins when both are set). Empty / unset = the build ships with IAP
+#   off: Plans shows the plan only and offers nothing to buy.
 name: Mobile Release
 
 on:
@@ -77,7 +85,11 @@ jobs:
         working-directory: apps/mobile
         env:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
+          VITE_REVENUECAT_ANDROID_KEY: ${{ secrets.VITE_REVENUECAT_ANDROID_KEY || vars.VITE_REVENUECAT_ANDROID_KEY }}
         run: |
+          if [ -z "$VITE_REVENUECAT_ANDROID_KEY" ]; then
+            echo "::notice::VITE_REVENUECAT_ANDROID_KEY is not set — this build ships with in-app purchase off."
+          fi
           npm ci && npm run build && npx cap sync android
           # FCM push needs google-services.json; without it the app builds and
           # simply has no Android push (build.gradle applies the plugin only
@@ -142,7 +154,13 @@ jobs:
       - name: Build the app and sync iOS
         if: env.HAS_SECRETS == 'true'
         working-directory: apps/mobile
-        run: npm ci && npm run build && npx cap sync ios
+        env:
+          VITE_REVENUECAT_IOS_KEY: ${{ secrets.VITE_REVENUECAT_IOS_KEY || vars.VITE_REVENUECAT_IOS_KEY }}
+        run: |
+          if [ -z "$VITE_REVENUECAT_IOS_KEY" ]; then
+            echo "::notice::VITE_REVENUECAT_IOS_KEY is not set — this build ships with in-app purchase off."
+          fi
+          npm ci && npm run build && npx cap sync ios
       - name: Archive and upload to App Store Connect
         if: env.HAS_SECRETS == 'true'
         working-directory: apps/mobile/ios/App

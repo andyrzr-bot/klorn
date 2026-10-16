@@ -109,6 +109,26 @@ Generate key → Render env `FIREBASE_SERVICE_ACCOUNT` (whole JSON).
 
 ---
 
+## In-app purchase keys (both platforms) → 2 GitHub secrets
+
+RevenueCat → Project → **API keys** → the public SDK key of each app. They are
+read when the release workflow runs `npm run build` (`mobile-release.yml`,
+"Build the app and sync" steps):
+
+| Secret | Value |
+|---|---|
+| `VITE_REVENUECAT_IOS_KEY` | the iOS app's public SDK key (`appl_…`) |
+| `VITE_REVENUECAT_ANDROID_KEY` | the Android app's public SDK key (`goog_…`) |
+
+They are public keys, so a repository **variable** with the same name works
+too (a secret wins when both exist). Unset or empty = that platform's build
+ships with in-app purchase **off** (the run prints a notice): Plans shows the
+plan only and offers nothing to buy — then also leave Purchase History out of
+the App Privacy / Data safety answers for that build
+(`apps/mobile/store-pack/privacy-labels.md`).
+
+---
+
 ## Releasing
 
 ```bash
