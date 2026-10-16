@@ -93,7 +93,7 @@ describe("Android back (sheet → detail → previous tab → exit)", () => {
   });
 
   it("falls back to Today, and exits from Today", () => {
-    expect(resolveBack({ sheetOpen: false, route: { name: "accounts" }, tabHistory: [] })).toEqual({
+    expect(resolveBack({ sheetOpen: false, route: { name: "settings" }, tabHistory: [] })).toEqual({
       kind: "navigate",
       route: { name: "today" },
     });
@@ -109,5 +109,34 @@ describe("Android back (sheet → detail → previous tab → exit)", () => {
     expect(pushTab(["today", "mail"], "files", 2)).toEqual(["mail", "files"]);
     expect(popTab(["today", "mail", "files"], "mail")).toEqual(["today", "mail"]);
     expect(popTab(["files"], "today")).toEqual(["today"]);
+  });
+});
+
+describe("settings routes", () => {
+  it("parses and formats the settings sections", () => {
+    expect(parseRoute("/settings")).toEqual({ name: "settings" });
+    expect(parseRoute("/settings/plans")).toEqual({ name: "settings", section: "plans" });
+    expect(parseRoute("/settings/delete-account")).toEqual({
+      name: "settings",
+      section: "delete-account",
+    });
+    expect(parseRoute("/settings/billing").name).toBe("notFound");
+    expect(parseRoute("/settings/plans/x").name).toBe("notFound");
+    expect(formatRoute({ name: "settings", section: "notifications" })).toBe(
+      "/settings/notifications",
+    );
+    expect(tabOf({ name: "settings" })).toBeNull();
+  });
+});
+
+describe("back from settings pages", () => {
+  it("goes up to Settings before leaving", () => {
+    const back = (route: Route) => resolveBack({ sheetOpen: false, route, tabHistory: ["today"] });
+    expect(back({ name: "settings", section: "plans" })).toEqual({
+      kind: "navigate",
+      route: { name: "settings" },
+    });
+    expect(back({ name: "accounts" })).toEqual({ kind: "navigate", route: { name: "settings" } });
+    expect(back({ name: "settings" })).toEqual({ kind: "navigate", route: { name: "today" } });
   });
 });
