@@ -92,31 +92,10 @@
   position: relative;
 }
 
-.team-pill::after,
-.round-button::after {
+.team-pill::after {
   content: "";
   position: absolute;
   inset: -4px;
-}
-
-.round-button {
-  position: relative;
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.round-button__face {
-  width: 36px;
-  height: 36px;
-  border-radius: 18px;
-  background: var(--accent);
-  color: var(--accent-ink);
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 /* ── Week strip ─────────────────────────────────────────────────────────── */
@@ -491,33 +470,6 @@
 }
 
 /* ── Detail ─────────────────────────────────────────────────────────────── */
-.detail-back {
-  height: var(--touch);
-  margin-left: -10px;
-  padding: 0 8px 0 2px;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  color: var(--accent);
-  font-size: calc(17 * var(--u));
-}
-
-.shell:not([data-nav="tabs"]) .pane--detail .detail-back,
-.panes--split .pane--detail .detail-back {
-  display: none;
-}
-
-.pane-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.pane-empty .empty-state {
-  max-width: 360px;
-  background: transparent;
-  border: 0;
-}
 
 .event-detail__body {
   max-width: 640px;
@@ -612,18 +564,6 @@
   color: var(--ink-strong);
 }
 
-.event-detail__note {
-  display: flex;
-  gap: 8px;
-  font-size: var(--type-footnote);
-  line-height: var(--type-footnote-lh);
-  color: var(--ink-dim);
-}
-
-.event-detail__note svg {
-  flex: none;
-}
-
 /* ── Drafts, slots, chips (also used by the Assistant) ─────────────────── */
 .event-draft {
   background: var(--surface-card);
@@ -697,31 +637,6 @@
 .event-draft__paywall {
   font-size: var(--type-callout);
   color: var(--ink-mid);
-}
-
-.draft-facts {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.draft-facts > div {
-  display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
-  gap: 8px;
-  font-size: var(--type-callout);
-  line-height: var(--type-callout-lh);
-}
-
-.draft-facts dt {
-  color: var(--ink-dim);
-}
-
-.draft-facts dd {
-  margin: 0;
-  color: var(--ink);
-  overflow-wrap: anywhere;
 }
 
 .attendees {
@@ -866,11 +781,6 @@
 }
 
 /* ── New event form ─────────────────────────────────────────────────────── */
-.new-event {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
 
 .new-event__quick {
   display: flex;
@@ -885,13 +795,9 @@
 .new-event__switch {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   min-height: var(--touch);
   font-size: var(--type-body);
-}
-
-.new-event__switch input {
-  width: 20px;
-  height: 20px;
-  accent-color: var(--accent);
+  cursor: pointer;
 }

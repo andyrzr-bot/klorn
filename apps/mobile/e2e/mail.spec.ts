@@ -5,7 +5,16 @@
  * TabletLandscape artboards. Screenshots go to $KLORN_SHOTS_DIR/mail/.
  */
 import { expect, type Page, test } from "@playwright/test";
-import { emulateHinge, type Hinge, openApp, SHOTS_DIR, segmentCount, settle } from "./helpers";
+import {
+  emulateHinge,
+  type Hinge,
+  openApp,
+  SHOTS_DIR,
+  segmentCount,
+  settle,
+  snap,
+  untilPersisted,
+} from "./helpers";
 import { holdSwipe, swipe } from "./mail-helpers";
 
 const DIR = `${SHOTS_DIR}/mail`;
@@ -53,9 +62,9 @@ async function open(
   await settle(page);
 }
 
-async function shot(page: Page, name: string) {
-  await page.waitForTimeout(250);
-  await page.screenshot({ path: `${DIR}/${name}.png` });
+/** Settled data, finished transitions — then the picture (`loading`: the skeleton). */
+async function shot(page: Page, name: string, options: { loading?: boolean } = {}) {
+  await snap(page, `${DIR}/${name}.png`, options);
 }
 
 for (const theme of ["light", "dark"] as const) {
@@ -122,6 +131,7 @@ for (const theme of ["light", "dark"] as const) {
     if (!box) throw new Error("row");
     await page.mouse.move(box.x + 120, box.y + box.height / 2);
     await page.mouse.down();
+    // The gesture itself: a long press is a held pointer (longer than the threshold).
     await page.waitForTimeout(600);
     await page.mouse.up();
     await page
@@ -227,9 +237,7 @@ for (const theme of ["light", "dark"] as const) {
     test(`list state ${scenario} · ${theme}`, async ({ page }) => {
       await page.setViewportSize({ width: PHONE.width, height: PHONE.height });
       await openApp(page, "/mail", { theme, insets: PHONE.insets, scenario });
-      if (scenario === "loading") await page.waitForTimeout(700);
-      else await settle(page);
-      await shot(page, `state-${scenario}-390x844-${theme}`);
+      await shot(page, `state-${scenario}-390x844-${theme}`, { loading: scenario === "loading" });
     });
   }
 
@@ -248,8 +256,7 @@ for (const theme of ["light", "dark"] as const) {
       insets: PHONE.insets,
       scenario: "loading",
     });
-    await page.waitForTimeout(700);
-    await shot(page, `state-reader-loading-390x844-${theme}`);
+    await shot(page, `state-reader-loading-390x844-${theme}`, { loading: true });
     await openApp(page, "/mail/email-att-push-1", {
       theme,
       insets: PHONE.insets,
@@ -261,7 +268,7 @@ for (const theme of ["light", "dark"] as const) {
 
   test(`offline with cached mail · ${theme}`, async ({ page }) => {
     await open(page, PHONE, "/mail", theme);
-    await page.waitForTimeout(1500);
+    await untilPersisted(page, '"mail","feed"');
     await page.goto("/mail?scenario=offline");
     // The Mail chunk is local in the app; here it comes from the preview server.
     await expect(page.getByRole("heading", { name: "메일", level: 1 })).toBeVisible();

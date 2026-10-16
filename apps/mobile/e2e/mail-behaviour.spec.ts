@@ -220,11 +220,14 @@ test("lane tabs filter, SILENT is reachable, and the list pages on scroll", asyn
   await expect(row(page, /무신사/)).toHaveCount(0);
   // 45 mock rows, 20 per page: scrolling to the end loads the rest.
   const scroller = page.locator(".mail-scroll");
-  for (let i = 0; i < 6; i++) {
-    await scroller.evaluate((el) => el.scrollTo(0, el.scrollHeight));
-    await page.waitForTimeout(250);
-  }
-  await expect(page.getByRole("link", { name: /예약이 확정되었습니다/ })).toHaveCount(7);
+  const booked = page.getByRole("link", { name: /예약이 확정되었습니다/ });
+  // Scroll to the end until every page has arrived (each scroll may fetch the next).
+  await expect
+    .poll(async () => {
+      await scroller.evaluate((el) => el.scrollTo(0, el.scrollHeight));
+      return booked.count();
+    })
+    .toBe(7);
 });
 
 test("deep link /mail/:id opens the reader; prev / next walk the list", async ({ page }) => {

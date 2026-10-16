@@ -37,7 +37,6 @@ export const ja: Messages = {
   "today.next.now": "進行中",
   "today.next.join": "参加",
   "today.next.open": "表示",
-  "today.next.allDay": "終日",
   "today.next.empty": "今日の残りの予定はありません。",
   "today.approvals.title": "承認待ち",
   "today.approvals.seeAll": "すべて表示",
@@ -66,12 +65,9 @@ export const ja: Messages = {
   "state.noAccounts.body":
     "接続したアカウントのメールを Klorn が整理します。現在はウェブ（app.klorn.ai）でアカウントを追加できます。",
 
-  "placeholder.body": "この画面は近日公開です。",
   "mail.selectPrompt": "メールを選ぶとここに表示されます。",
 
   "accounts.title": "アカウントとソース",
-  "accounts.signedInAs": "{email} でログイン中",
-  "accounts.connected": "接続中のメールアカウント",
   "accounts.needsReconnect": "再接続が必要",
   "accounts.language": "アプリの言語",
   "accounts.theme": "表示モード",
@@ -337,7 +333,6 @@ export const ja: Messages = {
   "settings.push.on": "オン",
   "settings.push.off": "オフ",
   "settings.push.ask": "未設定",
-  "settings.push.server": "サーバー",
   "settings.push.device": "このデバイス",
   "settings.push.onBody": "このデバイスで通知がオンになっています。",
   "settings.push.offBody": "通知がオフです。端末の設定でKlornの通知をオンにしてください。",
@@ -725,6 +720,13 @@ export const ja: Messages = {
   "push.denied": "通知がオフです。端末の設定でオンにできます。",
   "push.snoozed": "1時間後にもう一度お知らせします。",
   "push.done": "処理済みにしました。",
+  "push.action.later": "1時間後に",
+  "push.action.done": "処理済み",
+  "push.action.review": "確認する",
+  "push.channel.push": "PUSH メール",
+  "push.channel.pushBody":
+    "今対応が必要なメールだけ。通知から「1時間後に」「処理済み」を選べます。",
+  "push.channel.other": "その他の通知",
   "push.cover.draftReady": "返信の下書きあり",
   "push.cover.snoozeFailed": "後回しにできませんでした。一覧に戻しました。",
 

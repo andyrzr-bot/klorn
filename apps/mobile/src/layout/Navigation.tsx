@@ -5,12 +5,11 @@
  *   Sidebar (expanded ≥1024) — 248px, lanes + accounts, TabletLandscape artboard
  */
 import type { LiveTier } from "@klorn/contract";
-import { type MouseEvent, useState } from "react";
+import { lazy, type MouseEvent, Suspense, useState } from "react";
 import { useInboxes, useLaneCounts, usePendingApprovals } from "../api/queries";
 import { useI18n } from "../i18n/I18nProvider";
 import { useRouter } from "../router/Router";
 import { formatRoute, LIVE_LANES, type Tab, tabOf } from "../router/routes";
-import { AssistantSheet } from "../screens/assistant/AssistantSheet";
 import { Icon } from "../ui/Icon";
 import { SourceBadge } from "../ui/SourceBadge";
 import { NAV_ITEMS } from "./nav-items";
@@ -174,11 +173,17 @@ export function Sidebar() {
   );
 }
 
+// The Assistant is its own chunk (app/App.tsx); the sheet loads it on first open.
+const AssistantSheet = lazy(() =>
+  import("../screens/assistant/AssistantSheet").then((m) => ({ default: m.AssistantSheet })),
+);
+
 /** Expanded only: opens the assistant thread in a side sheet beside the content. */
 export function AssistantFab() {
   const { t } = useI18n();
   const { route } = useRouter();
   const [open, setOpen] = useState(false);
+  const [used, setUsed] = useState(false);
   if (route.name === "assistant") return null;
   return (
     <>
@@ -187,12 +192,19 @@ export function AssistantFab() {
         className="assistant-fab"
         aria-haspopup="dialog"
         aria-expanded={open}
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setUsed(true);
+          setOpen(true);
+        }}
       >
         <Icon name="sparkSmall" size={18} strokeWidth={2} className="assistant-fab__icon" />
         {t("nav.assistantFab")}
       </button>
-      <AssistantSheet open={open} onClose={() => setOpen(false)} />
+      {used ? (
+        <Suspense fallback={null}>
+          <AssistantSheet open={open} onClose={() => setOpen(false)} />
+        </Suspense>
+      ) : null}
     </>
   );
 }

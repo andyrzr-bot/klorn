@@ -371,3 +371,9 @@
       minmax(0, 1fr);
   }
 }
+
+/* The keyboard is up (src/platform/keyboard.ts): no tab bar under a composer,
+   which rides on top of the keyboard — on every screen. */
+html.keyboard-open .shell[data-nav="tabs"] .tabbar {
+  display: none;
+}

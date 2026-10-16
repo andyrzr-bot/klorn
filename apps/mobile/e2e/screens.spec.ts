@@ -4,7 +4,16 @@
  * states. Screenshots go to $KLORN_SHOTS_DIR (default test-results/shots).
  */
 import { expect, test } from "@playwright/test";
-import { emulateHinge, type Hinge, openApp, SHOTS_DIR, segmentCount, settle } from "./helpers";
+import {
+  emulateHinge,
+  type Hinge,
+  openApp,
+  SHOTS_DIR,
+  segmentCount,
+  settle,
+  snap,
+  untilPersisted,
+} from "./helpers";
 
 interface Device {
   name: string;
@@ -74,7 +83,7 @@ for (const theme of ["light", "dark"] as const) {
         );
       }
       await expect(page.getByRole("heading", { name: "오늘", level: 1 })).toBeVisible();
-      await page.screenshot({ path: `${SHOTS_DIR}/today-${device.name}-${theme}.png` });
+      await snap(page, `${SHOTS_DIR}/today-${device.name}-${theme}.png`);
     });
   }
 
@@ -84,15 +93,14 @@ for (const theme of ["light", "dark"] as const) {
     await settle(page);
     await expect(page.locator(".cover")).toBeVisible();
     await expect(page.getByText("박서연 님이 계약서 회신을 기다려요")).toBeVisible();
-    await page.screenshot({ path: `${SHOTS_DIR}/cover-flip-360x400-${theme}.png` });
+    await snap(page, `${SHOTS_DIR}/cover-flip-360x400-${theme}.png`);
   });
 
   test(`welcome · 390x844 · ${theme}`, async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openApp(page, "/today", { scenario: "signedOut", theme, insets: "47,0,34,0" });
     await expect(page.getByRole("button", { name: "Google로 계속하기" })).toBeVisible();
-    await settle(page);
-    await page.screenshot({ path: `${SHOTS_DIR}/welcome-390x844-${theme}.png` });
+    await snap(page, `${SHOTS_DIR}/welcome-390x844-${theme}.png`);
   });
 
   test(`mail split · fold hinge · ${theme}`, async ({ page }) => {
@@ -104,7 +112,7 @@ for (const theme of ["light", "dark"] as const) {
     await expect(
       page.getByRole("heading", { name: "계약서 수정본 — 오늘 서명 가능할까요?" }),
     ).toBeVisible();
-    await page.screenshot({ path: `${SHOTS_DIR}/mail-fold-hinge-884x1104-${theme}.png` });
+    await snap(page, `${SHOTS_DIR}/mail-fold-hinge-884x1104-${theme}.png`);
   });
 }
 
@@ -112,9 +120,9 @@ for (const scenario of ["loading", "empty", "error", "noAccounts"] as const) {
   test(`state · ${scenario} · 390x844`, async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openApp(page, "/today", { scenario, insets: "47,0,34,0" });
-    if (scenario !== "loading") await settle(page);
-    else await page.waitForTimeout(600);
-    await page.screenshot({ path: `${SHOTS_DIR}/state-${scenario}-390x844.png` });
+    await snap(page, `${SHOTS_DIR}/state-${scenario}-390x844.png`, {
+      loading: scenario === "loading",
+    });
   });
 }
 
@@ -123,19 +131,19 @@ test("state · offline with cached data · 390x844", async ({ page }) => {
   await openApp(page, "/today");
   await settle(page);
   // Let the persister flush the cache (throttled 1 s), then lose the network.
-  await page.waitForTimeout(1500);
+  await untilPersisted(page, '"mail","firewall"');
   // Cold start with no network: the bundle is local (here: served before the
   // cut), the API is unreachable, and the OS reports offline.
   await page.goto("/today?scenario=offline");
   await page.context().setOffline(true);
   await expect(page.getByRole("status").filter({ hasText: "오프라인이에요" })).toBeVisible();
   await expect(page.getByText("박서연 님이 계약서 회신을 기다려요")).toBeVisible();
-  await page.screenshot({ path: `${SHOTS_DIR}/state-offline-cached-390x844.png` });
+  await snap(page, `${SHOTS_DIR}/state-offline-cached-390x844.png`);
 });
 
 test("state · offline without cache · 390x844", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openApp(page, "/today", { scenario: "offline" });
   await expect(page.getByRole("alert").filter({ hasText: "오프라인이에요" })).toBeVisible();
-  await page.screenshot({ path: `${SHOTS_DIR}/state-offline-empty-390x844.png` });
+  await snap(page, `${SHOTS_DIR}/state-offline-empty-390x844.png`);
 });

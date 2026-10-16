@@ -22,10 +22,6 @@ export function setSessionToken(next: string | null): void {
   token = next;
 }
 
-export function sessionToken(): string | null {
-  return token;
-}
-
 export function onUnauthorized(listener: () => void): () => void {
   unauthorizedListeners.add(listener);
   return () => unauthorizedListeners.delete(listener);

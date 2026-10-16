@@ -37,7 +37,6 @@ export const zh: Messages = {
   "today.next.now": "进行中",
   "today.next.join": "加入",
   "today.next.open": "查看",
-  "today.next.allDay": "全天",
   "today.next.empty": "今天没有其他日程了。",
   "today.approvals.title": "等待批准",
   "today.approvals.seeAll": "查看全部",
@@ -66,12 +65,9 @@ export const zh: Messages = {
   "state.noAccounts.body":
     "Klorn 会整理你所连接账户中的邮件。目前可以在网页版（app.klorn.ai）添加账户。",
 
-  "placeholder.body": "此页面即将推出。",
   "mail.selectPrompt": "选择一封邮件，即可在这里阅读。",
 
   "accounts.title": "账户与来源",
-  "accounts.signedInAs": "已登录：{email}",
-  "accounts.connected": "已连接的邮件账户",
   "accounts.needsReconnect": "需要重新连接",
   "accounts.language": "应用语言",
   "accounts.theme": "外观",
@@ -329,7 +325,6 @@ export const zh: Messages = {
   "settings.push.on": "已开启",
   "settings.push.off": "已关闭",
   "settings.push.ask": "未设置",
-  "settings.push.server": "服务器",
   "settings.push.device": "本设备",
   "settings.push.onBody": "本设备已开启通知。",
   "settings.push.offBody": "通知已关闭。请在设备设置中为 Klorn 开启通知。",
@@ -696,6 +691,12 @@ export const zh: Messages = {
   "push.denied": "通知已关闭，可以在设备设置中开启。",
   "push.snoozed": "1 小时后再提醒你。",
   "push.done": "已标记为完成。",
+  "push.action.later": "1 小时后",
+  "push.action.done": "已处理",
+  "push.action.review": "查看",
+  "push.channel.push": "PUSH 邮件",
+  "push.channel.pushBody": "只有现在需要你处理的邮件，可在通知上直接选择“1 小时后”或“已处理”。",
+  "push.channel.other": "其他通知",
   "push.cover.draftReady": "回复草稿已备好",
   "push.cover.snoozeFailed": "无法推迟，已放回列表。",
 

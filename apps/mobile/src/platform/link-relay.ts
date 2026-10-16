@@ -6,6 +6,7 @@
  * POST /api/auth/link/complete — a link started by one session can never be
  * finished by another (account-linking CSRF).
  */
+import { App } from "@capacitor/app";
 import { NATIVE_OAUTH_SCHEME } from "../config";
 import { isNative } from "./native";
 
@@ -83,13 +84,12 @@ export function installLinkRelay(onHandle: (handle: string) => void): () => void
   if (!isNative()) return () => {};
   let alive = true;
   let remove: (() => void) | null = null;
-  void import("@capacitor/app").then(async ({ App }) => {
-    const handle = await App.addListener("appUrlOpen", (event) => {
-      const parked = parseLinkComplete(event.url);
-      if (!parked) return;
-      void import("@capacitor/browser").then(({ Browser }) => Browser.close().catch(() => {}));
-      onHandle(parked);
-    });
+  void App.addListener("appUrlOpen", (event) => {
+    const parked = parseLinkComplete(event.url);
+    if (!parked) return;
+    void import("@capacitor/browser").then(({ Browser }) => Browser.close().catch(() => {}));
+    onHandle(parked);
+  }).then((handle) => {
     if (!alive) void handle.remove();
     else remove = () => void handle.remove();
   });

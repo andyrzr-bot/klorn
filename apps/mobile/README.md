@@ -15,7 +15,8 @@ are shared with the web (`src/styles/tokens.css` mirrors
 > offline cache, i18n, Today, **Mail** (list, swipe rows, lane sheet, reader,
 > reply / compose with an explicit confirm, Later, Subscriptions), Calendar,
 > Assistant (chat / Approvals / Activity), Files, Accounts & sources, Settings,
-> push (priming, registration, tap routing, iOS action categories), in-app
+> push (priming, registration, tap routing, iOS action categories,
+> Android action buttons for data-only messages), in-app
 > purchase (RevenueCat) and self-service account deletion are built. Store
 > builds still need the device / CI checks listed below (see
 > `STORE_SUBMISSION.md`).
@@ -30,7 +31,8 @@ npm run dev:mock     # Vite dev server against the in-app mock API (fixtures)
 npm run typecheck
 npm test             # vitest: router, size classes, API client, i18n parity, Today + Mail models,
                      #   swipe thresholds, undo window, lane sheet, snooze, mail HTML sanitizer (XSS),
-                     #   calendar / assistant / files / accounts models, push routing
+                     #   calendar / assistant / files / accounts models, push routing,
+                     #   Android data-only notifications, on-demand locale catalogs
 npm run lint         # biome with the repo-root biome.json, errors only
 npm run build        # typecheck + vite build → dist/ (what Capacitor bundles)
 npm run e2e          # Playwright screenshots + behaviour against the mock build
@@ -55,6 +57,14 @@ to fake safe areas and `?scenario=` to pick a fixture set
 (`src/api/mock/transport.ts`). `@playwright/test` is pinned to the Chromium
 revision preinstalled in our images — never run `playwright install` there.
 
+Every screenshot goes through `snap()` (`e2e/helpers.ts`), which waits on a
+deterministic signal instead of sleeping: `<html data-ready="true">` (set by
+`src/ui/ReadySignal.tsx` in mock/dev builds once boot is over and no query is
+fetching), no `[aria-busy=true]` / `.skeleton` left, no finite animation
+running, fonts loaded — still true two frames later. Loading-state pictures
+wait for the skeleton instead; offline-cache specs wait for the persisted
+cache. Run two worktrees side by side with `KLORN_E2E_PORT`.
+
 ## Architecture
 
 ```
@@ -69,20 +79,25 @@ src/
   api/query-client.ts          offline-first cache persisted 24 h (Preferences / localStorage)
   api/mock/                    fetch shim + fixtures (`--mode mock`; never in `npm run build`)
   auth/                        session (Keychain/Keystore), OAuth relay/poll, PKCE
-  i18n/                        en ko ja zh es fr de; device locale default; plural forms
+  i18n/                        en ko ja zh es fr de; device locale default; plural forms;
+                               one chunk per catalog, only the active one loaded before first render
   router/                      typed routes + deep links, tab memory, Android back decision
   layout/                      size classes, fold posture, Shell (tabs / rail / sidebar), ListDetail
   screens/                     today, mail (list · reader · sheets · Subscriptions), cover (Flip),
                                login (Welcome), calendar, assistant, files, accounts,
-                               settings (+ plans, delete)
-  push/                        priming screen, foreground banner, tap/action routing
+                               settings (+ plans, delete) — all but Today / Welcome / cover are
+                               lazy chunks (app/App.tsx); styles two screens share: styles/shared.css
+  push/                        priming screen, foreground banner, tap/action routing,
+                               Android data-only → local notification with actions (android.ts)
   api/queries-hub.ts           hooks for calendar/assistant/files/accounts/settings
   api/mock/*-hub.ts            fixtures + stateful mock routes for those screens
   ui/                          icons (artboard paths), states, pull-to-refresh, source badges,
-                               Sheet (bottom sheet / dialog / side sheet), Snackbar, StatusNote
+                               Sheet (bottom sheet / dialog / side sheet), Switch, Snackbar (the one
+                               toast: Mail's undo window and StatusNote's notify()), ReadySignal
   platform/                    native bridges: back button, browser, kv, secure store,
-                               haptics, keyboard inset, push, IAP, speech, link relay
-  styles/                      tokens.css (light + dark), base.css
+                               haptics, keyboard inset, push, local notifications (Android), IAP,
+                               speech, link relay
+  styles/                      tokens.css (light + dark), base.css, shared.css
   assets/fonts/                Geist + Instrument Serif woff2 (OFL 1.1, licences alongside)
 ```
 
@@ -215,8 +230,12 @@ tab → background the app.
 ### Push payload (what the server should send)
 
 Today the device payload carries only `url` (a web path) and a top-level
-`category`; the app maps `/email/:id`, `/inbox/firewall`, `/briefing`,
-`/chat`, `/inbox` to its routes (`src/push/route.ts`). For the full design:
+`category` (the server's `NotifCategory`); the app maps `/email/:id`,
+`/inbox/firewall`, `/briefing`, `/chat`, `/inbox` to its routes
+(`src/push/route.ts`). Every field below is validated on the device; anything
+unknown lands on Today.
+
+**iOS (APNs, `push-apns.ts`)** — an alert with a category and the ids:
 
 ```jsonc
 {
@@ -230,10 +249,65 @@ Today the device payload carries only `url` (a web path) and a top-level
 
 iOS registers `KLORN_PUSH_DRAFT` (Send draft · In 1 hour · Done) and
 `KLORN_PUSH` (In 1 hour · Done) in `AppDelegate.swift`; "Send draft" is
-`.authenticationRequired + .foreground`. Android FCM *notification* messages
-cannot carry action buttons through `@capacitor/push-notifications`; they need
-data-only messages displayed by `@capacitor/local-notifications` with actions
-(not installed) — until then an Android tap opens the route.
+`.authenticationRequired + .foreground`.
+
+**Android (FCM, `push-device.ts`)** — FCM *notification* messages cannot carry
+action buttons through `@capacitor/push-notifications`, so for buttons the
+server sends a **data-only** message (no `notification` key; every value a
+string) and the app posts it itself with `@capacitor/local-notifications`
+(`src/push/android.ts`, `src/platform/local-notify.ts`):
+
+```jsonc
+{
+  "token": "<FCM token>",
+  "android": { "priority": "high" },      // required: wakes the app for a data message
+  "data": {
+    "title": "PUSH · 박서연",              // required (≤120 chars shown)
+    "body": "계약서 오늘 18시 마감 — …",    // required (≤600 chars shown)
+    "category": "KLORN_PUSH_DRAFT",       // or "KLORN_PUSH"; anything else = no buttons
+    "emailId": "<EmailMessage.id>",
+    "attentionItemId": "<AttentionItem.id>", // In 1 hour / Done need it
+    "pendingActionId": "<PendingAction.id>", // Review opens this approval
+    "route": "/mail/<emailId>",           // optional app path, wins for taps
+    "lane": "PUSH",                        // PUSH → channel klorn_push (importance high)
+    "sentAt": "1760578080000"              // epoch ms; > 15 min old = a replay, not shown
+  }
+}
+```
+
+(The server's own `NotifCategory`, sent today as `data.category`, would move to
+another key, e.g. `notifCategory`; a value that is not a `KLORN_*` category
+simply means "no buttons".) The notification shows **1시간 뒤에 · 처리 완료 ·
+검토하기** (In 1 hour · Done · Review, in the app language). Review opens the
+approval card (or the mail) — nothing is ever sent from a notification, on
+Android either. Later / Done call the same `POST /api/inbox/firewall/:id/snooze`
+/ `dismiss` by `attentionItemId` as iOS, a tap or Review deep-links. Channels,
+created at launch: `klorn_push` (PUSH mail, IMPORTANCE_HIGH) and `klorn_other`
+(default); the manifest makes `klorn_push` FCM's default channel, so
+notification messages ring the same way. With the app on screen a data-only
+message shows the in-app banner instead, as on iOS.
+
+**What works when (Android, precisely):**
+
+| App state | Data-only message | Notification message (today) |
+|---|---|---|
+| Foreground | in-app banner (tap routes) | in-app banner |
+| Background, process alive | local notification **with** the three buttons | system notification, no buttons; tap routes |
+| Process killed / swiped away / after reboot | **nothing is shown** | system notification, no buttons; tap routes |
+
+The killed row is the plugin's limit, not ours: Capacitor's
+`MessagingService.onMessageReceived` hands a data message to the JS bridge, and
+with no bridge (no activity, no WebView) it only keeps it in memory
+(`PushNotificationsPlugin.lastMessage`) and re-fires it on the next launch —
+which the app ignores once `sentAt` is older than 15 minutes, or shows as the
+in-app banner. Also, the plugin's action buttons are activity intents: on
+Android, In 1 hour / Done / Review **open the app** (unlocking first on a secure
+lock screen) and the action runs there, where iOS runs Later / Done in the
+background. Until a native `FirebaseMessagingService` subclass posts the
+notification when no bridge is alive (and a `BroadcastReceiver` runs Later /
+Done without opening the app), the server should send data-only messages only
+when it accepts that a killed app shows nothing — e.g. keep notification
+messages as the default and switch per device once the native service ships.
 
 ### Gaps (server)
 
@@ -264,7 +338,8 @@ Calendar · Assistant · Files · push:
   rather than in the thread.
 - The device push payload lacks `emailId` / `attentionItemId` /
   `pendingActionId` / `aps.category` (above), so lock-screen actions only work
-  once the server sends them.
+  once the server sends them; Android buttons need the data-only shape above
+  (and, for a killed app, the native follow-up described there).
 - `GET /api/teams` needs a saved team; teams are created on the web only.
 
 ## PROBE mode (diagnostics only)
@@ -311,6 +386,12 @@ set it.
   unlock and opens the approval; In 1 hour / Done run without opening the app
   — verify the WebView wakes for them, else switch them to `.foreground`).
   `AppDelegate.swift` was edited without a Swift toolchain here.
+- Android data-only push (`@capacitor/local-notifications`, Kotlin, linked by
+  `cap sync` but not built here): with the app backgrounded, a data-only
+  message posts a notification on `klorn_push` with 1시간 뒤에 · 처리 완료 ·
+  검토하기; each opens the app and snoozes / dismisses / opens the approval;
+  the channel shows as "PUSH mail" with importance high in system settings;
+  killed app → nothing (documented above).
 - RevenueCat purchase / restore / manage with `VITE_REVENUECAT_IOS_KEY` /
   `_ANDROID_KEY` set; plan refresh after the webhook.
 - Multipart upload through CapacitorHttp (`POST /api/drive/files`, `size`

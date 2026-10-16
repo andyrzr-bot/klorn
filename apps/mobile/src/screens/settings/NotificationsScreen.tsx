@@ -17,6 +17,7 @@ import { type PushPermission, pushPermission } from "../../platform/push";
 import { PushPriming } from "../../push/PushLayer";
 import { ProblemState, SkeletonRows } from "../../ui/StateView";
 import { notify } from "../../ui/StatusNote";
+import { Switch } from "../../ui/Switch";
 import { SettingsBack } from "./parts";
 
 type Toggle = keyof Pick<
@@ -115,13 +116,9 @@ export function NotificationsScreen() {
                       <span className="set-row__label">{t(toggle.label)}</span>
                       <span className="set-row__hint">{t(toggle.hint)}</span>
                     </span>
-                    <input
-                      type="checkbox"
-                      role="switch"
-                      className="switch"
-                      aria-checked={data[toggle.key]}
+                    <Switch
                       checked={data[toggle.key]}
-                      onChange={(e) => void save({ [toggle.key]: e.target.checked })}
+                      onChange={(on) => void save({ [toggle.key]: on })}
                     />
                   </label>
                 </li>
@@ -140,15 +137,11 @@ export function NotificationsScreen() {
                     <span className="set-row__label">{t("settings.quiet.toggle")}</span>
                     <span className="set-row__hint">{t("settings.quiet.hint")}</span>
                   </span>
-                  <input
-                    type="checkbox"
-                    role="switch"
-                    className="switch"
-                    aria-checked={quietOn}
+                  <Switch
                     checked={quietOn}
-                    onChange={(e) =>
+                    onChange={(on) =>
                       void save(
-                        e.target.checked
+                        on
                           ? { quietHoursStart: "22:00", quietHoursEnd: "07:00" }
                           : { quietHoursStart: null, quietHoursEnd: null },
                       )

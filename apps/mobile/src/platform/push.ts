@@ -17,6 +17,10 @@ export interface IncomingPush {
   title: string;
   body: string;
   data: Record<string, unknown>;
+  /** The FCM / APNs message id, when the plugin reports one. */
+  id?: string;
+  /** No notification block (FCM data-only): nothing was shown by the OS. */
+  dataOnly?: boolean;
 }
 
 async function plugin() {
@@ -81,7 +85,7 @@ export async function markPrimed(answer: "enabled" | "later"): Promise<void> {
   await kv.setItem(PRIMED_KEY, answer);
 }
 
-/** Taps (and action buttons) and foreground deliveries. Returns the unsubscribe. */
+/** Taps (and iOS action buttons) and deliveries the app sees. Returns the unsubscribe. */
 export function installPushListeners(handlers: {
   onAction: (actionId: string, push: IncomingPush) => void;
   onForeground: (push: IncomingPush) => void;
@@ -99,11 +103,16 @@ export function installPushListeners(handlers: {
           data: (n.data ?? {}) as Record<string, unknown>,
         });
       });
+      // Android: fires for notification messages in the foreground and for
+      // data-only messages whenever the app's process (and so the WebView) is
+      // alive — foreground or background. iOS: foreground deliveries.
       const received = await push.addListener("pushNotificationReceived", (n) => {
         handlers.onForeground({
           title: n.title ?? "",
           body: n.body ?? "",
           data: (n.data ?? {}) as Record<string, unknown>,
+          id: n.id || undefined,
+          dataOnly: n.title == null && n.body == null,
         });
       });
       removers.push(

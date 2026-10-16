@@ -10,6 +10,17 @@
   pointer-events: none;
 }
 
+/* The app-wide host (StatusNoteHost): over every screen and sheet, above the tab bar. */
+.snackbar-region--fixed {
+  position: fixed;
+  z-index: 120;
+  bottom: calc(var(--safe-bottom) + var(--note-offset, 16px));
+}
+
+html:has(.shell[data-nav="tabs"]) .snackbar-region--fixed {
+  --note-offset: calc(var(--tabbar-height) + 12px);
+}
+
 .snackbar {
   pointer-events: auto;
   width: min(560px, 100%);
@@ -31,6 +42,19 @@
   background: var(--state-danger-bg);
   color: var(--state-danger-ink);
   border: 1px solid var(--state-danger-line);
+}
+
+.snackbar__icon {
+  flex: none;
+  margin-right: 6px;
+}
+
+.snackbar[data-icon="ok"] .snackbar__icon {
+  color: var(--snackbar-ok);
+}
+
+.snackbar[data-icon="info"] .snackbar__icon {
+  color: var(--snackbar-action);
 }
 
 .snackbar__text {

@@ -37,7 +37,6 @@ export const ko: Messages = {
   "today.next.now": "진행 중",
   "today.next.join": "참여",
   "today.next.open": "보기",
-  "today.next.allDay": "종일",
   "today.next.empty": "오늘 남은 일정이 없어요.",
   "today.approvals.title": "승인 대기",
   "today.approvals.seeAll": "모두 보기",
@@ -66,12 +65,9 @@ export const ko: Messages = {
   "state.noAccounts.body":
     "연결한 계정의 메일을 Klorn이 정리해요. 지금은 웹(app.klorn.ai)에서 계정을 추가할 수 있어요.",
 
-  "placeholder.body": "이 화면은 곧 열려요.",
   "mail.selectPrompt": "읽을 메일을 고르면 여기에 열려요.",
 
   "accounts.title": "계정과 소스",
-  "accounts.signedInAs": "{email}(으)로 로그인됨",
-  "accounts.connected": "연결된 메일 계정",
   "accounts.needsReconnect": "다시 연결 필요",
   "accounts.language": "앱 언어",
   "accounts.theme": "화면 모드",
@@ -332,7 +328,6 @@ export const ko: Messages = {
   "settings.push.on": "켜짐",
   "settings.push.off": "꺼짐",
   "settings.push.ask": "설정 전",
-  "settings.push.server": "서버",
   "settings.push.device": "이 기기",
   "settings.push.onBody": "이 기기에서 알림이 켜져 있어요.",
   "settings.push.offBody": "알림이 꺼져 있어요. 기기 설정에서 Klorn 알림을 켜 주세요.",
@@ -709,6 +704,13 @@ export const ko: Messages = {
   "push.denied": "알림이 꺼져 있어요. 기기 설정에서 켤 수 있어요.",
   "push.snoozed": "1시간 뒤에 다시 알려 드릴게요.",
   "push.done": "처리 완료로 표시했어요.",
+  "push.action.later": "1시간 뒤에",
+  "push.action.done": "처리 완료",
+  "push.action.review": "검토하기",
+  "push.channel.push": "PUSH 메일",
+  "push.channel.pushBody":
+    "지금 챙겨야 할 메일만 알려요. 알림에서 바로 1시간 뒤에·처리 완료를 고를 수 있어요.",
+  "push.channel.other": "기타 알림",
   "push.cover.draftReady": "답장 초안 준비됨",
   "push.cover.snoozeFailed": "미루지 못했어요. 다시 목록에 올렸어요.",
 

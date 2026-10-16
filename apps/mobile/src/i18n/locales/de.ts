@@ -38,7 +38,6 @@ export const de: Messages = {
   "today.next.now": "Läuft",
   "today.next.join": "Beitreten",
   "today.next.open": "Ansehen",
-  "today.next.allDay": "Ganztägig",
   "today.next.empty": "Heute steht nichts mehr im Kalender.",
   "today.approvals.title": "Wartet auf Freigabe",
   "today.approvals.seeAll": "Alle ansehen",
@@ -68,12 +67,9 @@ export const de: Messages = {
   "state.noAccounts.body":
     "Klorn sortiert die Mails der Konten, die du verbindest. Vorerst kannst du eines im Web unter app.klorn.ai hinzufügen.",
 
-  "placeholder.body": "Dieser Bildschirm kommt bald.",
   "mail.selectPrompt": "Wähle eine Mail, um sie hier zu lesen.",
 
   "accounts.title": "Konten und Quellen",
-  "accounts.signedInAs": "Angemeldet als {email}",
-  "accounts.connected": "Verbundene Mailkonten",
   "accounts.needsReconnect": "Muss neu verbunden werden",
   "accounts.language": "App-Sprache",
   "accounts.theme": "Darstellung",
@@ -344,7 +340,6 @@ export const de: Messages = {
   "settings.push.on": "An",
   "settings.push.off": "Aus",
   "settings.push.ask": "Nicht festgelegt",
-  "settings.push.server": "Server",
   "settings.push.device": "Dieses Gerät",
   "settings.push.onBody": "Benachrichtigungen sind auf diesem Gerät an.",
   "settings.push.offBody":
@@ -744,6 +739,13 @@ export const de: Messages = {
     "Benachrichtigungen sind aus. Du kannst sie in den Geräteeinstellungen einschalten.",
   "push.snoozed": "Um eine Stunde verschoben.",
   "push.done": "Als erledigt markiert.",
+  "push.action.later": "In 1 Stunde",
+  "push.action.done": "Erledigt",
+  "push.action.review": "Prüfen",
+  "push.channel.push": "PUSH-Mails",
+  "push.channel.pushBody":
+    "Nur Mails, die dich jetzt brauchen – mit „In 1 Stunde“ und „Erledigt“ direkt in der Benachrichtigung.",
+  "push.channel.other": "Weitere Benachrichtigungen",
   "push.cover.draftReady": "Antwortentwurf bereit",
   "push.cover.snoozeFailed": "Verschieben hat nicht geklappt. Es steht wieder in der Liste.",
 

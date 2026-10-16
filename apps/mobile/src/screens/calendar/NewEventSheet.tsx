@@ -13,6 +13,7 @@ import { useI18n } from "../../i18n/I18nProvider";
 import { useLinkProps } from "../../router/Router";
 import { Sheet } from "../../ui/Sheet";
 import { notify } from "../../ui/StatusNote";
+import { Switch } from "../../ui/Switch";
 import { DraftSummary, useCreateEvent } from "./EventDraftCard";
 import { type DayKey, defaultFormFor, draftFromForm, type EventForm, formFromDraft } from "./model";
 
@@ -219,14 +220,8 @@ export function NewEventSheet({
           />
         </label>
         <label className="new-event__switch">
-          <input
-            type="checkbox"
-            role="switch"
-            aria-checked={form.allDay}
-            checked={form.allDay}
-            onChange={(e) => set({ allDay: e.target.checked })}
-          />
           <span>{t("calendar.allDay")}</span>
+          <Switch checked={form.allDay} onChange={(allDay) => set({ allDay })} />
         </label>
         {form.allDay ? null : (
           <div className="form-row">

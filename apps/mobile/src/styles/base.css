@@ -111,8 +111,7 @@ a {
 
 /* A vertical hinge: single-column pages stay on the left segment, never across the fold. */
 .shell[data-posture="book"] .screen > .settings,
-.shell[data-posture="book"] .screen > .accounts,
-.shell[data-posture="book"] .screen > .placeholder {
+.shell[data-posture="book"] .screen > .accounts {
   max-width: calc(var(--hinge-start, 50vw) - var(--rail-width) - 56px);
   margin-left: 0;
 }
