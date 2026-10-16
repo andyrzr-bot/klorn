@@ -96,6 +96,25 @@ export function accountOf(
   return inboxes.find((inbox) => inbox.id === id) ?? null;
 }
 
+/**
+ * The accounts a NEW mail can leave from (POST /api/email/send
+ * `linkedInboxAccountId`): connected and not waiting for a reconnect, primary
+ * first. Generic IMAP has no SMTP endpoint on the server, so it never sends;
+ * Naver / iCloud send only while the server's IMAP send is on — the route then
+ * answers 501 and the confirm sheet asks for another account. A reply always
+ * leaves from the mail's own account (the server reads it from the row).
+ */
+export function sendableAccounts(inboxes: readonly InboxOption[]): InboxOption[] {
+  return inboxes
+    .filter((inbox) => !inbox.needsReconnect && inbox.provider !== "IMAP")
+    .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "primary" ? -1 : 1));
+}
+
+/** The send body's `linkedInboxAccountId`: null = the primary inbox. */
+export function sendAccountId(from: InboxOption | null): string | null {
+  return from && from.kind === "linked" ? from.id : null;
+}
+
 export interface AccountWords {
   work: string;
   personalGmail: string;

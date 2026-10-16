@@ -1,10 +1,11 @@
 /**
  * Where a notification tap lands. The payload is external input (FCM data /
  * APNs custom keys), so every field is validated and anything unknown lands
- * on Today. The server today sends `url` (a WEB path such as
- * `/email/<id>` or `/inbox/firewall`); `route` (an app path), `emailId`,
- * `attentionItemId` and `pendingActionId` are read when present — see
- * README "Push payload" for what the server should send.
+ * on Today. Every push carries `url` (a WEB path such as `/email/<id>` or
+ * `/inbox/firewall`) and `category` (the server's NotifCategory); a mail push
+ * also carries `emailId`, `route` (`/mail/<emailId>`, an app path) and, when
+ * they exist, `attentionItemId` / `pendingActionId` (contract/src/push.ts
+ * NativePushMailFields) — see README "Push payload".
  */
 import { parseRoute, type Route } from "../router/routes";
 
@@ -74,28 +75,46 @@ export const PUSH_ACTIONS = {
   done: "KLORN_DONE",
 } as const;
 
+/**
+ * What Later / Done act on: the mail (by email id — POST
+ * /api/inbox/firewall/email/:emailId/{snooze,dismiss}, which works for any of
+ * the user's mail), else the attention item when only its id came.
+ */
+export type TriageTarget = { emailId: string } | { attentionItemId: string };
+
 export type PushIntent =
   | { kind: "open"; route: Route }
   /** "Send draft" / "Review" never send: they open the approval card, where the user taps Send. */
   | { kind: "review"; route: Route }
-  | { kind: "snooze"; attentionItemId: string; fallback: Route }
-  | { kind: "done"; attentionItemId: string; fallback: Route };
+  | { kind: "snooze"; target: TriageTarget; fallback: Route }
+  | { kind: "done"; target: TriageTarget; fallback: Route };
+
+export function triageTargetOf(data: PushData | null | undefined): TriageTarget | null {
+  const emailId = idOf(data?.emailId);
+  if (emailId) return { emailId };
+  const attentionItemId = idOf(data?.attentionItemId);
+  return attentionItemId ? { attentionItemId } : null;
+}
 
 export function intentOf(actionId: string, data: PushData | null | undefined): PushIntent {
   const route = routeFromPush(data);
-  const attentionItemId = idOf(data?.attentionItemId);
+  const target = triageTargetOf(data);
   switch (actionId) {
     case PUSH_ACTIONS.send:
-    case PUSH_ACTIONS.review:
-      return { kind: "review", route };
+    case PUSH_ACTIONS.review: {
+      // The approval card, even though a mail push's `route` is the reader.
+      const pendingActionId = idOf(data?.pendingActionId);
+      return {
+        kind: "review",
+        route: pendingActionId
+          ? { name: "assistant", section: "approvals", id: pendingActionId }
+          : route,
+      };
+    }
     case PUSH_ACTIONS.later:
-      return attentionItemId
-        ? { kind: "snooze", attentionItemId, fallback: route }
-        : { kind: "open", route };
+      return target ? { kind: "snooze", target, fallback: route } : { kind: "open", route };
     case PUSH_ACTIONS.done:
-      return attentionItemId
-        ? { kind: "done", attentionItemId, fallback: route }
-        : { kind: "open", route };
+      return target ? { kind: "done", target, fallback: route } : { kind: "open", route };
     default:
       return { kind: "open", route };
   }

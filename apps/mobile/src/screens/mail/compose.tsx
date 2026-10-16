@@ -4,9 +4,14 @@
  *
  * Deterministic floor: sending is one of the three real-world actions, so it
  * only ever happens from ConfirmSendSheet, on an explicit tap, with exactly
- * the recipient / subject / body shown there. After the send the sheet turns
- * into the receipt: what went out, the provider's message id, and the payload
- * hash of the confirmed bytes (the server's sendEmailPayloadHash).
+ * the recipient / subject / body shown there. A new mail leaves from the
+ * account picked in the composer ("보내는 계정", POST /api/email/send
+ * `linkedInboxAccountId`); a reply from the mail's own account. After the send
+ * the sheet turns into the receipt: what went out, and the payload hash
+ * (sendEmailPayloadHash). With MANUAL_SEND_RECEIPTS_ENABLED on the server
+ * answers with its own ActionReceipt (id + payloadHash, written before the
+ * provider was called) and the sheet shows that; otherwise it shows the hash
+ * this device computed from the confirmed bytes, and says so.
  */
 import type { InboxOption } from "@klorn/contract";
 import { type CSSProperties, useEffect, useId, useRef, useState } from "react";
@@ -20,7 +25,8 @@ import { useKeyboardInset } from "../../platform/keyboard";
 import { MailGlyph } from "../../ui/MailGlyph";
 import { Sheet } from "../../ui/Sheet";
 import { SourceBadge } from "../../ui/SourceBadge";
-import { addressOf, parseRecipients, replySubject, sendPayloadHash } from "./model";
+import { addressOf, parseRecipients, replySubject, sendAccountId, sendPayloadHash } from "./model";
+import { useAccountLabel } from "./useAccountLabel";
 
 /** Tone chips → the reply-draft route's `intent` (it regenerates with instructions). */
 export const TONES = [
@@ -197,25 +203,33 @@ export type ComposerMode =
     }
   | { kind: "new"; to: string; subject?: string; body?: string; from: InboxOption | null };
 
+const accountKey = (inbox: InboxOption | null) => inbox?.id ?? "primary";
+
 export function ComposerSheet({
   open,
   mode,
+  accounts,
   onClose,
   onReview,
 }: {
   open: boolean;
   mode: ComposerMode | null;
+  /** The accounts a new mail can leave from (model.ts sendableAccounts). */
+  accounts: readonly InboxOption[];
   onClose: () => void;
   onReview: (mail: OutgoingMail) => void;
 }) {
   const { t } = useI18n();
   const inset = useKeyboardInset();
+  const accountLabel = useAccountLabel(accounts);
   const toId = useId();
   const subjectId = useId();
   const bodyId = useId();
+  const fromId = useId();
   const [to, setTo] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
+  const [from, setFrom] = useState<InboxOption | null>(null);
   const [touched, setTouched] = useState(false);
   const modeKey = mode ? `${mode.kind}:${"emailId" in mode ? mode.emailId : mode.to}` : "";
 
@@ -224,8 +238,14 @@ export function ComposerSheet({
     setTo(mode.to);
     setSubject(mode.subject ?? "");
     setBody(mode.body ?? "");
+    setFrom(
+      mode.kind === "reply"
+        ? mode.from
+        : (accounts.find((a) => accountKey(a) === accountKey(mode.from)) ?? accounts[0] ?? null),
+    );
     setTouched(false);
   }, [modeKey]);
+  const pickAccount = mode?.kind === "new" && accounts.length > 1;
 
   const recipients = parseRecipients(to);
   const valid = recipients !== null && subject.trim() !== "" && body.trim() !== "";
@@ -271,7 +291,7 @@ export function ComposerSheet({
                     to: (recipients ?? []).join(", "),
                     subject: subject.trim(),
                     body,
-                    from: mode.from,
+                    from,
                   },
             );
           }}
@@ -310,12 +330,37 @@ export function ComposerSheet({
             onChange={(e) => setSubject(e.target.value)}
           />
         </div>
-        {mode?.from ? (
+        {pickAccount ? (
+          <div className="composer__row">
+            <label className="composer__label" htmlFor={fromId}>
+              {t("mail.compose.from")}
+            </label>
+            {from ? <SourceBadge inbox={from} size={16} /> : null}
+            <select
+              id={fromId}
+              className="composer__input composer__select"
+              value={accountKey(from)}
+              onChange={(e) =>
+                setFrom(accounts.find((a) => accountKey(a) === e.target.value) ?? null)
+              }
+            >
+              {accounts.map((a) => {
+                const address = a.email ?? t("mail.account.primary");
+                const label = accountLabel(a);
+                return (
+                  <option key={accountKey(a)} value={accountKey(a)}>
+                    {label && label !== address ? `${label} · ${address}` : address}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+        ) : from ? (
           <div className="composer__row composer__row--static">
             <span className="composer__label">{t("mail.compose.from")}</span>
             <span className="composer__from">
-              <SourceBadge inbox={mode.from} size={16} />
-              {mode.from.email ?? t("mail.account.primary")}
+              <SourceBadge inbox={from} size={16} />
+              {from.email ?? t("mail.account.primary")}
             </span>
           </div>
         ) : null}
@@ -397,14 +442,20 @@ export function ConfirmSendSheet({
       const result =
         mail.kind === "reply" && mail.emailId
           ? await ep.compose.sendReply(mail.emailId, mail.body)
-          : await ep.compose.send({ to: mail.to, subject: mail.subject, body: mail.body });
+          : await ep.compose.send({
+              to: mail.to,
+              subject: mail.subject,
+              body: mail.body,
+              linkedInboxAccountId: sendAccountId(mail.from),
+            });
       hapticSuccess();
       setState({ kind: "sent", hash, result, at: new Date() });
       onSent(mail);
     } catch (err) {
       hapticWarning();
-      // 502 on /reply = the provider could not say whether it went out: never invite a blind retry.
-      const unknown = isApiError(err) && err.status === 502 && mail.kind === "reply";
+      // 502 = the provider could not say whether it went out: never invite a blind retry.
+      const status = isApiError(err) ? err.status : null;
+      const unknown = status === 502;
       setState({
         kind: "failed",
         unknown,
@@ -412,9 +463,13 @@ export function ConfirmSendSheet({
           ? "reader.send.unknown"
           : isApiError(err) && err.isOffline
             ? "reader.send.offline"
-            : isApiError(err) && err.status === 403
+            : status === 403
               ? "reader.draft.notEntitled"
-              : "reader.send.failed",
+              : status === 501 && mail.kind === "new"
+                ? "reader.send.unsupportedAccount"
+                : status === 404 && mail.kind === "new" && sendAccountId(mail.from)
+                  ? "reader.send.accountGone"
+                  : "reader.send.failed",
       });
     } finally {
       sending.current = false;
@@ -502,14 +557,7 @@ export function ConfirmSendSheet({
             <dt>{t("reader.confirm.body")}</dt>
             <dd className="send-review__body selectable">{mail.body}</dd>
           </div>
-          {sent ? (
-            <div className="send-review__row">
-              <dt>{t("reader.receipt.label")}</dt>
-              <dd className="send-review__hash selectable" title={sent.hash}>
-                {t("reader.receipt.hash", { hash: sent.hash.slice(0, 12) })}
-              </dd>
-            </div>
-          ) : null}
+          {sent ? <ReceiptRow hash={sent.hash} result={sent.result} /> : null}
           {mismatch ? (
             <p className="reply-form__error" role="alert">
               {t("reader.receipt.mismatch")}
@@ -518,6 +566,40 @@ export function ConfirmSendSheet({
         </dl>
       ) : null}
     </Sheet>
+  );
+}
+
+/**
+ * The receipt line: the server's ActionReceipt when it sent one (id +
+ * payloadHash of the bytes the provider received), else the hash this device
+ * computed from the confirmed bytes — labelled as such either way.
+ */
+function ReceiptRow({ hash, result }: { hash: string; result: SendMailResponse }) {
+  const { t } = useI18n();
+  const server = result.receipt ?? null;
+  const shown = server?.payloadHash ?? hash;
+  return (
+    <div className="send-review__row">
+      <dt>{t("reader.receipt.label")}</dt>
+      <dd className="send-review__receipt">
+        <span className="send-review__hash selectable" title={shown}>
+          {t("reader.receipt.hash", { hash: shown.slice(0, 12) })}
+        </span>
+        {server ? (
+          <span className="send-review__hash selectable">
+            {t("reader.receipt.id", { id: server.id })}
+          </span>
+        ) : null}
+        <span className="send-review__source">
+          {t(server ? "reader.receipt.source.server" : "reader.receipt.source.device")}
+        </span>
+        {server && server.payloadHash !== hash ? (
+          <span className="reply-form__error" role="alert">
+            {t("reader.receipt.hashDiffers", { hash: hash.slice(0, 12) })}
+          </span>
+        ) : null}
+      </dd>
+    </div>
   );
 }
 

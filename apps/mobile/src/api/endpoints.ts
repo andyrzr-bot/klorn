@@ -4,6 +4,8 @@
  * contract has them, else from ./wire.ts.
  */
 import type {
+  AttentionByEmailDismissResponse,
+  AttentionByEmailSnoozeResponse,
   AuthProvidersResponse,
   BriefingStatus,
   DailyReceipt,
@@ -23,6 +25,7 @@ import type {
   LaneOverrideByEmailResponse,
   LaneOverrideUndoResponse,
   LiveTier,
+  SendEmailRequest,
   TeamAvailabilityResponse,
   TeamsListResponse,
 } from "@klorn/contract";
@@ -128,7 +131,12 @@ export function endpoints(api: ApiClient) {
       /** routes/email-lanes.ts GET /lane-counts (dark unless MAIL_V2 or UNIFIED_HOME). */
       laneCounts: (inbox?: InboxScope, o?: RequestOptions) =>
         api.get<EmailLaneCountsResponse>(`/api/email/lane-counts${query({ inbox })}`, o),
-      /** routes/email.ts GET / — the paged list; `tier` honoured while a lane reader is on. */
+      /**
+       * routes/email.ts GET / — the paged list; `tier` honoured while a lane
+       * reader is on. Always `hideHandled=1`: mail whose attention item is Done
+       * (DISMISSED) or still under a Later (SNOOZED) is left out by the server,
+       * so a Done on one device is gone on the others too.
+       */
       list: (
         params: { tier?: LaneFilter; page?: number; inbox?: InboxScope; search?: string },
         o?: RequestOptions,
@@ -139,6 +147,7 @@ export function endpoints(api: ApiClient) {
             page: params.page ?? 1,
             inbox: params.inbox === "all" ? undefined : params.inbox,
             tier: params.tier,
+            hideHandled: 1,
           })}`,
           o,
         ),
@@ -221,9 +230,13 @@ export function endpoints(api: ApiClient) {
       /** routes/email-replies.ts POST /:id/gmail-draft — keep it as a draft in the account. */
       saveReplyDraft: (id: string, draft: { to: string; subject: string; body: string }) =>
         api.post<SavedDraftResponse>(`/api/email/${encodeURIComponent(id)}/gmail-draft`, draft),
-      /** routes/email-mutations.ts POST /send — a new mail; the server sends it from the primary account. */
-      send: (mail: { to: string; subject: string; body: string }) =>
-        api.post<SendMailResponse>("/api/email/send", mail),
+      /**
+       * routes/email-mutations.ts POST /send — a new mail, from the account the
+       * user picked: `linkedInboxAccountId` null = the primary inbox, else one of
+       * the caller's linked inboxes (404 if it is not theirs, never a silent
+       * primary send; 501 when that provider cannot send from Klorn).
+       */
+      send: (mail: SendEmailRequest) => api.post<SendMailResponse>("/api/email/send", mail),
     },
     /**
      * routes/email-subscriptions.ts — dark (404) unless BULK_UNSUBSCRIBE_ENABLED;
@@ -247,16 +260,34 @@ export function endpoints(api: ApiClient) {
      */
     triage: {
       /**
-       * Swipe right, "Done": routes/firewall.ts POST /:id/dismiss — the attention
-       * item (id = FirewallItem.id) leaves Klorn's lists, status DISMISSED; the
-       * source email is untouched. The server has no un-dismiss, so the 5 s undo
-       * is client-side: hide optimistically, send this only once the window ends.
+       * Swipe right, "Done": routes/firewall.ts POST /email/:emailId/dismiss —
+       * keyed by the EmailMessage id, so it works for any mail in any account,
+       * not only the firewall's newest-200 window. The mail's attention item
+       * becomes DISMISSED; the source email is untouched. `alreadyClear` = nothing
+       * changed (already done, resolved, or not classified yet — `itemId: null`).
+       * The server has no un-dismiss, so the 5 s undo is client-side: hide
+       * optimistically, send this only once the window ends.
+       */
+      doneByEmail: (emailId: string) =>
+        api.post<AttentionByEmailDismissResponse>(
+          `/api/inbox/firewall/email/${encodeURIComponent(emailId)}/dismiss`,
+        ),
+      /** "Later" by email id: POST /email/:emailId/snooze — back in the lists at `until`. */
+      snoozeByEmail: (emailId: string, until: Date) =>
+        api.post<AttentionByEmailSnoozeResponse>(
+          `/api/inbox/firewall/email/${encodeURIComponent(emailId)}/snooze`,
+          { snoozeUntil: until.toISOString() },
+        ),
+      /**
+       * Done by attention item id (routes/firewall.ts POST /:id/dismiss): the
+       * Flip cover (it holds firewall items) and a notification that carries
+       * only an `attentionItemId`.
        */
       done: (attentionItemId: string) =>
         api.post<{ ok: true }>(
           `/api/inbox/firewall/${encodeURIComponent(attentionItemId)}/dismiss`,
         ),
-      /** "Later": routes/firewall.ts POST /:id/snooze — back to OPEN at `until`. */
+      /** "Later" by attention item id: routes/firewall.ts POST /:id/snooze — back to OPEN at `until`. */
       snooze: (attentionItemId: string, until: Date) =>
         api.post<{ ok: true; snoozedUntil: string }>(
           `/api/inbox/firewall/${encodeURIComponent(attentionItemId)}/snooze`,

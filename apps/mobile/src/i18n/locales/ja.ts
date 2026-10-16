@@ -243,10 +243,19 @@ export const ja: Messages = {
   "reader.send.offline": "オフラインです。送信されていません。",
   "reader.send.unknown":
     "送信されたか確認できませんでした。再送する前に送信済みフォルダを確認してください。",
+  "reader.send.unsupportedAccount":
+    "このアカウントはまだKlornから送信できません。何も送信されていないので、別のアカウントを選んでください。",
+  "reader.send.accountGone":
+    "そのアカウントはもう接続されていません。何も送信されていないので、別のアカウントを選んでください。",
   "reader.receipt.title": "送信しました",
   "reader.receipt.sent": "{time} に送信しました",
   "reader.receipt.label": "レシート",
   "reader.receipt.hash": "内容ハッシュ {hash}",
+  "reader.receipt.source.server": "送信前に Klorn サーバーが記録したハッシュ",
+  "reader.receipt.source.device": "確認した内容からこの端末で計算したハッシュ",
+  "reader.receipt.id": "レシート番号 {id}",
+  "reader.receipt.hashDiffers":
+    "同じメールをこの端末で計算した値は {hash} です。送信済みフォルダを確認してください。",
   "reader.receipt.mismatch":
     "サーバーが使った宛先が表示と異なります。送信済みフォルダを確認してください。",
   "reader.receipt.close": "閉じる",

@@ -1,4 +1,4 @@
-import type { FirewallResponse } from "@klorn/contract";
+import type { FirewallResponse, InboxOption } from "@klorn/contract";
 import { describe, expect, it } from "vitest";
 import { MOCK_INBOXES, mockFirewall } from "../../api/mock/fixtures";
 import { canSubmit, initialLane, SHEET_LANES, senderLabel, submitPlan } from "./lane-sheet-model";
@@ -17,6 +17,8 @@ import {
   readPercent,
   readTone,
   replySubject,
+  sendAccountId,
+  sendableAccounts,
   sendPayloadCanonical,
   sendPayloadHash,
   splitSender,
@@ -122,6 +124,33 @@ describe("senders and accounts", () => {
     ]);
     expect(parseRecipients("not an address")).toBeNull();
     expect(parseRecipients("")).toBeNull();
+  });
+
+  it("offers only accounts that can send a new mail, primary first", () => {
+    const inbox = (over: Partial<InboxOption>): InboxOption => ({
+      id: "x",
+      email: "x@example.com",
+      kind: "linked",
+      needsReconnect: false,
+      provider: "GOOGLE",
+      purpose: null,
+      ...over,
+    });
+    const work = inbox({ id: "w", provider: "GOOGLE" });
+    const naver = inbox({ id: "n", provider: "NAVER" });
+    const primary = inbox({ id: null, kind: "primary" });
+    const accounts = sendableAccounts([
+      work,
+      inbox({ id: "i", provider: "ICLOUD", needsReconnect: true }),
+      inbox({ id: "g", provider: "IMAP" }),
+      naver,
+      primary,
+    ]);
+    expect(accounts.map((a) => a.id)).toEqual([null, "w", "n"]);
+    // The send body: null = the primary inbox, else the linked inbox id.
+    expect(sendAccountId(primary)).toBeNull();
+    expect(sendAccountId(null)).toBeNull();
+    expect(sendAccountId(work)).toBe("w");
   });
 });
 

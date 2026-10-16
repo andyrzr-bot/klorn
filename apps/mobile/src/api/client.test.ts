@@ -99,8 +99,17 @@ describe("api client", () => {
     await ep.triage.snooze("att-1", new Date("2026-10-16T12:00:00Z"));
     await ep.triage.pinSender("e1", "PUSH");
     await ep.auth.desktopToken("n1", "verifier");
+    await ep.triage.doneByEmail("e 2");
+    await ep.triage.snoozeByEmail("e2", new Date("2026-10-16T12:00:00Z"));
+    await ep.compose.send({
+      to: "a@b.example",
+      subject: "s",
+      body: "b",
+      linkedInboxAccountId: "w",
+    });
     expect(calls.map((c) => `${c.init.method} ${c.url.replace("https://a", "")}`)).toEqual([
-      "GET /api/email?search=x&page=2&tier=PUSH",
+      // hideHandled=1: Done / Later from any device are left out by the server.
+      "GET /api/email?search=x&page=2&tier=PUSH&hideHandled=1",
       "GET /api/inbox/firewall?inbox=primary",
       "GET /api/calendar?start=2026-10-16T00%3A00%3A00.000Z&end=2026-10-17T00%3A00%3A00.000Z",
       "POST /api/inbox/firewall/att%201/dismiss",
@@ -108,7 +117,17 @@ describe("api client", () => {
       "POST /api/inbox/firewall/att-1/snooze",
       "POST /api/email/e1/pin-tier",
       "GET /api/auth/desktop-token/n1",
+      "POST /api/inbox/firewall/email/e%202/dismiss",
+      "POST /api/inbox/firewall/email/e2/snooze",
+      "POST /api/email/send",
     ]);
+    expect(calls[9]?.init.body).toBe('{"snoozeUntil":"2026-10-16T12:00:00.000Z"}');
+    expect(JSON.parse(String(calls[10]?.init.body))).toEqual({
+      to: "a@b.example",
+      subject: "s",
+      body: "b",
+      linkedInboxAccountId: "w",
+    });
     expect(calls[4]?.init.body).toBe('{"tier":"SILENT"}');
     expect((calls[7]?.init.headers as Record<string, string>)["x-desktop-verifier"]).toBe(
       "verifier",

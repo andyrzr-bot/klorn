@@ -7,16 +7,29 @@
  * 검토하기 (In 1 hour · Done · Review). Review only opens the approval card
  * or the mail: nothing is ever sent from a notification, on Android either.
  *
- * Message shape the server sends (every FCM data value is a string):
+ * The keys are the ones the server already puts in FCM `data`
+ * (packages/api notify/push-device.ts buildFcmMessage; contract/src/push.ts),
+ * plus the title and body, which a data-only message must carry in `data`
+ * because it has no `notification` block. Every value is a string:
  *
- *   { "data": { "title", "body", "category": "KLORN_PUSH_DRAFT" | "KLORN_PUSH",
- *               "emailId", "attentionItemId", "pendingActionId", "route",
- *               "lane", "sentAt" (epoch ms) },
- *     "android": { "priority": "high" } }        // and NO "notification" key
+ *   { "data": { "title", "body",                    // required for data-only
+ *               "category",                          // the server's NotifCategory
+ *               "url", "notificationId",             // as on every push
+ *               "emailId", "route",                  // a mail push
+ *               "attentionItemId", "pendingActionId",// when they exist
+ *               "sentAt" },                          // optional, epoch ms
+ *     "android": { "priority": "high" } }            // and NO "notification" key
  *
- * See README "Push payload" for what works in which app state (a data-only
- * message reaches the app only while its process is alive).
+ * The action set follows the ids, as the server picks the APNs category:
+ * a `pendingActionId` → the draft set, else a mail (`emailId`, or an
+ * `attentionItemId` alone) → the plain set, else no buttons (a tap still
+ * routes). `category: "email_urgent"` (a PUSH-lane mail) rings on the
+ * high-importance channel. See README "Push payload" for what works in which
+ * app state (a data-only message reaches the app only while its process is
+ * alive). The server sends notification messages today, which the OS shows
+ * by itself (no buttons) and this module leaves alone.
  */
+import type { ApnsMailCategory } from "@klorn/contract";
 import type { PushData } from "./route";
 import { PUSH_ACTIONS } from "./route";
 
@@ -30,13 +43,19 @@ export const ANDROID_CHANNELS = {
 
 export type AndroidChannelId = (typeof ANDROID_CHANNELS)[keyof typeof ANDROID_CHANNELS]["id"];
 
-/** Action sets, by the same category ids iOS registers (AppDelegate.swift). */
+/**
+ * Action sets, by the same category ids the server sends as APNs `aps.category`
+ * and iOS registers (AppDelegate.swift) — contract/src/push.ts ApnsMailCategory.
+ */
 export const ACTION_CATEGORIES = {
-  withDraft: "KLORN_PUSH_DRAFT",
-  plain: "KLORN_PUSH",
-} as const;
+  withDraft: "KLORN_PUSH_MAIL_DRAFT",
+  plain: "KLORN_PUSH_MAIL",
+} as const satisfies Record<string, ApnsMailCategory>;
 
 export type ActionCategory = (typeof ACTION_CATEGORIES)[keyof typeof ACTION_CATEGORIES];
+
+/** The server's NotifCategory of a PUSH-lane mail (judge/email-firewall.ts). */
+const URGENT_MAIL_CATEGORY = "email_urgent";
 
 /** A data-only message older than this is a replay (the plugin re-fires its last message on launch). */
 export const STALE_AFTER_MS = 15 * 60_000;
@@ -44,7 +63,6 @@ export const STALE_AFTER_MS = 15 * 60_000;
 const ID = /^[A-Za-z0-9_-]{1,128}$/;
 const TITLE_MAX = 120;
 const BODY_MAX = 600;
-const LANES = new Set(["PUSH", "MEETING", "QUEUE", "INFO", "SILENT"]);
 
 export interface IncomingMessage {
   /** Set when FCM carried a `notification` block (the OS showed it already). */
@@ -103,17 +121,13 @@ export function parseDataPush(message: IncomingMessage, now: number): DataPush |
   const emailId = id(data.emailId);
   const attentionItemId = id(data.attentionItemId);
   const pendingActionId = id(data.pendingActionId);
-  const declared = Object.values(ACTION_CATEGORIES).find((c) => c === data.category) ?? null;
-  const category: ActionCategory | null =
-    declared ??
-    (pendingActionId
-      ? ACTION_CATEGORIES.withDraft
-      : attentionItemId
-        ? ACTION_CATEGORIES.plain
-        : null);
-
-  const lane = typeof data.lane === "string" && LANES.has(data.lane) ? data.lane : null;
-  const isPush = lane ? lane === "PUSH" : category !== null;
+  // Derived from the ids, never from `category` (that is the NotifCategory).
+  const category: ActionCategory | null = pendingActionId
+    ? ACTION_CATEGORIES.withDraft
+    : emailId || attentionItemId
+      ? ACTION_CATEGORIES.plain
+      : null;
+  const isPush = data.category === URGENT_MAIL_CATEGORY;
 
   const kept: PushData = {};
   if (emailId) kept.emailId = emailId;

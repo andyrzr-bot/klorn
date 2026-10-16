@@ -5,7 +5,7 @@
  * packages/contract (open question in apps/mobile/README.md) — until then a
  * server change here is not caught by the compiler, so keep them minimal.
  */
-import type { LiveTier } from "@klorn/contract";
+import type { LiveTier, SendReceiptWire } from "@klorn/contract";
 
 /** `user` on POST /api/auth/login, /register and GET /api/auth/me. */
 export interface MeUser {
@@ -320,6 +320,12 @@ export interface SendMailResponse {
   threadId?: string | null;
   to?: string;
   threaded?: boolean;
+  /**
+   * The server's deterministic-floor receipt (mail/send-receipt.ts): present
+   * only while MANUAL_SEND_RECEIPTS_ENABLED is on. Absent = the app shows the
+   * hash it computed itself on the device.
+   */
+  receipt?: SendReceiptWire;
 }
 
 /** POST /api/email/:id/gmail-draft — the draft saved in the mail account. */

@@ -251,10 +251,19 @@ export const en = {
   "reader.send.offline": "You're offline. Nothing was sent.",
   "reader.send.unknown":
     "We couldn't confirm whether it was sent. Check your Sent folder before trying again.",
+  "reader.send.unsupportedAccount":
+    "This account can't send from Klorn yet. Nothing was sent — pick another account.",
+  "reader.send.accountGone":
+    "That account is no longer connected. Nothing was sent — pick another account.",
   "reader.receipt.title": "Sent",
   "reader.receipt.sent": "Sent at {time}",
   "reader.receipt.label": "Receipt",
   "reader.receipt.hash": "Payload {hash}",
+  "reader.receipt.source.server": "Hash recorded by the Klorn server before sending",
+  "reader.receipt.source.device": "Hash computed on this device from what you confirmed",
+  "reader.receipt.id": "Receipt {id}",
+  "reader.receipt.hashDiffers":
+    "This device computed {hash} for the same message. Check your Sent folder.",
   "reader.receipt.mismatch":
     "The recipient the server used differs from the one shown. Check your Sent folder.",
   "reader.receipt.close": "Done",

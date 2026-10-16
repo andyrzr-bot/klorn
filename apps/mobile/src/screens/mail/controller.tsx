@@ -2,15 +2,19 @@
  * Mail's actions, shared by the list, the reader and the sheets:
  *
  *  - Done (swipe right / 처리 완료): the row leaves at once, a 5 s undo opens,
- *    and only when it closes does POST /api/inbox/firewall/:id/dismiss go out
- *    (the server has no un-dismiss — the undo is client-side, before sending).
+ *    and only when it closes does POST /api/inbox/firewall/email/:emailId/dismiss
+ *    go out (the server has no un-dismiss — the undo is client-side, before
+ *    sending). Keyed by the email id, so any mail in any account works; the
+ *    list asks `hideHandled=1`, so the Done shows on every device.
  *  - Lane move (swipe left → sheet / 레인 옮기기): POST
  *    /api/inbox/firewall/email/:emailId at once; its undo token reverses it
  *    through POST /:id/undo. While KEYBOARD_TRIAGE keeps that route dark, the
  *    older POST /:id (by attention item, irreversible) is used and no undo is
  *    offered. "Keep this sender here" → POST /api/email/:id/pin-tier.
- *  - Later (나중에): hidden until the chosen time, POST /:id/snooze after the
- *    same 5 s window.
+ *  - Later (나중에): hidden until the chosen time, POST
+ *    /api/inbox/firewall/email/:emailId/snooze after the same 5 s window.
+ *  - While the by-email routes are dark (an older server's bare 404), Done and
+ *    Later fall back to the attention item id from the firewall board.
  *
  * None of these touch the mailbox: a lane is a classification, Done and Later
  * are Klorn's lists only. The account of each mail is the server's to resolve
@@ -34,7 +38,14 @@ import { getServices } from "../../app/services";
 import { useI18n } from "../../i18n/I18nProvider";
 import { hapticSuccess, hapticWarning } from "../../platform/haptics";
 import { isDarkRoute, mailKeys, patchMailTier } from "./data";
-import { DONE_HIDE_MS, hideMail, loadHidden, unhideMail } from "./hidden-store";
+import {
+  DONE_HIDE_MS,
+  hideMail,
+  loadHidden,
+  SETTLED_HIDE_MS,
+  settleHidden,
+  unhideMail,
+} from "./hidden-store";
 import { attentionByEmail, senderLabel } from "./model";
 import { UndoQueue, type UndoSnapshot } from "./undo-queue";
 
@@ -127,6 +138,52 @@ export function MailProvider({ children }: { children: ReactNode }) {
     [qc],
   );
 
+  /**
+   * Done or Later on the server, by email id. Resolves true when the server
+   * changed the mail's attention item (so its own lists now hide it) and false
+   * when there was nothing to clear — then only this device hides it.
+   */
+  const clearOnServer = useCallback(
+    async (emailId: string, until: Date | null): Promise<boolean> => {
+      const { ep } = getServices();
+      try {
+        const res = until
+          ? await ep.triage.snoozeByEmail(emailId, until)
+          : await ep.triage.doneByEmail(emailId);
+        return !res.alreadyClear;
+      } catch (err) {
+        if (!isDarkRoute(err)) {
+          // 404 not_found: the mail is gone or not this user's — nothing to clear.
+          if (isApiError(err) && err.status === 404) return false;
+          throw err;
+        }
+      }
+      // An older server without the by-email routes (and without hideHandled):
+      // the attention item from the firewall board, else the local hide alone.
+      const itemId = await itemIdOf(emailId);
+      if (!itemId) return false;
+      try {
+        if (until) await ep.triage.snooze(itemId, until);
+        else await ep.triage.done(itemId);
+      } catch (err) {
+        if (isApiError(err) && err.status === 404) return false; // already resolved
+        throw err;
+      }
+      return false;
+    },
+    [itemIdOf],
+  );
+
+  /** The server hides these now: shorten the optimistic hide and refetch the lists. */
+  const confirmed = useCallback(
+    (ids: readonly string[]) => {
+      if (ids.length > 0) settleHidden(ids, Date.now() + SETTLED_HIDE_MS);
+      void qc.invalidateQueries({ queryKey: mailKeys.feeds });
+      settled();
+    },
+    [qc, settled],
+  );
+
   const done = useCallback(
     (targets: readonly MailTarget[]) => {
       if (targets.length === 0) return;
@@ -139,22 +196,8 @@ export function MailProvider({ children }: { children: ReactNode }) {
         kind: "deferred",
         message: targets.length === 1 ? t("mail.done.one") : tn("mail.done.many", targets.length),
         commit: async () => {
-          const { ep } = getServices();
-          await Promise.all(
-            ids.map(async (emailId) => {
-              const itemId = await itemIdOf(emailId);
-              // No open attention item: nothing on the server lists it — the
-              // local hide is the whole of Done.
-              if (!itemId) return;
-              try {
-                await ep.triage.done(itemId);
-              } catch (err) {
-                if (isApiError(err) && err.status === 404) return; // already resolved
-                throw err;
-              }
-            }),
-          );
-          settled();
+          const cleared = await Promise.all(ids.map((emailId) => clearOnServer(emailId, null)));
+          confirmed(ids.filter((_, i) => cleared[i]));
         },
         revert: () => unhideMail(ids),
         onCommitError: (err) => {
@@ -165,7 +208,7 @@ export function MailProvider({ children }: { children: ReactNode }) {
         },
       });
     },
-    [queue, t, tn, itemIdOf, settled],
+    [queue, t, tn, clearOnServer, confirmed],
   );
 
   const moveLane = useCallback(
@@ -269,16 +312,14 @@ export function MailProvider({ children }: { children: ReactNode }) {
         kind: "deferred",
         message: t("mail.later.set"),
         commit: async () => {
-          const itemId = await itemIdOf(target.id);
-          if (!itemId) return;
-          await getServices().ep.triage.snooze(itemId, until);
-          settled();
+          const cleared = await clearOnServer(target.id, until);
+          confirmed(cleared ? [target.id] : []);
         },
         revert: () => unhideMail([target.id]),
         onCommitError: () => setError(t("mail.error.later")),
       });
     },
-    [queue, t, itemIdOf, settled],
+    [queue, t, clearOnServer, confirmed],
   );
 
   const value = useMemo<MailActions>(

@@ -193,6 +193,82 @@ test("a new mail validates its recipient and sends from the primary account", as
   ]);
 });
 
+test("Done works on any mail by its email id, and the server keeps it out of every list", async ({
+  page,
+}) => {
+  // 이하은's mail is not on the firewall board (no attention id on the client).
+  await phone(page, "/mail/email-haeun-1");
+  await page
+    .getByRole("navigation", { name: "메일 동작" })
+    .getByRole("button", { name: "처리 완료" })
+    .click();
+  await expect(page).toHaveURL(/\/mail$/);
+  await expect(row(page, /디자인 시스템 v2 리뷰 자료/)).toHaveCount(0);
+  expect((await mockState(page)).dismissed).toEqual([]);
+  await page.clock.runFor(5_200);
+  await expect.poll(async () => (await mockState(page)).dismissed).toEqual(["att-email-haeun-1"]);
+  // Past the optimistic local hide, the row stays out: the list asks hideHandled=1.
+  await page.clock.runFor(61 * 60_000);
+  await page.getByRole("tab", { name: /QUEUE/ }).click();
+  await expect(row(page, /김도윤/)).toBeVisible();
+  await expect(row(page, /디자인 시스템 v2 리뷰 자료/)).toHaveCount(0);
+});
+
+test("a new mail leaves from the account picked under 보내는 계정", async ({ page }) => {
+  await phone(page, "/mail");
+  await page.getByRole("button", { name: "새 메일 쓰기" }).click();
+  const composer = page.getByRole("dialog", { name: "새 메일" });
+  const from = composer.getByLabel("보내는 계정");
+  // Connected accounts that can send; the one waiting for a reconnect is not offered.
+  await expect(from.locator("option")).not.toContainText(["jisu@icloud.example"]);
+  await from.selectOption("inbox-work");
+  await composer.getByLabel("받는 사람").fill("haeun@hanbit.example");
+  await composer.getByLabel("제목").fill("회의록");
+  await composer.getByLabel("내용", { exact: true }).fill("공유드려요.");
+  await composer.getByRole("button", { name: "보내기 검토" }).click();
+  const confirm = page.getByRole("dialog", { name: "보내기 전에 확인" });
+  await expect(confirm).toContainText("jisu@hanbit.example");
+  await confirm.getByRole("button", { name: "보내기", exact: true }).click();
+  const receipt = page.getByRole("dialog", { name: "보냈어요" });
+  // MANUAL_SEND_RECEIPTS_ENABLED off: the hash is the device's, and the sheet says so.
+  await expect(receipt).toContainText("확인한 내용으로 기기에서 계산한 해시");
+  expect((await mockState(page)).sent).toEqual([
+    { to: "haeun@hanbit.example", subject: "회의록", body: "공유드려요.", from: "inbox-work" },
+  ]);
+});
+
+test("an account that cannot send from Klorn says so and sends nothing", async ({ page }) => {
+  await phone(page, "/mail");
+  await page.getByRole("button", { name: "새 메일 쓰기" }).click();
+  const composer = page.getByRole("dialog", { name: "새 메일" });
+  await composer.getByLabel("보내는 계정").selectOption("inbox-naver");
+  await composer.getByLabel("받는 사람").fill("haeun@hanbit.example");
+  await composer.getByLabel("제목").fill("회의록");
+  await composer.getByLabel("내용", { exact: true }).fill("공유드려요.");
+  await composer.getByRole("button", { name: "보내기 검토" }).click();
+  const confirm = page.getByRole("dialog", { name: "보내기 전에 확인" });
+  await confirm.getByRole("button", { name: "보내기", exact: true }).click();
+  await expect(confirm.getByRole("alert")).toContainText("다른 계정을 골라 주세요");
+  expect((await mockState(page)).sent).toEqual([]);
+});
+
+test("with server receipts on, the receipt is the server's ActionReceipt", async ({ page }) => {
+  await phone(page, "/mail/email-att-push-1", "sendReceipts");
+  await page.getByRole("button", { name: "고쳐 쓰기" }).click();
+  await page
+    .getByRole("dialog", { name: "답장" })
+    .getByRole("button", { name: "보내기 검토" })
+    .click();
+  await page
+    .getByRole("dialog", { name: "보내기 전에 확인" })
+    .getByRole("button", { name: "보내기", exact: true })
+    .click();
+  const receipt = page.getByRole("dialog", { name: "보냈어요" });
+  await expect(receipt).toContainText("보내기 전에 Klorn 서버가 기록한 해시");
+  await expect(receipt).toContainText("영수증 번호 rcpt-mock-1");
+  await expect(receipt).toContainText("내용 지문 5e7c0a3f9b21");
+});
+
 test("search goes to the server and narrows the list", async ({ page }) => {
   await phone(page, "/mail");
   await page.getByRole("searchbox").fill("포트폴리오");

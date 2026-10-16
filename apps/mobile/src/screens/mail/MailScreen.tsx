@@ -36,7 +36,13 @@ import { MailProvider, type MailTarget, targetOf, useMail } from "./controller";
 import { inLane, mailKeys, useMailFeed, useSubscriptions } from "./data";
 import { useHiddenMail } from "./hidden-store";
 import { blockState, MailList } from "./MailList";
-import { attentionByEmail, flattenPages, senderLabel, visibleRows } from "./model";
+import {
+  attentionByEmail,
+  flattenPages,
+  sendableAccounts,
+  senderLabel,
+  visibleRows,
+} from "./model";
 import { Reader } from "./Reader";
 import { SubscriptionsScreen } from "./SubscriptionsScreen";
 import {
@@ -174,6 +180,7 @@ function MailScreenBody({
   const firstPage = feed.data?.pages[0];
   const anyOffline = feed.isError && isApiError(feed.error) && feed.error.isOffline;
   const primary = inboxes.find((i) => i.kind === "primary") ?? null;
+  const senders = useMemo(() => sendableAccounts(inboxes), [inboxes]);
 
   const refresh = useCallback(async () => {
     try {
@@ -478,6 +485,7 @@ function MailScreenBody({
       <ComposerSheet
         open={composer !== null}
         mode={composer}
+        accounts={senders}
         onClose={() => setComposer(null)}
         onReview={(m) => {
           setComposer(null);

@@ -75,16 +75,20 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 }
 
 // --- Notification actions (long-press a Klorn notification) ---
-// The server picks a category with `aps.category` (see apps/mobile/README.md
-// "Push payload"). The app's JS handles each action id (src/push/route.ts):
+// The server picks a category with `aps.category` on a mail push
+// (packages/api/src/notify/push-apns.ts buildApnsBody; the identifiers are
+// packages/contract/src/push.ts ApnsMailCategory — keep them identical):
+//   KLORN_PUSH_MAIL_DRAFT — a reply draft / approval exists (pendingActionId)
+//   KLORN_PUSH_MAIL       — any other mail push (emailId, attentionItemId?)
+// The app's JS handles each action id (src/push/route.ts):
 //   KLORN_SEND  — "Send draft": requires the device to be unlocked AND opens
 //                 the app on the approval card, where sending is one more
 //                 explicit tap. Nothing is ever sent from the lock screen.
-//   KLORN_LATER — "In 1 hour": snoozes the attention item (no UI).
-//   KLORN_DONE  — "Done": marks the attention item done (no UI).
+//   KLORN_LATER — "In 1 hour": snoozes the mail by its email id (no UI).
+//   KLORN_DONE  — "Done": marks the mail done by its email id (no UI).
 enum KlornNotificationCategories {
-    static let pushWithDraft = "KLORN_PUSH_DRAFT"
-    static let push = "KLORN_PUSH"
+    static let pushWithDraft = "KLORN_PUSH_MAIL_DRAFT"
+    static let push = "KLORN_PUSH_MAIL"
 
     static func register() {
         let t = titles()

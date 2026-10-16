@@ -8,6 +8,7 @@
  * Scenario (`?scenario=` once, then remembered for the tab):
  *   default | empty | error | offline | loading | noAccounts | signedOut
  *   flagsOff (Mail's dark routes 404) | draftUnavailable (reply drafting 503)
+ *   sendReceipts (MANUAL_SEND_RECEIPTS_ENABLED on: sends answer with a server receipt)
  *   featuresOff (every flag-gated route as production's defaults answer it — Mail's too)
  */
 import type { Transport } from "../client";
@@ -33,6 +34,7 @@ export const MOCK_SCENARIOS = [
   "flagsOff",
   "draftUnavailable",
   "featuresOff",
+  "sendReceipts",
 ] as const;
 export type MockScenario = (typeof MOCK_SCENARIOS)[number];
 

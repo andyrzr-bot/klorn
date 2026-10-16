@@ -242,10 +242,19 @@ export const ko: Messages = {
   "reader.send.offline": "오프라인이에요. 보내지 않았어요.",
   "reader.send.unknown":
     "보내졌는지 확인하지 못했어요. 다시 보내기 전에 보낸편지함을 확인해 주세요.",
+  "reader.send.unsupportedAccount":
+    "이 계정으로는 아직 Klorn에서 보낼 수 없어요. 아무것도 보내지 않았으니 다른 계정을 골라 주세요.",
+  "reader.send.accountGone":
+    "그 계정은 더 이상 연결되어 있지 않아요. 아무것도 보내지 않았으니 다른 계정을 골라 주세요.",
   "reader.receipt.title": "보냈어요",
   "reader.receipt.sent": "{time}에 보냈어요",
   "reader.receipt.label": "영수증",
   "reader.receipt.hash": "내용 지문 {hash}",
+  "reader.receipt.source.server": "보내기 전에 Klorn 서버가 기록한 해시",
+  "reader.receipt.source.device": "확인한 내용으로 기기에서 계산한 해시",
+  "reader.receipt.id": "영수증 번호 {id}",
+  "reader.receipt.hashDiffers":
+    "이 기기에서 같은 메일로 계산한 값은 {hash}예요. 보낸편지함을 확인해 주세요.",
   "reader.receipt.mismatch": "서버가 보낸 받는 사람이 화면과 달라요. 보낸편지함을 확인해 주세요.",
   "reader.receipt.close": "확인",
   "reader.actions": "메일 동작",

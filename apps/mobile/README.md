@@ -143,16 +143,17 @@ tab → background the app.
 | `GET /api/calendar?start&end` | routes/calendar.ts | next event, meeting count |
 | `GET /api/chat/pending-actions` | routes/chat-pending-actions.ts | Approvals |
 | `GET /api/email/inboxes` | routes/email.ts | connected accounts (sidebar, Accounts) |
-| `GET /api/email?tier&page&inbox&search` | routes/email.ts | Mail list (infinite, server search, account filter) |
+| `GET /api/email?tier&page&inbox&search&hideHandled=1` | routes/email.ts | Mail list (infinite, server search, account filter; Done / pending Later left out by the server) |
 | `GET /api/email/:id` · `PATCH /:id/read` | routes/email.ts, routes/email-mutations.ts | reader (body, `renderHtml`, attachments, proactive draft); opening marks read |
 | `POST /api/email/sync` | routes/email.ts | pull-to-refresh / "sync all accounts" (primary + linked inboxes) |
 | `GET /api/email/:id/reader-context` | routes/email-lanes.ts | lane + `tierReason` + neighbours (dark unless MAIL_V2 → falls back to the firewall item and the cached list) |
 | `GET /api/email/:id/sender-dossier` · `/:id/thread-brief` | routes/email.ts | reader context lines (PUSH / MEETING / reply-needed QUEUE only — each is an LLM call) |
 | `GET /api/email/:id/inline/:cid` · `/:id/attachments/:aid/download` | routes/email.ts, routes/email-attachments.ts | cid images inlined as data: urls; attachment open / share |
 | `POST /api/email/:id/reply-draft {intent?}` | routes/email-replies.ts | AI draft; tone chips regenerate with an `intent` |
-| `POST /api/email/:id/reply {body}` · `POST /api/email/send` · `POST /:id/gmail-draft` | routes/email-replies.ts, routes/email-mutations.ts | send — only from the confirm sheet; save as draft |
-| `POST /api/inbox/firewall/:id/dismiss` | routes/firewall.ts | Done (swipe right) — sent after the 5 s client-side undo window |
-| `POST /api/inbox/firewall/:id/snooze` | routes/firewall.ts | Later |
+| `POST /api/email/:id/reply {body}` · `POST /api/email/send {to,subject,body,linkedInboxAccountId}` · `POST /:id/gmail-draft` | routes/email-replies.ts, routes/email-mutations.ts | send — only from the confirm sheet, a new mail from the account picked under 보내는 계정; `receipt` shown when the server sends one; save as draft |
+| `POST /api/inbox/firewall/email/:emailId/dismiss` | routes/firewall.ts, judge/attention-by-email.ts | Done (swipe right, reader, notification) — sent after the 5 s client-side undo window |
+| `POST /api/inbox/firewall/email/:emailId/snooze {snoozeUntil}` | routes/firewall.ts, judge/attention-by-email.ts | Later |
+| `POST /api/inbox/firewall/:id/dismiss` · `/:id/snooze` | routes/firewall.ts | the Flip cover (it holds firewall items), a notification with only an `attentionItemId`, and the fallback while an older server lacks the by-email routes |
 | `POST /api/inbox/firewall/email/:emailId` · `/:id/undo` · `POST /:id` | routes/firewall.ts | lane move (reversible); `POST /:id` only while KEYBOARD_TRIAGE keeps the by-email route dark |
 | `POST` / `DELETE /api/email/:id/pin-tier` | routes/email.ts | "keep this sender here" |
 | `GET /api/email/subscriptions` · `POST /subscriptions/unsubscribe` | routes/email-subscriptions.ts | Subscriptions (dark unless BULK_UNSUBSCRIBE_ENABLED — the entry point hides on 404) |
@@ -187,9 +188,14 @@ tab → background the app.
   Pointer Events (touch and mouse), haptics at the threshold and on commit,
   reduced motion = no slide. Each row is followed by a focus-only "actions"
   button and the reader has a toolbar, so nothing needs a gesture.
-- **Done is local as well**: `GET /api/email` lists mail whatever its attention
-  item's status, so this device keeps Done / Later rows out of its lists
-  (`hidden-store.ts`, persisted, expiring) — see Gaps.
+- **Done / Later sync across devices**: they go to the by-email routes
+  (`POST /api/inbox/firewall/email/:emailId/{dismiss,snooze}`, any mail in any
+  account), and the list asks `hideHandled=1`, so the server leaves out mail
+  that is Done or under a pending Later on every device. `hidden-store.ts` is
+  only the optimistic layer: it hides the row during the undo window and the
+  refetch, then shrinks to an hour once the server confirmed. When the server
+  had nothing to clear (`alreadyClear`: the mail is not classified yet, or was
+  already resolved), the hide stays local to this device (30 days).
 - **Reader**: `renderHtml` sanitized again by `mail-html.ts` (a port of the
   web's #1455 wall) into an `<iframe sandbox="allow-same-origin">` with no
   `allow-scripts`, a CSP meta allowing images only, remote images off until
@@ -197,8 +203,16 @@ tab → background the app.
   browser, mailto → compose. Uncoloured HTML follows dark mode; designed mail
   keeps its light sheet.
 - **Send** happens only from the confirm sheet, with exactly the recipient /
-  subject / body shown; afterwards the sheet is the receipt (provider message
-  id + `sendEmailPayloadHash` of the confirmed bytes, computed client-side).
+  subject / body shown. A new mail leaves from the account picked under
+  **보내는 계정** (`linkedInboxAccountId`; connected accounts that are not
+  waiting for a reconnect, generic IMAP excluded — a 501 from a Naver / iCloud
+  account whose server-side send is off asks for another account); a reply
+  from the mail's own account. Afterwards the sheet is the receipt: with
+  `MANUAL_SEND_RECEIPTS_ENABLED` on, the server's `receipt` (`id` +
+  `payloadHash`, written before the provider was called) labelled "보내기 전에
+  Klorn 서버가 기록한 해시"; with it off (the default), the
+  `sendEmailPayloadHash` this device computed from the confirmed bytes,
+  labelled "기기에서 계산한 해시".
 - **Tabletop**: reading above the hinge, the reply form below (FoldTabletop).
 
 ### Calendar · Assistant · Files · Accounts · Settings
@@ -227,65 +241,82 @@ tab → background the app.
 - Accounts: Outlook, Naver and iCloud are marked beta; the device calendar row
   explains it is coming and asks for no permission.
 
-### Push payload (what the server should send)
+### Push payload (what the server sends)
 
-Today the device payload carries only `url` (a web path) and a top-level
-`category` (the server's `NotifCategory`); the app maps `/email/:id`,
-`/inbox/firewall`, `/briefing`, `/chat`, `/inbox` to its routes
-(`src/push/route.ts`). Every field below is validated on the device; anything
-unknown lands on Today.
+Built by `packages/api` `notify/push-apns.ts` (`buildApnsBody`) and
+`notify/push-device.ts` (`buildFcmMessage`); the mail fields are
+`packages/contract/src/push.ts` `NativePushMailFields`. Every push carries
+`url` (a web path), `notificationId?` and `category` (the server's
+`NotifCategory`, e.g. `email_urgent`). A **mail** push (the firewall's PUSH /
+MEETING, an urgent sweep about one mail) also carries `emailId`, `route`
+(`/mail/<emailId>`) and, when they exist, `attentionItemId` /
+`pendingActionId` (none at send time today). The app routes `route`, then the
+approval, then the mail, then the web `url` (`/email/:id`, `/inbox/firewall`,
+`/briefing`, `/chat`, `/inbox`; `src/push/route.ts`). Every field is validated
+on the device; anything unknown lands on Today.
 
-**iOS (APNs, `push-apns.ts`)** — an alert with a category and the ids:
+**iOS (APNs)** — a mail push sets the action category inside `aps`:
 
 ```jsonc
 {
-  "aps": { "alert": { "title": "…", "body": "…" }, "category": "KLORN_PUSH_DRAFT" }, // or KLORN_PUSH
-  "route": "/mail/<emailId>",          // an app path; wins over everything else
-  "emailId": "<EmailMessage.id>",
-  "attentionItemId": "<AttentionItem.id>", // needed by "In 1 hour" / "Done"
-  "pendingActionId": "<PendingAction.id>"  // needed by "Send draft" (opens the approval)
+  "aps": {
+    "alert": { "title": "…", "body": "…" }, "sound": "default",
+    "category": "KLORN_PUSH_MAIL",        // KLORN_PUSH_MAIL_DRAFT when pendingActionId is set
+    "mutable-content": 1
+  },
+  "url": "/inbox/firewall", "category": "email_urgent",   // as on every push
+  "emailId": "<EmailMessage.id>", "route": "/mail/<emailId>",
+  "attentionItemId": "<AttentionItem.id>",               // when one is open
+  "pendingActionId": "<PendingAction.id>"                // when a draft / approval exists
 }
 ```
 
-iOS registers `KLORN_PUSH_DRAFT` (Send draft · In 1 hour · Done) and
-`KLORN_PUSH` (In 1 hour · Done) in `AppDelegate.swift`; "Send draft" is
-`.authenticationRequired + .foreground`.
+`AppDelegate.swift` registers exactly those two identifiers (pinned by
+`src/push/android.test.ts`): `KLORN_PUSH_MAIL_DRAFT` (Send draft · In 1 hour ·
+Done) and `KLORN_PUSH_MAIL` (In 1 hour · Done). "Send draft" is
+`.authenticationRequired + .foreground` and opens the approval card; In 1 hour /
+Done call `POST /api/inbox/firewall/email/:emailId/{snooze,dismiss}` (by
+`attentionItemId` only when no `emailId` came).
 
-**Android (FCM, `push-device.ts`)** — FCM *notification* messages cannot carry
-action buttons through `@capacitor/push-notifications`, so for buttons the
-server sends a **data-only** message (no `notification` key; every value a
-string) and the app posts it itself with `@capacitor/local-notifications`
-(`src/push/android.ts`, `src/platform/local-notify.ts`):
+**Android (FCM)** — the server sends a **notification** message today: the OS
+shows it (no buttons), a tap routes by `data`, and in the foreground the app
+shows its own banner.
 
 ```jsonc
 {
   "token": "<FCM token>",
-  "android": { "priority": "high" },      // required: wakes the app for a data message
-  "data": {
-    "title": "PUSH · 박서연",              // required (≤120 chars shown)
-    "body": "계약서 오늘 18시 마감 — …",    // required (≤600 chars shown)
-    "category": "KLORN_PUSH_DRAFT",       // or "KLORN_PUSH"; anything else = no buttons
-    "emailId": "<EmailMessage.id>",
-    "attentionItemId": "<AttentionItem.id>", // In 1 hour / Done need it
-    "pendingActionId": "<PendingAction.id>", // Review opens this approval
-    "route": "/mail/<emailId>",           // optional app path, wins for taps
-    "lane": "PUSH",                        // PUSH → channel klorn_push (importance high)
-    "sentAt": "1760578080000"              // epoch ms; > 15 min old = a replay, not shown
-  }
+  "notification": { "title": "…", "body": "…" },
+  "data": { "url": "/inbox/firewall", "category": "email_urgent",
+            "emailId": "…", "route": "/mail/<emailId>", "attentionItemId": "…" },
+  "android": { "priority": "high" }
 }
 ```
 
-(The server's own `NotifCategory`, sent today as `data.category`, would move to
-another key, e.g. `notifCategory`; a value that is not a `KLORN_*` category
-simply means "no buttons".) The notification shows **1시간 뒤에 · 처리 완료 ·
-검토하기** (In 1 hour · Done · Review, in the app language). Review opens the
-approval card (or the mail) — nothing is ever sent from a notification, on
-Android either. Later / Done call the same `POST /api/inbox/firewall/:id/snooze`
-/ `dismiss` by `attentionItemId` as iOS, a tap or Review deep-links. Channels,
-created at launch: `klorn_push` (PUSH mail, IMPORTANCE_HIGH) and `klorn_other`
-(default); the manifest makes `klorn_push` FCM's default channel, so
-notification messages ring the same way. With the app on screen a data-only
-message shows the in-app banner instead, as on iOS.
+FCM notification messages cannot carry action buttons through
+`@capacitor/push-notifications`. For buttons the server would send the same
+`data` as a **data-only** message (no `notification` key, every value a
+string) and the app posts it itself with `@capacitor/local-notifications`
+(`src/push/android.ts`, `src/platform/local-notify.ts`). What that needs, on
+top of today's keys:
+
+- `data.title` and `data.body` — **required** (a data-only message has no
+  `notification` block; ≤120 / ≤600 chars shown);
+- `android.priority: "high"` — required, so the data message wakes the app;
+- `data.sentAt` (epoch ms) — optional but recommended: older than 15 min = a
+  replay of the plugin's last message on launch, not shown.
+
+The action set is derived from the ids, as the server picks the APNs
+category: `pendingActionId` → the draft set, else `emailId` (or only
+`attentionItemId`) → the plain set, else no buttons; `category` is never read
+as an action set. `category: "email_urgent"` (PUSH-lane mail) posts on
+`klorn_push`, everything else on `klorn_other`. The notification shows
+**1시간 뒤에 · 처리 완료 · 검토하기** (In 1 hour · Done · Review, in the app
+language). Review opens the approval card (or the mail) — nothing is ever sent
+from a notification, on Android either. Later / Done call the same by-email
+routes as iOS. Channels, created at launch: `klorn_push` (PUSH mail,
+IMPORTANCE_HIGH) and `klorn_other` (default); the manifest makes `klorn_push`
+FCM's default channel, so notification messages ring the same way. With the
+app on screen a data-only message shows the in-app banner instead, as on iOS.
 
 **What works when (Android, precisely):**
 
@@ -313,19 +344,10 @@ messages as the default and switch per device once the native service ships.
 
 Mail:
 
-- `GET /api/email` does not filter dismissed / snoozed attention items, so Done
-  and Later stay out of the list only on the device that did them. A
-  status-aware list (or `hideDone`) would make them consistent across devices.
-- Done / Later need the attention item id; only OPEN items in the firewall's
-  newest-200 window carry it to the client. Older mail is hidden locally only.
-  A dismiss / snooze keyed by email id (like `POST /firewall/email/:emailId`)
-  would close this.
-- `POST /api/email/:id/reply` and `/send` record no `ActionReceipt` server-side;
-  the app shows a client receipt with the same payload hash.
-- `POST /api/email/send` always sends from the primary account (the confirm
-  sheet says so).
 - No "save attachment to Klorn Drive" route; attachments open via the share
   sheet / a download. Native file save needs `@capacitor/filesystem`.
+- Server send receipts (`MANUAL_SEND_RECEIPTS_ENABLED`) are OFF by default;
+  until the flag flips the app shows its own device-computed hash.
 
 Calendar · Assistant · Files · push:
 
@@ -336,10 +358,11 @@ Calendar · Assistant · Files · push:
 - Chat returns one `eventDraft`, not structured slots, so the artboard's slot
   picker appears in Calendar's "Team free time" (from `/api/teams/:id/availability`)
   rather than in the thread.
-- The device push payload lacks `emailId` / `attentionItemId` /
-  `pendingActionId` / `aps.category` (above), so lock-screen actions only work
-  once the server sends them; Android buttons need the data-only shape above
-  (and, for a killed app, the native follow-up described there).
+- Push: `pendingActionId` is never set at send time today (the reply draft is
+  proposed after the judge), so lock-screen pushes get the plain set (In 1
+  hour · Done); Android sends notification messages (no buttons) until the
+  server opts a device into data-only messages (and, for a killed app, the
+  native follow-up described above).
 - `GET /api/teams` needs a saved team; teams are created on the web only.
 
 ## PROBE mode (diagnostics only)

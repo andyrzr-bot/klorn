@@ -249,10 +249,19 @@ export const de: Messages = {
   "reader.send.offline": "Du bist offline. Es wurde nichts gesendet.",
   "reader.send.unknown":
     "Wir konnten nicht bestätigen, ob sie gesendet wurde. Prüfe vor einem neuen Versuch den Ordner „Gesendet“.",
+  "reader.send.unsupportedAccount":
+    "Dieses Konto kann noch nicht aus Klorn senden. Es wurde nichts verschickt – wähle ein anderes Konto.",
+  "reader.send.accountGone":
+    "Dieses Konto ist nicht mehr verbunden. Es wurde nichts verschickt – wähle ein anderes Konto.",
   "reader.receipt.title": "Gesendet",
   "reader.receipt.sent": "Gesendet um {time}",
   "reader.receipt.label": "Beleg",
   "reader.receipt.hash": "Prüfsumme {hash}",
+  "reader.receipt.source.server": "Vom Klorn-Server vor dem Senden gespeicherte Prüfsumme",
+  "reader.receipt.source.device": "Auf diesem Gerät aus dem Bestätigten berechnete Prüfsumme",
+  "reader.receipt.id": "Beleg {id}",
+  "reader.receipt.hashDiffers":
+    "Dieses Gerät hat für dieselbe Nachricht {hash} berechnet. Prüfe den Ordner „Gesendet“.",
   "reader.receipt.mismatch":
     "Der vom Server verwendete Empfänger weicht vom angezeigten ab. Prüfe den Ordner „Gesendet“.",
   "reader.receipt.close": "Fertig",

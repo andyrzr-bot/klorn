@@ -40,7 +40,8 @@ export interface MailMockState {
   dismissed: string[];
   snoozed: Array<[string, string]>;
   pins: Array<{ emailId: string; tier: string }>;
-  sent: Array<{ to: string; subject: string; body: string }>;
+  /** `from` = the linked inbox a new mail left from (absent = primary). */
+  sent: Array<{ to: string; subject: string; body: string; from?: string }>;
   tiers: Array<[string, string]>;
   unsubscribed: string[];
 }

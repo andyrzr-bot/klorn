@@ -245,10 +245,20 @@ export const fr: Messages = {
   "reader.send.offline": "Vous êtes hors ligne. Rien n'a été envoyé.",
   "reader.send.unknown":
     "Impossible de confirmer l'envoi. Vérifiez vos éléments envoyés avant de réessayer.",
+  "reader.send.unsupportedAccount":
+    "Ce compte ne peut pas encore envoyer depuis Klorn. Rien n'est parti — choisissez un autre compte.",
+  "reader.send.accountGone":
+    "Ce compte n'est plus connecté. Rien n'est parti — choisissez un autre compte.",
   "reader.receipt.title": "Envoyé",
   "reader.receipt.sent": "Envoyé à {time}",
   "reader.receipt.label": "Reçu",
   "reader.receipt.hash": "Empreinte {hash}",
+  "reader.receipt.source.server": "Empreinte enregistrée par le serveur Klorn avant l'envoi",
+  "reader.receipt.source.device":
+    "Empreinte calculée sur cet appareil à partir de ce que vous avez confirmé",
+  "reader.receipt.id": "Reçu {id}",
+  "reader.receipt.hashDiffers":
+    "Cet appareil a calculé {hash} pour le même message. Vérifiez vos éléments envoyés.",
   "reader.receipt.mismatch":
     "Le destinataire utilisé par le serveur diffère de celui affiché. Vérifiez vos éléments envoyés.",
   "reader.receipt.close": "Terminé",

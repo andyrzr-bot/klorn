@@ -9,6 +9,7 @@
  * subscriptions (BULK_UNSUBSCRIBE_ENABLED).
  */
 import type { LiveTier } from "@klorn/contract";
+import { MOCK_INBOXES } from "./fixtures";
 import {
   listItem,
   type MailRow,
@@ -32,7 +33,8 @@ export interface MailMockState {
   pins: Array<{ emailId: string; tier: string }>;
   read: Set<string>;
   unsubscribed: Set<string>;
-  sent: Array<{ to: string; subject: string; body: string }>;
+  /** `from` = the linked inbox id a new mail was sent from (absent = primary). */
+  sent: Array<{ to: string; subject: string; body: string; from?: string }>;
 }
 
 export function createMailMockState(): MailMockState {
@@ -64,6 +66,18 @@ function darkRoute(method: string, pathname: string): Response {
   });
 }
 
+/** The server receipt of a send (contract SendReceiptWire), for `?scenario=sendReceipts`. */
+function mockReceipt(n: number, now: number) {
+  return {
+    id: `rcpt-mock-${n}`,
+    v: "v1",
+    action: "send_email",
+    // Not a real hash of the bytes — the app shows the server's value as is.
+    payloadHash: "5e7c0a3f9b21d4c8e6f0a1b2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6e7",
+    approvedAt: new Date(now).toISOString(),
+  };
+}
+
 function bodyOf(init: RequestInit): Record<string, unknown> {
   try {
     return JSON.parse(String(init.body ?? "{}")) as Record<string, unknown>;
@@ -90,6 +104,21 @@ export function mockMailRoute(ctx: MailMockContext): Response | null {
   const rows = empty ? [] : mailRows(now);
   const tierOf = (row: MailRow): LiveTier | null => state.tiers.get(row.id) ?? row.tier;
   const find = (id: string) => rows.find((r) => r.id === id || `g-${r.id}` === id);
+  // A classified mail has one attention item; the board's fixtures name theirs
+  // `att-…` (fixtures.ts), the rest get `att-<email id>`.
+  const itemIdOf = (row: MailRow): string | null =>
+    row.tier === null
+      ? null
+      : row.id.startsWith("email-att-")
+        ? row.id.slice("email-".length)
+        : `att-${row.id}`;
+  /** Done, or a Later still ahead — what `hideHandled=1` leaves out (judge/email-lanes.ts). */
+  const handled = (row: MailRow): boolean => {
+    const itemId = itemIdOf(row);
+    if (!itemId) return false;
+    const until = state.snoozed.get(itemId);
+    return state.dismissed.has(itemId) || (until !== undefined && Date.parse(until) > now);
+  };
 
   // ── List ───────────────────────────────────────────────────────────────
   if (pathname === "/api/email" && method === "GET") {
@@ -97,7 +126,9 @@ export function mockMailRoute(ctx: MailMockContext): Response | null {
     const inbox = searchParams.get("inbox");
     const search = searchParams.get("search")?.trim().toLowerCase() ?? "";
     const page = Math.max(1, Number(searchParams.get("page") ?? "1") || 1);
+    const hideHandled = ["1", "true"].includes(searchParams.get("hideHandled") ?? "");
     const filtered = rows.filter((row) => {
+      if (hideHandled && handled(row)) return false;
       if (tier && tier !== "ALL") {
         const lane = tierOf(row) ?? "QUEUE";
         if (lane !== tier) return false;
@@ -167,12 +198,31 @@ export function mockMailRoute(ctx: MailMockContext): Response | null {
     if (!body.to || !body.subject || !body.body) {
       return json(400, { error: "Missing required fields: to, subject, body" });
     }
+    // routes/email-mutations.ts resolveSendInbox: absent / null / "primary" =
+    // the primary inbox; else one of the caller's linked inboxes, or 404.
+    const from = body.linkedInboxAccountId;
+    const account = from === undefined || from === null || from === "primary" ? null : from;
+    if (account !== null && typeof account !== "string") {
+      return json(400, { error: "linkedInboxAccountId must be a linked inbox id." });
+    }
+    const linked = account ? MOCK_INBOXES.inboxes.find((i) => i.id === account) : null;
+    if (account && !linked) return json(404, { error: "Linked inbox not found" });
+    if (linked && (linked.provider === "NAVER" || linked.provider === "ICLOUD")) {
+      // IMAP_SEND_ENABLED off: the provider has no send surface.
+      return json(501, { error: "Sending is not supported for this mailbox yet." });
+    }
     state.sent.push({
       to: String(body.to),
       subject: String(body.subject),
       body: String(body.body),
+      ...(account ? { from: account } : {}),
     });
-    return json(200, { success: true, messageId: `msg-${state.sent.length}`, threadId: null });
+    return json(200, {
+      success: true,
+      messageId: `msg-${state.sent.length}`,
+      threadId: null,
+      ...(scenario === "sendReceipts" ? { receipt: mockReceipt(state.sent.length, now) } : {}),
+    });
   }
 
   // ── One mail ───────────────────────────────────────────────────────────
@@ -236,6 +286,7 @@ export function mockMailRoute(ctx: MailMockContext): Response | null {
         threadId: `t-${row.id}`,
         to: draft.to,
         threaded: true,
+        ...(scenario === "sendReceipts" ? { receipt: mockReceipt(state.sent.length, now) } : {}),
       });
     }
     if (rest === "gmail-draft" && method === "POST") {
@@ -288,6 +339,40 @@ export function mockMailRoute(ctx: MailMockContext): Response | null {
     if (entry.previous) state.tiers.set(entry.emailId, entry.previous);
     else state.tiers.delete(entry.emailId);
     return json(200, { ok: true, tier: entry.previous, alreadyUndone: false });
+  }
+  // Done / Later by email id (judge/attention-by-email.ts): any of the caller's
+  // mail; `alreadyClear` when nothing was open to clear, and nothing is created.
+  const actByEmail = pathname.match(/^\/api\/inbox\/firewall\/email\/([^/]+)\/(dismiss|snooze)$/);
+  if (actByEmail?.[1] && method === "POST") {
+    const row = find(decodeURIComponent(actByEmail[1]));
+    if (!row) return json(404, { ok: false, code: "not_found", message: "Email not found." });
+    let until: Date | null = null;
+    if (actByEmail[2] === "snooze") {
+      until = new Date(String(bodyOf(init).snoozeUntil ?? ""));
+      if (!Number.isFinite(until.getTime()) || until.getTime() <= now) {
+        return json(400, {
+          ok: false,
+          code: "invalid_snooze_until",
+          message: "snoozeUntil must be a future ISO datetime.",
+        });
+      }
+    }
+    const itemId = itemIdOf(row);
+    if (!itemId || state.dismissed.has(itemId)) {
+      return json(200, { ok: true, itemId, alreadyClear: true });
+    }
+    if (until) {
+      state.snoozed.set(itemId, until.toISOString());
+      return json(200, {
+        ok: true,
+        itemId,
+        alreadyClear: false,
+        snoozedUntil: until.toISOString(),
+      });
+    }
+    state.snoozed.delete(itemId);
+    state.dismissed.add(itemId);
+    return json(200, { ok: true, itemId, alreadyClear: false });
   }
   const act = pathname.match(/^\/api\/inbox\/firewall\/([^/]+)\/(dismiss|snooze)$/);
   if (act?.[1] && method === "POST") {

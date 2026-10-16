@@ -11,6 +11,19 @@ describe("push routing", () => {
     expect(routeFromWebPath("/nowhere")).toEqual({ name: "today" });
   });
 
+  it("routes the server's real mail payload to the reader", () => {
+    // packages/api notify/push-device.ts buildFcmMessage → data (also the APNs top-level keys).
+    expect(
+      routeFromPush({
+        url: "/inbox/firewall",
+        category: "email_urgent",
+        emailId: "em_1",
+        attentionItemId: "att_1",
+        route: "/mail/em_1",
+      }),
+    ).toEqual({ name: "mail", id: "em_1" });
+  });
+
   it("prefers an app route, then the approval, then the mail, then the web url", () => {
     expect(routeFromPush({ route: "/calendar/evt-1", url: "/chat" })).toEqual({
       name: "calendar",
@@ -42,11 +55,23 @@ describe("push routing", () => {
     });
     expect(intentOf(PUSH_ACTIONS.later, { attentionItemId: "att-1", emailId: "e" })).toMatchObject({
       kind: "snooze",
-      attentionItemId: "att-1",
+      target: { emailId: "e" },
     });
+    // An email id alone is enough: Done goes to the by-email route.
     expect(intentOf(PUSH_ACTIONS.done, { emailId: "e" })).toEqual({
+      kind: "done",
+      target: { emailId: "e" },
+      fallback: { name: "mail", id: "e" },
+    });
+    // Only an attention item id: the id-keyed route.
+    expect(intentOf(PUSH_ACTIONS.done, { attentionItemId: "att-1" })).toMatchObject({
+      kind: "done",
+      target: { attentionItemId: "att-1" },
+    });
+    // Nothing to act on: the action just opens the app.
+    expect(intentOf(PUSH_ACTIONS.done, { url: "/briefing" })).toEqual({
       kind: "open",
-      route: { name: "mail", id: "e" },
+      route: { name: "assistant", section: "briefing" },
     });
     expect(intentOf("tap", { url: "/chat" }).kind).toBe("open");
   });

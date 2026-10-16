@@ -245,10 +245,18 @@ export const es: Messages = {
   "reader.send.offline": "Estás sin conexión. No se envió nada.",
   "reader.send.unknown":
     "No pudimos confirmar si se envió. Revisa Enviados antes de volver a intentarlo.",
+  "reader.send.unsupportedAccount":
+    "Esta cuenta aún no puede enviar desde Klorn. No salió nada; elige otra cuenta.",
+  "reader.send.accountGone": "Esa cuenta ya no está conectada. No salió nada; elige otra cuenta.",
   "reader.receipt.title": "Enviado",
   "reader.receipt.sent": "Enviado a las {time}",
   "reader.receipt.label": "Recibo",
   "reader.receipt.hash": "Huella {hash}",
+  "reader.receipt.source.server": "Hash registrado por el servidor de Klorn antes del envío",
+  "reader.receipt.source.device": "Hash calculado en este dispositivo con lo que confirmaste",
+  "reader.receipt.id": "Recibo {id}",
+  "reader.receipt.hashDiffers":
+    "Este dispositivo calculó {hash} para el mismo mensaje. Revisa Enviados.",
   "reader.receipt.mismatch":
     "El destinatario que usó el servidor no coincide con el mostrado. Revisa Enviados.",
   "reader.receipt.close": "Listo",

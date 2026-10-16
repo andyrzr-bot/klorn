@@ -216,10 +216,16 @@ export function PushLayer() {
         navigate(intent.route);
         return;
       }
-      const run =
-        intent.kind === "snooze"
-          ? ep.triage.snooze(intent.attentionItemId, new Date(Date.now() + 3_600_000))
-          : ep.triage.done(intent.attentionItemId);
+      const { target } = intent;
+      const until = new Date(Date.now() + 3_600_000);
+      const run: Promise<unknown> =
+        "emailId" in target
+          ? intent.kind === "snooze"
+            ? ep.triage.snoozeByEmail(target.emailId, until)
+            : ep.triage.doneByEmail(target.emailId)
+          : intent.kind === "snooze"
+            ? ep.triage.snooze(target.attentionItemId, until)
+            : ep.triage.done(target.attentionItemId);
       void run
         .then(() => notify(t(intent.kind === "snooze" ? "push.snoozed" : "push.done")))
         .catch(() => navigate(intent.fallback));
