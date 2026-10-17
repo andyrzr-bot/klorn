@@ -70,8 +70,9 @@ function CommandCenterView() {
   // Action id awaiting the reject-with-reason dialog; null when closed.
   const [rejectTargetId, setRejectTargetId] = useState<string | null>(null);
   const { toast } = useToast();
+  const { t } = useT();
 
-  // Top-level surface toggle ("Decisions" ⇄ "Firewall board"). Read from
+  // Top-level surface toggle ("Decisions" ⇄ "Lanes"). Read from
   // `?view=` so it's shareable and works with the back button; changing it
   // rewrites the URL rather than holding local state.
   const router = useRouter();
@@ -143,7 +144,10 @@ function CommandCenterView() {
         // 200-with-{error} is the dead-token shape — surface it instead of
         // silently refreshing stale DB contents (2026-08-10 diagnosis).
         if (result?.error) {
-          toast("Gmail isn't connected — reconnect in Settings.", "error");
+          toast(
+            t("inboxLegacy.toast.notConnected", { section: t("settings.nav.accounts") }),
+            "error",
+          );
         }
       } catch (err) {
         // Sync is best-effort; still refetch below so the queue reflects the DB.
@@ -156,7 +160,7 @@ function CommandCenterView() {
         setSyncing(false);
       }
     },
-    [queryClient],
+    [queryClient, toast, t],
   );
 
   useEffect(() => {
@@ -167,11 +171,11 @@ function CommandCenterView() {
       captureClientError(commitmentsQuery.error, { scope: "inbox.load.commitments" });
     }
     if (actionsQuery.error || commitmentsQuery.error) {
-      setError("Could not load the decision queue.");
+      setError(t("inboxLegacy.loadFailed"));
     } else {
       setError(null);
     }
-  }, [actionsQuery.error, commitmentsQuery.error]);
+  }, [actionsQuery.error, commitmentsQuery.error, t]);
 
   useEffect(() => {
     // Filter change retriggers the keyed query automatically; no-op here
@@ -198,10 +202,10 @@ function CommandCenterView() {
             ? (prev ?? []).filter((a) => a.id !== actionId)
             : (prev ?? []).map((a) => (a.id === actionId ? { ...a, status: "EXECUTED" } : a)),
       );
-      toast("Action approved.", "success");
+      toast(t("inboxLegacy.toast.approved"), "success");
     } catch (err) {
       captureClientError(err, { scope: "inbox.approve", actionId });
-      toast("Could not approve this action. Please try again.", "error");
+      toast(t("inboxLegacy.toast.approveFailed"), "error");
     } finally {
       setActionLoading((prev) => ({ ...prev, [actionId]: null }));
     }
@@ -222,10 +226,10 @@ function CommandCenterView() {
             ? (prev ?? []).filter((a) => a.id !== actionId)
             : (prev ?? []).map((a) => (a.id === actionId ? { ...a, status: "REJECTED" } : a)),
       );
-      toast("Suggestion rejected.", "success");
+      toast(t("inboxLegacy.toast.rejected"), "success");
     } catch (err) {
       captureClientError(err, { scope: "inbox.reject", actionId });
-      toast("Could not reject this action. Please try again.", "error");
+      toast(t("inboxLegacy.toast.rejectFailed"), "error");
     } finally {
       setActionLoading((prev) => ({ ...prev, [actionId]: null }));
     }
@@ -247,10 +251,10 @@ function CommandCenterView() {
         [...queryKeys.inbox.pending(), filter] as unknown as readonly unknown[],
         (prev) => (prev ?? []).filter((a) => a.id !== actionId),
       );
-      toast(`Snoozed for ${hours}h — will resurface automatically.`, "success");
+      toast(t("inboxLegacy.toast.snoozed", { hours: String(hours) }), "success");
     } catch (err) {
       captureClientError(err, { scope: "inbox.snooze", actionId });
-      toast("Could not snooze this action. Please try again.", "error");
+      toast(t("inboxLegacy.toast.snoozeFailed"), "error");
     } finally {
       setActionLoading((prev) => ({ ...prev, [actionId]: null }));
     }
@@ -262,7 +266,9 @@ function CommandCenterView() {
   // the list change isn't silent (WCAG 4.1.3). Re-derives from query data
   // after each optimistic update.
   const queueAnnouncement =
-    pendingCount === 1 ? "1 decision waiting" : `${pendingCount} decisions waiting`;
+    pendingCount === 1
+      ? t("inboxLegacy.waiting.one")
+      : t("inboxLegacy.waiting.many", { count: String(pendingCount) });
 
   return (
     <>
@@ -323,20 +329,21 @@ function SegmentControl({
   view: SegmentView;
   onSelect: (next: SegmentView) => void;
 }) {
+  const { t } = useT();
   return (
     <div
       role="group"
-      aria-label="Inbox view"
+      aria-label={t("inboxLegacy.segment.label")}
       className="mb-4 inline-flex items-center gap-1 rounded-xl border border-line/70 bg-surface-panel/60 p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur"
     >
       <FilterTab
         active={view === "decisions"}
-        label="Decisions"
+        label={t("inbox.decisions")}
         onClick={() => onSelect("decisions")}
       />
       <FilterTab
         active={view === "firewall"}
-        label="Firewall board"
+        label={t("inboxLegacy.segment.lanes")}
         onClick={() => onSelect("firewall")}
       />
     </div>
@@ -512,7 +519,7 @@ function DecisionsBody({
                   <div className="flex items-center gap-2">
                     <h2 className="text-sm font-semibold text-ink">Decisions</h2>
                     {pendingCount > 0 && (
-                      <span className="rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-state-warn-ink ring-1 ring-inset ring-amber-500/20">
+                      <span className="rounded-md bg-amber-500/10 px-1.5 py-0.5 text-caption font-bold uppercase tracking-wide text-state-warn-ink ring-1 ring-inset ring-amber-500/20">
                         {pendingCount} pending
                       </span>
                     )}
@@ -627,13 +634,13 @@ function CommitmentsPanel({ commitments }: { commitments: CommitmentItem[] }) {
       <div className="border-b border-line-soft px-4 py-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-ink">Commitments</h2>
-          <span className="rounded-md bg-accent-dim px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-accent-deeper">
+          <span className="rounded-md bg-accent-dim px-1.5 py-0.5 text-caption font-bold tabular-nums text-accent-deeper">
             {visible.length}
           </span>
         </div>
         {/* Plain-language legend — without it the extracted sentences read as
             unexplained AI output ("뭔지 모르겠고", founder 2026-07-22). */}
-        <p className="mt-1 text-[11px] leading-4 text-ink-dim">
+        <p className="mt-1 text-caption leading-4 text-ink-dim">
           Promises Klorn spotted in your mail — <span className="text-accent-deep">Waiting on</span>{" "}
           = they promised you, <span className="text-state-warn-ink">I owe</span> = you promised
           them.
@@ -652,7 +659,7 @@ function CommitmentsPanel({ commitments }: { commitments: CommitmentItem[] }) {
               )}
               <div className="flex items-start gap-2.5 px-4 py-2.5 pl-5">
                 <span
-                  className={`mt-0.5 shrink-0 rounded-md px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide ring-1 ring-inset ${
+                  className={`mt-0.5 shrink-0 rounded-md px-1.5 py-0.5 text-caption font-bold uppercase tracking-wide ring-1 ring-inset ${
                     iOwe
                       ? "bg-amber-500/10 text-state-warn-ink ring-amber-500/20"
                       : "bg-accent/10 text-accent-deeper ring-accent/20"
@@ -661,13 +668,11 @@ function CommitmentsPanel({ commitments }: { commitments: CommitmentItem[] }) {
                   {iOwe ? "I owe" : "Waiting on"}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="line-clamp-1 text-[13px] font-medium text-ink-strong">
-                    “{c.title}”
-                  </p>
+                  <p className="line-clamp-1 text-label font-medium text-ink-strong">“{c.title}”</p>
                   {c.description && (
-                    <p className="mt-0.5 line-clamp-1 text-[11px] text-ink-mid">{c.description}</p>
+                    <p className="mt-0.5 line-clamp-1 text-caption text-ink-mid">{c.description}</p>
                   )}
-                  <p className="mt-0.5 text-[11px] text-ink-dim">
+                  <p className="mt-0.5 text-caption text-ink-dim">
                     {COMMITMENT_KIND_LABEL[c.kind]}
                     {c.dueText ? ` · due ${c.dueText}` : ""}
                     <span className="text-slate-300"> · </span>
@@ -722,7 +727,7 @@ function HonestEmptyState({ commitmentCount }: { commitmentCount: number }) {
           href="/inbox/firewall"
           className="ease-strong inline-flex min-h-9 items-center justify-center rounded-lg border border-line bg-surface-panel/70 px-3.5 text-xs font-medium text-ink-mid shadow-[0_1px_1px_rgba(15,23,42,0.04)] transition duration-150 hover:bg-surface-panel hover:text-ink active:scale-[0.97]"
         >
-          Firewall board
+          {t("inboxLegacy.segment.lanes")}
         </Link>
         <Link
           href="/email"
@@ -781,7 +786,7 @@ function OnboardingHint() {
   return (
     <>
       {/* DESKTOP — one-line compact strip; the tour never outweighs the queue. */}
-      <div className="mb-4 hidden items-center gap-3 rounded-lg border border-line/60 bg-surface-panel/50 px-3 py-1.5 text-[12.5px] md:flex">
+      <div className="mb-4 hidden items-center gap-3 rounded-lg border border-line/60 bg-surface-panel/50 px-3 py-1.5 text-caption md:flex">
         <p className="min-w-0 flex-1 truncate text-xs text-ink-mid">
           <span className="font-semibold text-accent-deeper">{t("inbox.tourTitle")}</span>
           <span className="mx-1.5 text-slate-300">·</span>
@@ -827,9 +832,9 @@ function OnboardingHint() {
       <div className="mb-3 text-sm md:hidden">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0 space-y-1.5">
-            <p className="text-[11px] font-medium text-ink-dim">{t("inbox.tourTitle")}</p>
+            <p className="text-caption font-medium text-ink-dim">{t("inbox.tourTitle")}</p>
             <ol
-              className={`${expanded ? "block" : "hidden"} list-inside list-decimal space-y-1 text-[13px] leading-5 text-ink-mid`}
+              className={`${expanded ? "block" : "hidden"} list-inside list-decimal space-y-1 text-label font-normal leading-5 text-ink-mid`}
             >
               <li>
                 <span className="text-ink">{t("inbox.tour.queueLabel")}</span> —{" "}
@@ -864,14 +869,14 @@ function OnboardingHint() {
             <button
               type="button"
               onClick={() => setExpanded((v) => !v)}
-              className="rounded-md border border-line px-2.5 py-1 text-[11px] text-ink-mid transition hover:border-line-strong hover:text-ink"
+              className="rounded-md border border-line px-2.5 py-1 text-caption text-ink-mid transition hover:border-line-strong hover:text-ink"
             >
               {expanded ? t("inbox.tour.hide") : t("inbox.tour.show")}
             </button>
             <button
               type="button"
               onClick={dismiss}
-              className="rounded-md border border-line px-2.5 py-1 text-[11px] text-ink-mid transition hover:border-line-strong hover:text-ink"
+              className="rounded-md border border-line px-2.5 py-1 text-caption text-ink-mid transition hover:border-line-strong hover:text-ink"
             >
               {t("inbox.tour.dismiss")}
             </button>
@@ -943,6 +948,7 @@ function SignalStrip({
   countsLoading: boolean;
   onPendingClick: () => void;
 }) {
+  const { t } = useT();
   const replyQuery = useReplyNeeded();
   const eventsQuery = useTodayEventCount();
 
@@ -959,25 +965,25 @@ function SignalStrip({
 
   const cells: SignalCell[] = [
     {
-      label: "Pending decisions",
+      label: t("inboxLegacy.stat.pending"),
       value: pendingValue,
       dot: "bg-amber-500",
       onClick: onPendingClick,
     },
     {
-      label: "Open commitments",
+      label: t("inboxLegacy.stat.commitments"),
       value: commitmentValue,
       dot: "bg-accent",
       onClick: scrollToCommitments,
     },
     {
-      label: "Needs reply",
+      label: t("inboxLegacy.stat.needsReply"),
       value: replyQuery.data?.length ?? null,
       dot: "bg-violet-500",
       href: "/email",
     },
     {
-      label: "Today's events",
+      label: t("inboxLegacy.stat.events"),
       value: eventsQuery.data ?? null,
       dot: "bg-emerald-500",
       href: "/calendar",
@@ -994,7 +1000,7 @@ function SignalStrip({
           <>
             <span className="flex items-center gap-1.5">
               <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${cell.dot}`} />
-              <span className="truncate text-[10.5px] font-semibold uppercase tracking-wider text-ink-dim transition group-hover:text-ink-mid">
+              <span className="truncate text-caption font-semibold uppercase tracking-wider text-ink-dim transition group-hover:text-ink-mid">
                 {cell.label}
               </span>
             </span>
@@ -1026,6 +1032,7 @@ function ReplyNeededPanel({ hero = false }: { hero?: boolean }) {
   // Shares one cache entry with the "Needs reply" stat tile (same queryKey),
   // so both surfaces read a single fetch. Errors resolve to an empty list —
   // the panel simply stays hidden, matching the previous behavior.
+  const { t } = useT();
   const { data, isLoading } = useReplyNeeded();
   const emails = data ?? [];
 
@@ -1051,7 +1058,7 @@ function ReplyNeededPanel({ hero = false }: { hero?: boolean }) {
       <div className="flex items-center justify-between border-b border-line-soft px-4 py-3">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold text-ink">Reply Needed</h2>
-          <span className="rounded-md bg-accent/10 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-accent-deeper ring-1 ring-inset ring-accent/20">
+          <span className="rounded-md bg-accent/10 px-1.5 py-0.5 text-caption font-semibold tabular-nums text-accent-deeper ring-1 ring-inset ring-accent/20">
             {emails.length}
           </span>
         </div>
@@ -1068,7 +1075,7 @@ function ReplyNeededPanel({ hero = false }: { hero?: boolean }) {
                 <span
                   aria-hidden="true"
                   className={`avatar-ring mt-0.5 flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br font-semibold text-white ${
-                    hero ? "h-9 w-9 text-[13px]" : "h-8 w-8 text-[11px]"
+                    hero ? "h-9 w-9 text-label" : "h-8 w-8 text-caption"
                   } ${avatarGradient(fromName)}`}
                 >
                   {senderInitials(fromName)}
@@ -1080,12 +1087,12 @@ function ReplyNeededPanel({ hero = false }: { hero?: boolean }) {
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline gap-2">
                     <span
-                      className={`min-w-0 flex-1 truncate font-medium text-ink ${hero ? "text-[13.5px]" : "text-xs"}`}
+                      className={`min-w-0 flex-1 truncate font-medium text-ink ${hero ? "text-label" : "text-xs"}`}
                     >
                       {email.subject || "(no subject)"}
                     </span>
                     {hero && (
-                      <time className="shrink-0 text-[11px] tabular-nums text-ink-dim">
+                      <time className="shrink-0 text-caption tabular-nums text-ink-dim">
                         {formatRelative(email.receivedAt)}
                       </time>
                     )}
@@ -1095,13 +1102,13 @@ function ReplyNeededPanel({ hero = false }: { hero?: boolean }) {
                       {email.snippet}
                     </span>
                   )}
-                  <span className="mt-0.5 block truncate text-[11px] text-ink-dim">
+                  <span className="mt-0.5 block truncate text-caption text-ink-dim">
                     {fromName}
                     {email.needsReplyReason && (
                       <>
                         {" "}
                         <span className="text-slate-300">·</span>{" "}
-                        {humanizeReplyReason(email.needsReplyReason)}
+                        {humanizeReplyReason(email.needsReplyReason, t)}
                       </>
                     )}
                   </span>
@@ -1164,27 +1171,31 @@ function senderInitials(name: string): string {
 
 // The backend's needsReplyReason is a snake_case enum (e.g. "action_items_present").
 // Never show the raw code to the user — map known ones and humanize the rest.
-function humanizeReplyReason(reason: string): string {
-  const map: Record<string, string> = {
-    action_items_present: "Has action items",
-    question_asked: "Asks a question",
-    direct_request: "Direct request",
-    deadline_mentioned: "Mentions a deadline",
-    awaiting_response: "Awaiting your response",
-    meeting_request: "Meeting request",
-    follow_up_needed: "Needs follow-up",
-  };
-  return map[reason] ?? reason.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+const REPLY_REASON_KEYS: Record<string, string> = {
+  action_items_present: "inboxLegacy.reason.actionItems",
+  question_asked: "inboxLegacy.reason.question",
+  direct_request: "inboxLegacy.reason.directRequest",
+  deadline_mentioned: "inboxLegacy.reason.deadline",
+  awaiting_response: "inboxLegacy.reason.awaiting",
+  meeting_request: "inboxLegacy.reason.meeting",
+  follow_up_needed: "inboxLegacy.reason.followUp",
+};
+
+function humanizeReplyReason(reason: string, t: (key: string) => string): string {
+  const key = REPLY_REASON_KEYS[reason];
+  if (key) return t(key);
+  return reason.replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
 }
 
 // ─── Quick links panel ─────────────────────────────────────────────────────
 
 function QuickLinksPanel() {
+  const { t } = useT();
   // Trimmed to the two destinations Stadium-mode users actually reach for
   // from /inbox: today's receipt and the morning briefing. Agent timeline
   // and the chat root live one click away through the sidebar nav already.
   const links = [
-    { href: "/inbox/firewall", label: "Firewall board" },
+    { href: "/inbox/firewall", label: t("inboxLegacy.segment.lanes") },
     { href: "/inbox/receipt", label: "Today's receipt" },
     { href: "/briefing", label: "Full briefing" },
   ] as const;
@@ -1195,7 +1206,7 @@ function QuickLinksPanel() {
         <Link
           key={link.href}
           href={link.href}
-          className="ease-strong inline-flex items-center gap-1 rounded-lg border border-line bg-surface-panel/70 px-2.5 py-1.5 text-[11px] font-medium text-ink-mid shadow-[0_1px_1px_rgba(15,23,42,0.04)] transition duration-150 hover:bg-surface-panel hover:text-ink active:scale-[0.97]"
+          className="ease-strong inline-flex items-center gap-1 rounded-lg border border-line bg-surface-panel/70 px-2.5 py-1.5 text-caption font-medium text-ink-mid shadow-[0_1px_1px_rgba(15,23,42,0.04)] transition duration-150 hover:bg-surface-panel hover:text-ink active:scale-[0.97]"
         >
           {link.label}
           <span className="text-ink-mid">→</span>
@@ -1294,7 +1305,7 @@ function ActionCard({
           <RiskBadge risk={risk} />
           {!isPending && <StatusBadge status={action.status} />}
         </div>
-        <span className="text-[11px] tabular-nums text-ink-dim">
+        <span className="text-caption tabular-nums text-ink-dim">
           {formatRelative(action.createdAt)}
         </span>
       </div>
@@ -1305,7 +1316,7 @@ function ActionCard({
           {heroSubject}
         </h3>
         {showThreadHint && (
-          <p className="mt-1.5 truncate text-[11px] text-ink-mid">
+          <p className="mt-1.5 truncate text-caption text-ink-mid">
             Thread: {action.conversationTitle}
           </p>
         )}
@@ -1324,7 +1335,7 @@ function ActionCard({
       {emailPreview && (
         <div className="mx-5 mb-4 rounded-lg border border-line bg-surface-raised">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-line px-3 py-2">
-            <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-accent-deep">
+            <span className="font-mono text-caption uppercase tracking-[0.14em] text-accent-deep">
               Email to send
             </span>
             <span className="text-xs text-ink-dim">To: {emailPreview.to}</span>
@@ -1385,7 +1396,7 @@ function ActionCard({
 
       {!isPending && action.result && (
         <div className="border-t border-line-soft bg-surface-raised/60 px-5 py-3">
-          <p className="truncate text-[11px] text-ink-dim">{action.result}</p>
+          <p className="truncate text-caption text-ink-dim">{action.result}</p>
         </div>
       )}
     </article>
@@ -1393,24 +1404,25 @@ function ActionCard({
 }
 
 function RiskBadge({ risk }: { risk: "low" | "medium" | "high" }) {
+  const { t } = useT();
   const map = {
     low: {
-      label: "Low risk",
+      label: t("inboxLegacy.risk.low"),
       className: "bg-emerald-500/10 text-state-ok-ink ring-1 ring-inset ring-emerald-500/20",
     },
     medium: {
-      label: "Needs approval",
+      label: t("inboxLegacy.risk.medium"),
       className: "bg-amber-500/10 text-state-warn-ink ring-1 ring-inset ring-amber-500/20",
     },
     high: {
-      label: "High risk",
+      label: t("inboxLegacy.risk.high"),
       className: "bg-rose-500/10 text-rose-600 ring-1 ring-inset ring-rose-500/20",
     },
   }[risk];
 
   return (
     <span
-      className={`shrink-0 rounded-md px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide ${map.className}`}
+      className={`shrink-0 rounded-md px-1.5 py-0.5 text-caption font-bold uppercase tracking-wide ${map.className}`}
     >
       {map.label}
     </span>
@@ -1477,7 +1489,7 @@ function StatusBadge({ status }: { status: PendingActionItem["status"] }) {
   const entry = map[status];
   return (
     <span
-      className={`shrink-0 rounded-md px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide ${entry.className}`}
+      className={`shrink-0 rounded-md px-1.5 py-0.5 text-caption font-bold uppercase tracking-wide ${entry.className}`}
     >
       {entry.label}
     </span>
@@ -1703,7 +1715,7 @@ function MobileSeg({
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={`flex-1 rounded-lg py-2 text-[13px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
+      className={`flex-1 rounded-lg py-2 text-label font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
         active ? "bg-surface-panel text-ink shadow-sm" : "text-ink-mid active:text-ink"
       }`}
     >
@@ -1733,7 +1745,7 @@ function MobileEmpty({ commitmentCount }: { commitmentCount: number }) {
         </svg>
       </div>
       <p className="text-base font-medium text-ink">{t("inbox.nothingToDecide")}</p>
-      <p className="mx-auto mt-1.5 max-w-xs text-[13px] leading-relaxed text-ink-dim">
+      <p className="mx-auto mt-1.5 max-w-xs text-label font-normal leading-relaxed text-ink-dim">
         {commitmentCount > 0
           ? `Klorn is watching your mail and calendar. ${commitmentCount} tracked in the background.`
           : t("inbox.emptyBodyMobile")}
@@ -1773,22 +1785,24 @@ function MobileActionCard({
     <article className="overflow-hidden rounded-2xl bg-surface-raised">
       <div className="flex items-center justify-between gap-2 px-4 pt-3.5">
         <RiskBadge risk={risk} />
-        <span className="text-[11px] text-ink-dim">{formatRelative(action.createdAt)}</span>
+        <span className="text-caption text-ink-dim">{formatRelative(action.createdAt)}</span>
       </div>
       <div className="px-4 pt-2.5">
         <h3 className="break-words text-[17px] font-semibold leading-snug tracking-tight text-ink">
           {heroSubject}
         </h3>
         {context && (
-          <p className="mt-1.5 line-clamp-3 text-[13px] leading-relaxed text-ink-mid">{context}</p>
+          <p className="mt-1.5 line-clamp-3 text-label font-normal leading-relaxed text-ink-mid">
+            {context}
+          </p>
         )}
         {/* Outbound body inline so a send_email can't be approved unseen. */}
         {emailPreview && (
           <div className="mt-3 rounded-xl border border-line bg-surface-panel p-3">
-            <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-accent-deep">
+            <p className="font-mono text-caption uppercase tracking-[0.14em] text-accent-deep">
               Email to send
             </p>
-            <p className="mt-1 break-words text-[11px] text-ink-dim">To: {emailPreview.to}</p>
+            <p className="mt-1 break-words text-caption text-ink-dim">To: {emailPreview.to}</p>
             <p className="mt-1 break-words text-xs text-ink-mid">Subject: {emailPreview.subject}</p>
             {emailPreview.body && (
               <p className="mt-1.5 whitespace-pre-wrap text-xs leading-relaxed text-ink-mid">
@@ -1842,7 +1856,7 @@ function MobileActionCard({
       ) : (
         action.result && (
           <div className="mt-2 px-4 pb-4">
-            <p className="truncate text-[11px] text-ink-dim">{action.result}</p>
+            <p className="truncate text-caption text-ink-dim">{action.result}</p>
           </div>
         )
       )}

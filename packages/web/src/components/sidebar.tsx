@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import {
@@ -74,7 +74,7 @@ function NavCountBadge({ count, active }: { count: number; active: boolean }) {
   if (count <= 0) return null;
   return (
     <span
-      className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums ${
+      className={`rounded-md px-1.5 py-0.5 text-caption font-semibold tabular-nums ${
         active ? "bg-accent-solid text-accent-solid-ink shadow-sm" : "bg-surface-hover text-ink-mid"
       }`}
     >
@@ -137,6 +137,8 @@ export default function Sidebar() {
   const { user, logout, loading: authLoading, googleConnected } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const userMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const userMenuId = useId();
   const navCounts = useNavCounts(!!user);
   const unified = user?.unifiedHome === true;
   const navItems = unified
@@ -154,6 +156,18 @@ export default function Sidebar() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  // Escape closes the user menu and hands focus back to the button that opened it.
+  useEffect(() => {
+    if (!showUserMenu) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setShowUserMenu(false);
+      userMenuButtonRef.current?.focus();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [showUserMenu]);
+
   const initials = user
     ? (user.name || user.email)
         .split(/[\s@]/)
@@ -170,7 +184,7 @@ export default function Sidebar() {
         <div className="relative flex items-center justify-between px-3 py-4">
           <Link
             href={unified ? TODAY_HOME : "/inbox"}
-            aria-label={unified ? t("nav.v2.openToday") : "Open decision queue"}
+            aria-label={unified ? t("nav.v2.openToday") : t("nav.v2.openApprovals")}
             className="flex items-center gap-2.5 rounded-lg px-1 py-1 text-sm font-semibold text-ink transition hover:text-ink"
           >
             <img src="/brand/mark.svg?v=matte2" alt="" className="h-8 w-8" />
@@ -179,7 +193,7 @@ export default function Sidebar() {
               {/* The home is Today under UNIFIED_HOME, so the wordmark carries
                   no surface name. */}
               {!unified && (
-                <span className="mt-1.5 block text-[10px] font-semibold uppercase tracking-[0.16em] text-ink-dim">
+                <span className="mt-1.5 block text-caption font-semibold uppercase tracking-[0.16em] text-ink-dim">
                   {t("nav.decisionQueue")}
                 </span>
               )}
@@ -203,7 +217,7 @@ export default function Sidebar() {
                   // A section with links under it is highlighted, but the
                   // current page is the link below it, not the section.
                   aria-current={active && !item.children ? "page" : undefined}
-                  className={`focus-ring relative flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-[13px] transition ${
+                  className={`focus-ring relative flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-label transition ${
                     active
                       ? "bg-state-info-bg font-medium text-accent-deeper shadow-[0_1px_2px_rgba(2,60,110,0.06)] ring-1 ring-inset ring-accent-dim"
                       : "text-ink-mid hover:bg-surface-hover/70 hover:text-ink"
@@ -249,7 +263,7 @@ export default function Sidebar() {
               <Link
                 href="/admin"
                 aria-current={pathname.startsWith("/admin") ? "page" : undefined}
-                className={`focus-ring relative flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-[13px] transition ${
+                className={`focus-ring relative flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-label transition ${
                   pathname.startsWith("/admin")
                     ? "bg-state-info-bg font-medium text-accent-deeper shadow-[0_1px_2px_rgba(2,60,110,0.06)] ring-1 ring-inset ring-accent-dim"
                     : "text-ink-mid hover:bg-surface-hover/70 hover:text-ink"
@@ -281,14 +295,14 @@ export default function Sidebar() {
             above states each account's health instead. */}
         {user && googleConnected === true && !unified && (
           <div className="mx-2 mb-2 rounded-xl border border-state-info-line bg-state-info-bg p-3 shadow-[0_1px_2px_rgba(2,60,110,0.05)]">
-            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-state-info-ink">
+            <div className="flex items-center gap-1.5 text-caption font-semibold text-state-info-ink">
               <span aria-hidden="true" className="relative flex h-1.5 w-1.5">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60 motion-reduce:animate-none" />
                 <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
               </span>
               {t("sidebar.realtime.title")}
             </div>
-            <p className="mt-1 text-[11px] leading-4 text-ink-mid">{t("sidebar.realtime.body")}</p>
+            <p className="mt-1 text-caption leading-4 text-ink-mid">{t("sidebar.realtime.body")}</p>
           </div>
         )}
 
@@ -302,18 +316,22 @@ export default function Sidebar() {
           ) : user ? (
             <div className="relative">
               <button
+                ref={userMenuButtonRef}
                 type="button"
+                aria-haspopup="menu"
+                aria-expanded={showUserMenu}
+                aria-controls={showUserMenu ? userMenuId : undefined}
                 onClick={() => setShowUserMenu((p) => !p)}
                 className="w-full flex items-center gap-2.5 rounded-lg px-2 py-2 hover:bg-surface-hover/70 transition text-left"
               >
-                <div className="avatar-ring flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-accent-solid to-accent-solid-hover text-[11px] font-bold text-accent-solid-ink">
+                <div className="avatar-ring flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-accent-solid to-accent-solid-hover text-caption font-bold text-accent-solid-ink">
                   {initials}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-medium text-ink">
+                  <p className="truncate text-label font-medium text-ink">
                     {user.name || user.email}
                   </p>
-                  {user.name && <p className="truncate text-[11px] text-ink-dim">{user.email}</p>}
+                  {user.name && <p className="truncate text-caption text-ink-dim">{user.email}</p>}
                 </div>
                 <svg
                   aria-hidden="true"
@@ -330,7 +348,10 @@ export default function Sidebar() {
               </button>
 
               {showUserMenu && (
-                <div className="absolute bottom-full left-0 right-0 mb-1 bg-surface-panel border border-line rounded-xl shadow-xl shadow-slate-900/10 z-50 py-1 animate-slide-up">
+                <div
+                  id={userMenuId}
+                  className="absolute bottom-full left-0 right-0 mb-1 bg-surface-panel border border-line rounded-xl shadow-xl shadow-slate-900/10 z-50 py-1 animate-slide-up"
+                >
                   <Link
                     href="/billing"
                     onClick={() => setShowUserMenu(false)}
@@ -352,6 +373,15 @@ export default function Sidebar() {
                   >
                     {t("settings.title")}
                   </Link>
+                  <a
+                    href="https://klorn.ai/blog/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setShowUserMenu(false)}
+                    className="block px-3 py-2 text-sm text-ink-mid hover:bg-surface-hover rounded-md mx-1 transition"
+                  >
+                    {t("nav.blog")}
+                  </a>
                   <div className="border-t border-line my-1" />
                   <button
                     type="button"

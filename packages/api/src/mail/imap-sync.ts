@@ -27,6 +27,7 @@ import { persistGmailEmail } from "../judge/email-firewall.js";
 import { captureError } from "../sentry.js";
 import { formatMailbox } from "./email-address.js";
 import { fetchCapReached, textBodyPart } from "./generic-imap-bounds.js";
+import { decodeImapText } from "./imap-body.js";
 import { createImapClient, endImapSession } from "./imap-connection.js";
 import { capStored, envelopeSubject, MAX_STORED_CC_LENGTH } from "./imap-envelope.js";
 import { formatImapMessageId } from "./imap-message-id.js";
@@ -131,27 +132,47 @@ interface ImapFetchMessage {
   envelope?: ImapEnvelope | null;
   flags?: Set<string> | string[];
   bodyParts?: Map<string, Buffer>;
+  /// The top-level MIME headers asked for in MIME_HEADERS (raw header lines).
+  headers?: Buffer;
   source?: Buffer;
 }
+
+/// BODY[TEXT] carries no top-level headers; these two are what a MIME parser
+/// needs to decode it (imap-body.ts).
+const MIME_HEADERS = ["content-type", "content-transfer-encoding"];
+
+function textBodyOf(msg: ImapFetchMessage): Buffer | undefined {
+  return msg.bodyParts?.get("text") ?? msg.bodyParts?.get("TEXT");
+}
+
+// Cut with capStored, never splitting a surrogate pair: a lone surrogate is
+// stored as U+FFFD, so the row would differ from the next poll's text and be
+// rewritten every cycle.
+const MAX_STORED_BODY_CHARS = 50_000;
 
 function formatAddress(addr: ImapEnvelopeAddress | undefined): string {
   if (!addr) return "";
   return formatMailbox(addr.name ?? "", addr.address ?? "");
 }
 
-function snippetFromBody(buf: Buffer | undefined, max = 200): string | null {
-  if (!buf) return null;
+// The snippet keeps 200 characters; sanitize-html's cost grows faster than
+// linearly with tag nesting, and the raw fallback can be a whole fixed-host
+// TEXT part (no size cap), so only its head is sanitized.
+const SNIPPET_SOURCE_CHARS = 4_000;
+
+function snippetFromBody(bodyText: string, max = 200): string | null {
+  if (!bodyText) return null;
   // Strip HTML through sanitize-html (proper parser) rather than regex —
   // CodeQL flags regex-based tag stripping as bad-tag-filter even when
   // the output is never rendered. The judge prompt only needs the first
   // sentence or two so we collapse whitespace and slice.
-  const stripped = sanitizeHtml(buf.toString("utf8"), {
+  const stripped = sanitizeHtml(capStored(bodyText, SNIPPET_SOURCE_CHARS), {
     allowedTags: [],
     allowedAttributes: {},
     disallowedTagsMode: "discard",
   });
   const text = stripped.replace(/\s+/g, " ").trim();
-  return text.slice(0, max) || null;
+  return capStored(text, max) || null;
 }
 
 type PersistCall = [
@@ -163,9 +184,9 @@ type PersistCall = [
  * Turn one fetched message into the arguments of the shared persist call. Used by
  * the poll and by the targeted re-sync after an undo, so both write a row the same
  * way. Pure: the poll runs it outside its per-message error handling, as it always
- * has.
+ * has. `bodyText` is the decoded body (decodeImapText: linear, never throws).
  */
-function toPersistCall(args: SyncArgs, msg: ImapFetchMessage): PersistCall {
+function toPersistCall(args: SyncArgs, msg: ImapFetchMessage, bodyText: string): PersistCall {
   const env = msg.envelope ?? {};
   const from = formatAddress(env.from?.[0] ?? undefined);
   const to = formatAddress(env.to?.[0] ?? undefined);
@@ -174,8 +195,7 @@ function toPersistCall(args: SyncArgs, msg: ImapFetchMessage): PersistCall {
     null;
   const subject = envelopeSubject(env.subject);
   const receivedAt = env.date ?? new Date();
-  const bodyBuf = msg.bodyParts?.get("text") ?? msg.bodyParts?.get("TEXT");
-  const snippet = snippetFromBody(bodyBuf);
+  const snippet = snippetFromBody(bodyText);
   const stableId = formatImapMessageId(args.provider.idPrefix, args.email, msg.uid);
 
   // Flags → Gmail-ish labels so existing classifier paths work.
@@ -201,7 +221,7 @@ function toPersistCall(args: SyncArgs, msg: ImapFetchMessage): PersistCall {
       cc: cc ?? "",
       subject,
       snippet: snippet ?? "",
-      body: bodyBuf ? bodyBuf.toString("utf8").slice(0, 50_000) : "",
+      body: capStored(bodyText, MAX_STORED_BODY_CHARS),
       htmlBody: "",
       labels,
       isRead,
@@ -215,6 +235,12 @@ function toPersistCall(args: SyncArgs, msg: ImapFetchMessage): PersistCall {
       // mailbox's address, not the primary Google account (same as email-sync's
       // linked fan-out passing linked.email).
       userEmail: args.email,
+      // The poll re-touches its window every cycle, so rows stored as raw MIME
+      // before decoding existed pick up the decoded text; unchanged bodies are
+      // not rewritten. Only with the headers AND the TEXT part in hand: a FETCH
+      // that lost either yields raw or empty text, which must not overwrite a
+      // decoded body.
+      refreshBody: Boolean(msg.headers?.length && textBodyOf(msg)?.length),
     },
   ];
 }
@@ -280,6 +306,7 @@ export async function syncImapInbox(args: SyncArgs): Promise<SyncResult> {
           flags: true,
           // Whole TEXT for a fixed host; a bounded slice for a user-supplied one.
           bodyParts: [textBodyPart(args.provider)],
+          headers: MIME_HEADERS,
         },
         { uid: false },
       )) {
@@ -290,7 +317,8 @@ export async function syncImapInbox(args: SyncArgs): Promise<SyncResult> {
         // or another provider's UIDs — in the same EmailMessage table.
         const stableId = formatImapMessageId(args.provider.idPrefix, args.email, msg.uid);
 
-        const persistCall = toPersistCall(args, msg);
+        const bodyText = decodeImapText(msg.headers, textBodyOf(msg));
+        const persistCall = toPersistCall(args, msg, bodyText);
 
         try {
           const persisted = await persistGmailEmail(args.userId, ...persistCall);
@@ -392,10 +420,17 @@ export async function syncImapMessage(args: SyncMessageArgs): Promise<{ emailId:
         String(args.uid),
         // The same slice as the poll (whole TEXT for a fixed host): an undo must be able to
         // restore a message larger than the literal cap too.
-        { envelope: true, flags: true, bodyParts: [textBodyPart(args.provider)] },
+        {
+          envelope: true,
+          flags: true,
+          bodyParts: [textBodyPart(args.provider)],
+          headers: MIME_HEADERS,
+        },
         { uid: true },
       )) {
-        const persistCall = toPersistCall(args, raw as ImapFetchMessage);
+        const msg = raw as ImapFetchMessage;
+        const bodyText = decodeImapText(msg.headers, textBodyOf(msg));
+        const persistCall = toPersistCall(args, msg, bodyText);
         const persisted = await persistGmailEmail(args.userId, ...persistCall);
         return { emailId: persisted.emailId };
       }
