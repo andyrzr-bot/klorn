@@ -537,6 +537,22 @@ export function naverLoginEnabled(): boolean {
     (process.env.NAVER_LOGIN_ENABLED ?? "").trim().toLowerCase(),
   );
 }
+// Manual send receipts — OFF by default (repo doctrine). CLAUDE.md's
+// deterministic floor: send / delete / forward always produce an ActionReceipt
+// with a payload hash. The agent path does (PendingAction / ActionOutbox,
+// verified in tool-executor); the user-initiated POST /api/email/send and
+// POST /api/email/:id/reply did not. While ON, both write a SendReceipt row
+// (mail/send-receipt.ts) BEFORE calling the provider — a failed write refuses
+// the send with 503 — verify the bytes handed to the provider against it, settle
+// it with the outcome, and add `receipt` to the success response. While OFF
+// neither route touches the table and both answer exactly as before. Needs the
+// 20261016010000_send_receipt migration (applied by start.sh before the app
+// boots). Read at request time with the same lenient truthy parse.
+export function manualSendReceiptsEnabled(): boolean {
+  return ["true", "1", "yes", "on"].includes(
+    (process.env.MANUAL_SEND_RECEIPTS_ENABLED ?? "").trim().toLowerCase(),
+  );
+}
 // Attention aging sweep (hourly): auto-resolve firewall items the user
 // already acted on elsewhere + age out SILENT/QUEUE email items. OFF by
 // default — what leaves the board is a product decision; flipping is

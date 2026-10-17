@@ -114,7 +114,13 @@ export interface EmailListItem {
   candidateIntake: CandidateIntakeWire | null;
 }
 
-/** `GET /api/email` — the paged inbox list. */
+/**
+ * `GET /api/email` — the paged inbox list. With the opt-in `hideHandled=1`
+ * (or `true`) it leaves out mail whose attention item is DISMISSED (Done) or
+ * SNOOZED with a wake-up time still ahead (Later); `total` then counts the
+ * same rows. Absent, the list is unchanged. `filter=candidates` cannot be
+ * combined with it (400).
+ */
 export interface EmailListResponse {
   emails: EmailListItem[];
   /** "gmail" = the real DB-backed inbox (any connected source, IMAP included). */
@@ -154,6 +160,37 @@ export interface EmailLaneCountsResponse {
   needsConnection?: true;
 }
 
+/** A category the user can pin on a sender (`PUT /api/email/sender-labels`). */
+export type SenderLabelCategory =
+  | "internal"
+  | "customer"
+  | "investor"
+  | "system"
+  | "billing"
+  | "promotions";
+
+/** What a sender label covers: one address, or everyone at a domain. */
+export type SenderLabelScope = "sender" | "domain";
+
+/** Every category a row's relationship label can show (RowSignalWire). */
+export type SenderLabelShown = SenderLabelCategory | "social" | "updates" | "forums";
+
+/**
+ * The reader's sender label: what a correction would target and what the
+ * row shows now. The server derives `address` and `domain` — a client never
+ * builds the domain itself.
+ */
+export interface ReaderSenderLabel {
+  /** The lowercase address a "this address" correction targets. */
+  address: string;
+  /** The domain a "whole domain" correction targets; null for a public mail provider. */
+  domain: string | null;
+  /** The relationship label the row shows; null when it shows none. */
+  current: SenderLabelShown | null;
+  /** Which of the user's own corrections set `current`; null = derived from evidence. */
+  correction: SenderLabelScope | null;
+}
+
 /**
  * `GET /api/email/:id/reader-context?tier=&inbox=&filter=&search=` — what the
  * Mail v2 reader header shows beyond the mail itself (MAIL_V2): the lane and
@@ -174,6 +211,8 @@ export interface EmailReaderContextResponse {
   firstContact: boolean;
   /** How many times the user has written to this sender; null when unknown. */
   repliedCount: number | null;
+  /** The sender label and its correction targets; null when the From has no address (or demo mail). */
+  senderLabel: ReaderSenderLabel | null;
   /** The mail just above this one in that view (newer); null at the top. */
   newerId: string | null;
   /** The mail just below this one in that view (older); null at the end. */
@@ -329,3 +368,36 @@ export type EmailSubscriptionUnsubscribeResponse = EmailUnsubscribeResponse & {
   /** Messages whose archive failed. */
   archiveFailed: number;
 };
+
+/**
+ * `POST /api/email/send` body — a brand-new message (not a reply).
+ * `linkedInboxAccountId` picks the account it leaves from: absent / null /
+ * "primary" = the primary inbox (as before the field existed); otherwise the id
+ * of one of the caller's linked inboxes. An id that is not the caller's is 404
+ * (never a silent primary send), a non-id value 400, and a linked mailbox whose
+ * provider cannot send from Klorn 501.
+ */
+export interface SendEmailRequest {
+  to: string;
+  subject: string;
+  body: string;
+  linkedInboxAccountId?: string | null;
+}
+
+/**
+ * The deterministic-floor receipt of a user-initiated send, added to the
+ * success response of `POST /api/email/send` and `POST /api/email/:id/reply`
+ * while MANUAL_SEND_RECEIPTS_ENABLED is on (absent otherwise). `payloadHash` is
+ * `sendEmailPayloadHash({ to, subject, body })` (packages/api
+ * judge/attention-floor.ts, schema `v`) over the bytes the provider received —
+ * a client that hashes what its confirm sheet showed gets the same hex. `id` is
+ * the server's SendReceipt row. No recipient or content is echoed.
+ */
+export interface SendReceiptWire {
+  id: string;
+  v: "v1";
+  action: "send_email";
+  payloadHash: string;
+  /** ISO time the receipt was minted (the send's approval). */
+  approvedAt: string;
+}

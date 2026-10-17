@@ -152,9 +152,21 @@ export async function sendPushNotification(
     // AttentionItem id, when the interrupt maps 1:1 to a firewall item.
     // Lets secondary channels (Telegram) attach tier-override buttons.
     attentionItemId?: string;
+    // Mail deep link for the NATIVE channels only (push-device.ts
+    // mailPushTarget): the Klorn EmailMessage id of a mail-driven interrupt and
+    // the reply draft / approval when one exists. Stripped before web push and
+    // Telegram, so their payloads are exactly what they were.
+    emailId?: string;
+    pendingActionId?: string;
   },
   category: NotifCategory = "system",
 ): Promise<PushSendSummary> {
+  const { emailId, pendingActionId, ...channelPayload } = payload;
+  const nativePayload = {
+    ...channelPayload,
+    ...(emailId ? { emailId } : {}),
+    ...(pendingActionId ? { pendingActionId } : {}),
+  };
   // First line of defense: drop housekeeping + noise pushes BEFORE any
   // other check. Six other modules call this function (briefing,
   // reminder-scheduler, automation-scheduler, proactive-actions,
@@ -224,7 +236,7 @@ export async function sendPushNotification(
   // no browser subscriptions) still gets PUSH-tier interrupts. Contained:
   // sendTelegramForPush never throws by design, and the .catch is a second
   // belt so a bug there can never fail the web-push path.
-  await sendTelegramForPush(userId, payload, category).catch((err) => {
+  await sendTelegramForPush(userId, channelPayload, category).catch((err) => {
     // Defense-in-depth: sendTelegramForPush is designed never to throw and
     // logs/captures its own failures. If it ever does throw, this must not
     // sink the web-push path below — but don't swallow it silently either,
@@ -242,10 +254,10 @@ export async function sendPushNotification(
   // 10s per-request timeout) never stacks latency onto the primary web-push
   // path below. Each has its own .catch, so no unhandled rejection escapes.
   void Promise.all([
-    sendDevicePush(userId, payload, category).catch((err) => {
+    sendDevicePush(userId, nativePayload, category).catch((err) => {
       console.warn(`[PUSH] FCM device channel threw for ${userId}:`, err);
     }),
-    sendApnsPush(userId, payload, category).catch((err) => {
+    sendApnsPush(userId, nativePayload, category).catch((err) => {
       console.warn(`[PUSH] APNs device channel threw for ${userId}:`, err);
     }),
   ]);
@@ -291,7 +303,7 @@ export async function sendPushNotification(
   // serial loop's `continue`.
   const sem = new Semaphore(PUSH_FANOUT_CONCURRENCY);
   const results = await sem.all(
-    subscriptions.map((sub) => () => deliverToSubscription(userId, sub, payload, category)),
+    subscriptions.map((sub) => () => deliverToSubscription(userId, sub, channelPayload, category)),
   );
   const attempted = results.filter((r) => r.attempted).length;
   const accepted = results.filter((r) => r.delivered).length;
