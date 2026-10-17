@@ -163,10 +163,12 @@ describe("the judge is actually wired to the reserve", () => {
   // A reserve nothing opts into protects nothing. This asserts the wiring,
   // not the arithmetic: the judge's own call site must mark itself reserved,
   // and CompletionOptions must carry it.
-  it("poc-judge marks its completion call reserved", async () => {
+  it("poc-judge reserves new-mail judgements and not backlog repair", async () => {
     const { readFileSync } = await import("node:fs");
     const src = readFileSync(new URL("../judge/poc-judge.ts", import.meta.url), "utf8");
-    expect(src).toMatch(/reserved:\s*true/);
+    // The contract, not a literal: `reserved` follows the caller's backlog
+    // flag, so a sweep over old rows can never reach the judge's slice.
+    expect(src).toMatch(/reserved:\s*!backlog/);
   });
 
   it("no other surface claims the reserve", async () => {
@@ -268,5 +270,35 @@ describe("the post-increment re-check honours the reserve", () => {
     const { recordCostUsage } = await import("../billing/cost-guard.js");
     await recordCostUsage("user-1", 1, "google/gemini-2.5-flash", { reserved: true });
     expect(alerts.notify).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("backlog repair cannot spend the judge's slice", () => {
+  // 2026-10-16: sweepFallbackRejudge drained both users' entire daily cap
+  // before 05:00 UTC re-judging 40 days of keyword-fallback rows (~3.5 LLM
+  // calls per row through the dial). Every message that arrived afterwards was
+  // classified by keywords — the outage this reserve exists to prevent, caused
+  // by the repair for that same outage. The sweep calls judgeEmail, so without
+  // an opt-out it inherits the judge's reserved marker and eats the slice.
+  it("the sweep marks its judgeEmail call as backlog", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("../judge/fallback-rejudge.ts", import.meta.url), "utf8");
+    expect(src).toMatch(/backlog:\s*true/);
+  });
+
+  it("a backlog call is refused at the reserve line where new mail still passes", async () => {
+    process.env.DAILY_COST_CAP_CENTS = "100";
+    process.env.JUDGE_BUDGET_RESERVE_CENTS = "25";
+    delete process.env.PAYWALL_ENABLED;
+    mockRow = { cents: 80 };
+
+    // judgeEmail passes reserved: !backlog, so backlog repair arrives here as
+    // an ordinary call and new-mail classification as a reserved one.
+    const backlogCall = await gate();
+    const newMailCall = await gate({ reserved: true });
+
+    expect(backlogCall.allowed).toBe(false);
+    expect(newMailCall.allowed).toBe(true);
+    expect(newMailCall.remainingCents).toBe(20);
   });
 });

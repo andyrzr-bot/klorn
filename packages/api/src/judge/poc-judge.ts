@@ -402,6 +402,7 @@ async function extractFeaturesWithLlm(
   onError?: (message: string) => void,
   language?: string | null,
   priorities: string | null = null,
+  backlog = false,
 ): Promise<{ features: PocFeatures; reason: string } | null> {
   const model = modelOverride || JUDGE_MODEL;
   // The language (and the user's priorities) ride inside userPrompt, so the
@@ -460,7 +461,14 @@ async function extractFeaturesWithLlm(
           // agent and briefing are held back from. Without it the judge is the
           // first thing to go dark when something else spends the budget, and
           // nothing looks broken because mail is still being sorted.
-          ...(userId ? { userId, priority: "background" as const, reserved: true } : {}),
+          //
+          // Backlog repair does NOT get it. The fallback re-judge sweep calls
+          // judgeEmail too, and on 2026-10-16 it spent both users' entire daily
+          // cap before 05:00 UTC re-judging 40 days of keyword-fallback rows —
+          // ~3.5 calls a row through the dial. A reserve the backlog can eat is
+          // not a reserve: new mail would still be judged by keywords, which is
+          // the exact outage this slice exists to prevent.
+          ...(userId ? { userId, priority: "background" as const, reserved: !backlog } : {}),
           ...(credentials ? { credentials } : {}),
         },
       );
@@ -543,6 +551,7 @@ async function extractWithDial(
   onError?: (message: string) => void,
   language?: string | null,
   priorities: string | null = null,
+  backlog = false,
 ): Promise<{ features: PocFeatures; reason: string } | null> {
   const cheap = await extractFeaturesWithLlm(
     email,
@@ -555,6 +564,7 @@ async function extractWithDial(
     onError,
     language,
     priorities,
+    backlog,
   );
   if (!cheap) return null;
 
@@ -578,6 +588,7 @@ async function extractWithDial(
     onError,
     language,
     priorities,
+    backlog,
   );
   // A failed escalation must never lose the cheap result we already have —
   // but log it, or a frontier-model outage silently degrades every ambiguous
@@ -768,6 +779,13 @@ export async function judgeEmail(
   modelOverride?: string,
   onLlmError?: (message: string) => void,
   language?: string | null,
+  /**
+   * Backlog repair rather than new mail. Drops the judge's reserved-budget
+   * marker so a sweep over old rows can never spend the slice that keeps
+   * incoming mail classified. See the `reserved` comment in
+   * extractFeaturesWithLlm.
+   */
+  options: { backlog?: boolean } = {},
 ): Promise<PocJudgement> {
   // Fast-path: only the patterns we are certain the founder treats as SILENT.
   //   - Gmail's CATEGORY_PROMOTIONS label (calibrated, ad-targeted mail)
@@ -837,6 +855,7 @@ export async function judgeEmail(
     onLlmError,
     language,
     context.userPriorities ?? null,
+    options.backlog ?? false,
   );
   if (llm) {
     if (senderFacts) {
