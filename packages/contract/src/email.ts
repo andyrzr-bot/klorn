@@ -90,6 +90,18 @@ export interface EmailListItem {
    * not judged yet; clients render no chip, never a guessed lane.
    */
   tier: LiveTier | null;
+  /**
+   * Why the message sits in its lane, resolved in the user's notification
+   * language (a static reason key is localized; free text passes through).
+   * Display-only, never a trust signal. null = no stored reason.
+   */
+  tierReason?: string | null;
+  /**
+   * Messages of this row's thread inside the requested view. Set only on a
+   * thread-grouped page (`threads=1` with a lane), where the row is the
+   * thread's newest message in the view; absent otherwise.
+   */
+  threadCount?: number;
   to: string;
   subject: string;
   snippet: string | null;
@@ -120,6 +132,11 @@ export interface EmailListItem {
  * SNOOZED with a wake-up time still ahead (Later); `total` then counts the
  * same rows. Absent, the list is unchanged. `filter=candidates` cannot be
  * combined with it (400).
+ *
+ * With the opt-in `threads=1` (or `true`) together with a lane (`tier`, ALL
+ * included, while lane reads are on) the page holds one row per thread — the
+ * thread's newest message in the view, carrying `threadCount` — and `total`
+ * counts threads. Without a lane `threads` is ignored.
  */
 export interface EmailListResponse {
   emails: EmailListItem[];
@@ -140,6 +157,8 @@ export interface EmailListResponse {
 export interface EmailLaneCount {
   total: number;
   unread: number;
+  /** Distinct threads in the lane (a thread's messages may span several stored tiers; counted once per folded lane). */
+  threads: number;
 }
 
 /** One entry per live lane — retired values are folded server-side. */
@@ -321,6 +340,53 @@ export interface WaitingOnResponse {
   /** The floor that was applied (the request's `days`, or the default). */
   minDays: number;
 }
+
+/** How an unsubscribe is carried out, most automatic first. */
+export type EmailUnsubscribeMethod = "one-click" | "mailto" | "link";
+
+/**
+ * `POST /api/email/:id/unsubscribe` — success payload. `done` is true when
+ * Klorn unsubscribed on the user's behalf (RFC 8058 one-click POST, or a mailto
+ * sent from the user's own account); `link` means nothing automatic worked and
+ * `url` is the list's own page for the user to open.
+ */
+export type EmailUnsubscribeResponse =
+  | { method: "one-click" | "mailto"; done: true }
+  | { method: "link"; done: false; url: string };
+
+/** One sender that mails the user through a list, in ONE connected account. */
+export interface EmailSubscriptionWire {
+  /** Normalized sender address (lowercased, display name stripped). */
+  sender: string;
+  /** Display name from the sender's From header, or null. */
+  displayName: string | null;
+  /** Linked inbox id; null = the primary account. Never merged across accounts. */
+  linkedInboxAccountId: string | null;
+  /** The account's address, when known. */
+  accountLabel: string | null;
+  /** Mail from this sender in this account, within the window. */
+  count: number;
+  unreadCount: number;
+  /** ISO — newest mail from this sender in this account. */
+  lastReceivedAt: string;
+  /** The most automatic method any of this sender's mail offers. */
+  method: EmailUnsubscribeMethod;
+}
+
+/** `GET /api/email/subscriptions` — senders by mail count, most first. */
+export interface EmailSubscriptionsResponse {
+  subscriptions: EmailSubscriptionWire[];
+  /** The look-back window applied, in days. */
+  windowDays: number;
+}
+
+/** `POST /api/email/subscriptions/unsubscribe` — success payload. */
+export type EmailSubscriptionUnsubscribeResponse = EmailUnsubscribeResponse & {
+  /** Messages archived (0 unless `archive` was requested). */
+  archived: number;
+  /** Messages whose archive failed. */
+  archiveFailed: number;
+};
 
 /**
  * `POST /api/email/send` body — a brand-new message (not a reply).

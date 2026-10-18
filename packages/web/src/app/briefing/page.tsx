@@ -8,6 +8,7 @@ import Link from "next/link";
 import AuthGuard from "../../components/auth-guard";
 import { HubHandoff } from "../../components/hub-handoff";
 import { Markdown } from "../../components/markdown";
+import { PAGE_SHELL } from "../../components/page-shell";
 import ErrorAlert from "../../components/ui/error-alert";
 import LoadingState from "../../components/ui/loading-state";
 import { useT } from "../../lib/i18n";
@@ -134,7 +135,7 @@ function BriefingView() {
     : null;
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 pb-28 pt-3 md:py-10">
+    <div className={PAGE_SHELL}>
       {/* MOBILE — native large-title header (desktop hero below, untouched) */}
       <header className="mb-5 flex items-end justify-between gap-3 md:hidden">
         <div className="min-w-0">
@@ -276,10 +277,10 @@ function BriefingView() {
           {noteId && topActions.length > 0 && (
             <section className="panel-elevated overflow-hidden rounded-2xl border border-line/70 bg-surface-panel">
               <div className="border-b border-line-soft px-4 py-3">
-                <h2 className="text-sm font-semibold text-ink">Top 3 feedback</h2>
-                <p className="mt-1 text-xs text-ink-dim">
-                  Mark whether today's surfaced items were actually useful.
-                </p>
+                <h2 className="text-sm font-semibold text-ink">
+                  {t("briefingPage.feedback.title")}
+                </h2>
+                <p className="mt-1 text-xs text-ink-dim">{t("briefingPage.feedback.body")}</p>
               </div>
               <ul className="divide-y divide-line-soft">
                 {topActions.map((action) => (
@@ -303,7 +304,9 @@ function BriefingView() {
                                 : "border-line bg-surface-panel/70 text-ink-mid shadow-[0_1px_1px_rgba(15,23,42,0.04)] hover:bg-surface-panel hover:text-ink"
                             }`}
                           >
-                            {savingRank === action.rank && !selected ? "Saving" : option.label}
+                            {savingRank === action.rank && !selected
+                              ? t("briefingPage.feedback.saving")
+                              : option.label}
                           </button>
                         );
                       })}
@@ -320,6 +323,7 @@ function BriefingView() {
 }
 
 function BriefingDeliveryStatus({ status }: { status: BriefingStatus }) {
+  const { t } = useT();
   const push = pushStateCopy(status.push.state, status.push.reason);
   const timezone =
     status.automation.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "Local time";
@@ -340,9 +344,9 @@ function BriefingDeliveryStatus({ status }: { status: BriefingStatus }) {
   return (
     <section className="panel-elevated mb-4 rounded-2xl border border-line/70 bg-surface-panel p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-ink">Briefing delivery</h2>
+        <h2 className="text-sm font-semibold text-ink">{t("briefingPage.delivery.title")}</h2>
         <Link href="/settings/notifications" className="text-xs text-accent-deep hover:underline">
-          Settings
+          {t("briefingPage.delivery.settings")}
         </Link>
       </div>
       <div className="grid gap-2 text-xs sm:grid-cols-4">
@@ -364,7 +368,7 @@ function BriefingDeliveryStatus({ status }: { status: BriefingStatus }) {
         <DeliveryFact label="Push" value={push.label} tone={push.tone} />
       </div>
       {guidance && (
-        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-state-warn-line bg-state-warn-bg px-3 py-2 text-[11px] leading-5 text-state-warn-ink">
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-state-warn-line bg-state-warn-bg px-3 py-2 text-caption leading-5 text-state-warn-ink">
           <span>{guidance.message}</span>
           {guidance.action && (
             <Link
@@ -462,7 +466,7 @@ function DeliveryFact({
   }[tone];
   return (
     <div className={`rounded-lg border px-3 py-2 ${toneClass}`}>
-      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] opacity-60">{label}</p>
+      <p className="text-caption font-semibold uppercase tracking-[0.12em] opacity-60">{label}</p>
       <p className="mt-1 truncate text-xs font-medium">{value}</p>
     </div>
   );
