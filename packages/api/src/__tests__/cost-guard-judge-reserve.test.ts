@@ -171,6 +171,20 @@ describe("the judge is actually wired to the reserve", () => {
     expect(src).toMatch(/reserved:\s*!backlog/);
   });
 
+  it("repair and eval loops over old mail opt out of the reserve", async () => {
+    // judgeEmail reserves by default (backlog=false), so every loop that
+    // re-judges stored rows must say so — same risk class as the fallback sweep.
+    const { readFileSync } = await import("node:fs");
+    for (const file of [
+      "../judge/fallback-rejudge.ts",
+      "../judge/rejudge-open-items.ts",
+      "../learning/correction-eval.ts",
+    ]) {
+      const src = readFileSync(new URL(file, import.meta.url), "utf8");
+      expect({ file, optsOut: /backlog:\s*true/.test(src) }).toEqual({ file, optsOut: true });
+    }
+  });
+
   it("no other surface claims the reserve", async () => {
     const { readdirSync, readFileSync, statSync } = await import("node:fs");
     const { join } = await import("node:path");
