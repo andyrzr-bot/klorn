@@ -617,6 +617,8 @@ const ja: Record<string, string> = {
     "アカウント、Googleアクセス、すべてのデータを完全に削除します。取り消せません。",
   "settings.toast.deleteWorkspaceFailed": "ワークスペースのデータを削除できませんでした。",
   "settings.toast.workspaceDeleted": "ワークスペースのデータを削除しました。",
+  "settings.toast.workspaceDeletionPending":
+    "削除を開始しました。Klorn のアクセスはすでに取り消され、残りはバックグラウンドで完了処理中です。",
   "settings.toast.deleteAccountFailed": "アカウントを削除できませんでした。",
   "settings.about.tagline": "Decision OS",
   "settings.about.desc": "散らばったタブを減らし、次の判断を明確にするために作られました。",
@@ -2016,6 +2018,9 @@ const ja: Record<string, string> = {
   "paywall.valueProp.noise": "不在の間に Klorn がノイズを分類し、各メールに理由を表示します",
   "paywall.valueProp.brief": "判断が必要なことをまとめた朝のブリーフィング",
   "paywall.valueProp.learns": "あなたの判断を学習し、使うほど精度が上がる",
+  "oauthError.wipeInProgress.title": "データを初期化したばかりです",
+  "oauthError.wipeInProgress.body":
+    "Klorn が初期化を完了処理しています。数分後に Google アカウントをもう一度接続してください。",
   "oauthError.title": "Gmail のオフラインアクセスが許可されませんでした",
   "oauthError.body":
     "Google が、Klorn がバックグラウンドで同期を続けるために必要な更新権限のない短期トークンを返しました。原因はほぼ必ず次のいずれかです:",

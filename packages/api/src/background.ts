@@ -19,6 +19,7 @@ import { getUpcomingMeetings } from "./pim/meeting.js";
 import { recordSchedulerTick, registerScheduler } from "./scheduler-heartbeat.js";
 import { captureError } from "./sentry.js";
 import { pushNotification } from "./websocket.js";
+import { newWork } from "./work-context.js";
 
 // In-memory cache only used to skip redundant DB queries within same process lifetime.
 // Actual dedup is DB-based (survives server restarts).
@@ -269,13 +270,16 @@ export function startBackgroundAgent() {
   registerScheduler("background-agent", 60_000);
 
   // Run immediately once
-  checkUpcomingMeetings();
+  newWork(checkUpcomingMeetings)();
 
   // Then every 60 seconds — only meeting checks (task checks moved to autonomous-agent.ts)
-  intervalId = setInterval(async () => {
-    recordSchedulerTick("background-agent");
-    await checkUpcomingMeetings();
-  }, 60_000);
+  intervalId = setInterval(
+    newWork(async () => {
+      recordSchedulerTick("background-agent");
+      await checkUpcomingMeetings();
+    }),
+    60_000,
+  );
 }
 
 export function stopBackgroundAgent() {

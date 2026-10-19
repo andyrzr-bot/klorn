@@ -21,6 +21,7 @@
 
 import { recordSchedulerTick, registerScheduler } from "../scheduler-heartbeat.js";
 import { captureError } from "../sentry.js";
+import { newWork } from "../work-context.js";
 import { driveSummariesLive } from "./summary-policy.js";
 import { runClaimedSummary, type SummaryRunOutcome } from "./summary-run.js";
 import {
@@ -139,12 +140,15 @@ function tick(): void {
 export function startDriveSummaryScheduler(): void {
   if (intervalId || firstRunTimer) return;
   registerScheduler("drive-summary", DRIVE_SUMMARY_INTERVAL_MS);
-  firstRunTimer = setTimeout(() => {
-    firstRunTimer = null;
-    tick();
-    intervalId = setInterval(tick, DRIVE_SUMMARY_INTERVAL_MS);
-    intervalId.unref?.();
-  }, FIRST_SWEEP_DELAY_MS);
+  firstRunTimer = setTimeout(
+    newWork(() => {
+      firstRunTimer = null;
+      tick();
+      intervalId = setInterval(newWork(tick), DRIVE_SUMMARY_INTERVAL_MS);
+      intervalId.unref?.();
+    }),
+    FIRST_SWEEP_DELAY_MS,
+  );
   firstRunTimer.unref?.();
 }
 

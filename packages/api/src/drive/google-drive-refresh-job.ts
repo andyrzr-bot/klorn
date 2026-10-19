@@ -28,6 +28,7 @@
 
 import { recordSchedulerTick, registerScheduler } from "../scheduler-heartbeat.js";
 import { captureError } from "../sentry.js";
+import { newWork } from "../work-context.js";
 import { googleDriveRoutesEnabled } from "./drive-scope.js";
 import { type AccountRefreshOutcome, refreshGoogleDriveAccount } from "./google-drive-refresh.js";
 import { type DueDriveAccount, dueDriveRefreshAccounts } from "./linked-drive-accounts.js";
@@ -129,12 +130,15 @@ function tick(): void {
 export function startDriveGoogleRefreshScheduler(): void {
   if (intervalId || firstRunTimer) return;
   registerScheduler(SCHEDULER_NAME, GOOGLE_DRIVE_REFRESH_INTERVAL_MS);
-  firstRunTimer = setTimeout(() => {
-    firstRunTimer = null;
-    tick();
-    intervalId = setInterval(tick, GOOGLE_DRIVE_REFRESH_INTERVAL_MS);
-    intervalId.unref?.();
-  }, FIRST_SWEEP_DELAY_MS);
+  firstRunTimer = setTimeout(
+    newWork(() => {
+      firstRunTimer = null;
+      tick();
+      intervalId = setInterval(newWork(tick), GOOGLE_DRIVE_REFRESH_INTERVAL_MS);
+      intervalId.unref?.();
+    }),
+    FIRST_SWEEP_DELAY_MS,
+  );
   firstRunTimer.unref?.();
 }
 

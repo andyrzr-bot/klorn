@@ -31,6 +31,7 @@
 import { objectStorageEnabled } from "../config.js";
 import { recordSchedulerTick, registerScheduler } from "../scheduler-heartbeat.js";
 import { captureError } from "../sentry.js";
+import { newWork } from "../work-context.js";
 import { countPendingPurges, duePurges, PURGE_RETRY_BASE_MS } from "./purge-queue.js";
 
 /** The sweep runs once an hour; the first retry waits exactly one sweep. */
@@ -161,12 +162,15 @@ function tick(): void {
 export function startStoragePurgeScheduler(): void {
   if (intervalId || firstRunTimer) return;
   registerScheduler("storage-purge", PURGE_SWEEP_INTERVAL_MS);
-  firstRunTimer = setTimeout(() => {
-    firstRunTimer = null;
-    tick();
-    intervalId = setInterval(tick, PURGE_SWEEP_INTERVAL_MS);
-    intervalId.unref?.();
-  }, FIRST_SWEEP_DELAY_MS);
+  firstRunTimer = setTimeout(
+    newWork(() => {
+      firstRunTimer = null;
+      tick();
+      intervalId = setInterval(newWork(tick), PURGE_SWEEP_INTERVAL_MS);
+      intervalId.unref?.();
+    }),
+    FIRST_SWEEP_DELAY_MS,
+  );
   firstRunTimer.unref?.();
 }
 

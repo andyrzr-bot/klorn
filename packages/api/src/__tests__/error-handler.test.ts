@@ -4,6 +4,9 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("../sentry.js", () => ({ captureError: vi.fn() }));
 
 const { handleError } = await import("../error-handler.js");
+const { DataWipeFenceError, DATA_WIPE_FENCE_MARKER } = await import(
+  "../privacy/data-wipe-fence.js"
+);
 
 async function buildApp() {
   const app = Fastify();
@@ -53,6 +56,40 @@ describe("handleError — global Fastify error handler", () => {
     const res = await app.inject({ method: "POST", url: "/validated", payload: {} });
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toMatch(/x/);
+    await app.close();
+  });
+});
+
+describe("handleError — the data-wipe fence", () => {
+  async function appThrowing(err: unknown) {
+    const app = Fastify();
+    app.setErrorHandler(handleError);
+    app.get("/write", async () => {
+      throw err;
+    });
+    return app;
+  }
+
+  it("answers 409 DATA_WIPE_IN_PROGRESS for the app check's rejection", async () => {
+    const app = await appThrowing(new DataWipeFenceError());
+    const res = await app.inject({ method: "GET", url: "/write" });
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ code: "DATA_WIPE_IN_PROGRESS" });
+    await app.close();
+  });
+
+  it("answers the same for the trigger's rejection, never echoing its text", async () => {
+    class PrismaClientUnknownRequestError extends Error {}
+    const app = await appThrowing(
+      new PrismaClientUnknownRequestError(
+        `Invalid prisma.note.create(): code: "KW001", message: "${DATA_WIPE_FENCE_MARKER}: insert into Note rejected"`,
+      ),
+    );
+    const res = await app.inject({ method: "GET", url: "/write" });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().code).toBe("DATA_WIPE_IN_PROGRESS");
+    expect(res.body).not.toContain(DATA_WIPE_FENCE_MARKER);
+    expect(res.body).not.toContain("Note");
     await app.close();
   });
 });

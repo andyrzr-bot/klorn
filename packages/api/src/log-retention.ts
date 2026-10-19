@@ -28,6 +28,7 @@ import {
   registerScheduler,
 } from "./scheduler-heartbeat.js";
 import { captureError } from "./sentry.js";
+import { newWork } from "./work-context.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SWEEP_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
@@ -216,19 +217,25 @@ export function startLogRetentionScheduler(): void {
   console.log("[RETENTION] Log retention sweep started (every 6h)");
   registerScheduler("log-retention", SWEEP_INTERVAL_MS);
 
-  firstRunTimer = setTimeout(() => {
-    firstRunTimer = null;
-    recordSchedulerTick("log-retention");
-    runLogRetentionSweep().catch((err) =>
-      captureError(err, { tags: { scope: "log-retention.first-sweep" } }),
-    );
-    intervalId = setInterval(() => {
+  firstRunTimer = setTimeout(
+    newWork(() => {
+      firstRunTimer = null;
       recordSchedulerTick("log-retention");
       runLogRetentionSweep().catch((err) =>
-        captureError(err, { tags: { scope: "log-retention.sweep" } }),
+        captureError(err, { tags: { scope: "log-retention.first-sweep" } }),
       );
-    }, SWEEP_INTERVAL_MS);
-  }, FIRST_SWEEP_DELAY_MS);
+      intervalId = setInterval(
+        newWork(() => {
+          recordSchedulerTick("log-retention");
+          runLogRetentionSweep().catch((err) =>
+            captureError(err, { tags: { scope: "log-retention.sweep" } }),
+          );
+        }),
+        SWEEP_INTERVAL_MS,
+      );
+    }),
+    FIRST_SWEEP_DELAY_MS,
+  );
   firstRunTimer.unref?.();
 }
 

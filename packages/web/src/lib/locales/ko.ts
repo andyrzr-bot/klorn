@@ -610,6 +610,8 @@ const ko: Record<string, string> = {
     "계정, Google 액세스, 모든 데이터를 영구히 삭제합니다. 되돌릴 수 없습니다.",
   "settings.toast.deleteWorkspaceFailed": "워크스페이스 데이터를 삭제하지 못했습니다.",
   "settings.toast.workspaceDeleted": "워크스페이스 데이터가 삭제되었습니다.",
+  "settings.toast.workspaceDeletionPending":
+    "삭제를 시작했습니다. Klorn의 접근은 이미 끊겼고, 나머지는 백그라운드에서 마무리 중입니다.",
   "settings.toast.deleteAccountFailed": "계정을 삭제하지 못했습니다.",
   "settings.about.tagline": "Decision OS",
   "settings.about.desc": "흩어진 탭을 줄이고 다음 결정을 더 명확하게 만들기 위해 만들었습니다.",
@@ -2009,6 +2011,9 @@ const ko: Record<string, string> = {
     "자리를 비운 동안 Klorn이 소음 메일을 분류하고, 메일마다 이유를 함께 표시합니다",
   "paywall.valueProp.brief": "결정이 필요한 일을 정리한 아침 브리핑",
   "paywall.valueProp.learns": "내 판단을 학습해 점점 더 정확해짐",
+  "oauthError.wipeInProgress.title": "방금 데이터를 초기화했습니다",
+  "oauthError.wipeInProgress.body":
+    "Klorn이 초기화를 마무리하는 중입니다. 몇 분 뒤에 Google 계정을 다시 연결해 주세요.",
   "oauthError.title": "Gmail 오프라인 접근 권한이 부여되지 않았습니다",
   "oauthError.body":
     "Google이 Klorn의 백그라운드 동기화에 필요한 갱신 권한 없이 단기 토큰만 반환했습니다. 원인은 거의 항상 다음 둘 중 하나입니다:",

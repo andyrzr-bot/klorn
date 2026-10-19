@@ -627,6 +627,8 @@ const es: Record<string, string> = {
     "Elimina de forma permanente tu cuenta, el acceso de Google y todos los datos. No se puede deshacer.",
   "settings.toast.deleteWorkspaceFailed": "No se pudieron eliminar los datos del espacio.",
   "settings.toast.workspaceDeleted": "Datos del espacio eliminados.",
+  "settings.toast.workspaceDeletionPending":
+    "Eliminación iniciada. El acceso de Klorn ya está retirado y el resto se completa en segundo plano.",
   "settings.toast.deleteAccountFailed": "No se pudo eliminar tu cuenta.",
   "settings.about.tagline": "Decision OS",
   "settings.about.desc":
@@ -2051,6 +2053,9 @@ const es: Record<string, string> = {
     "Klorn clasifica el ruido mientras no estás, con el motivo en cada mensaje",
   "paywall.valueProp.brief": "Un resumen matutino de lo que requiere una decisión",
   "paywall.valueProp.learns": "Aprende de tus decisiones y afina con el tiempo",
+  "oauthError.wipeInProgress.title": "Acabas de borrar tus datos",
+  "oauthError.wipeInProgress.body":
+    "Klorn está terminando el borrado. Vuelve a conectar tu cuenta de Google en unos minutos.",
   "oauthError.title": "No se concedió el acceso sin conexión a Gmail",
   "oauthError.body":
     "Google devolvió un token de corta duración sin el permiso de actualización que Klorn necesita para seguir sincronizando en segundo plano. Casi siempre se debe a una de estas dos cosas:",

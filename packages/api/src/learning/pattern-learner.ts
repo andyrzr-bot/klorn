@@ -18,6 +18,7 @@ import { PATTERN_ANALYSIS_HOURS as CFG_PATTERN_HOURS, PATTERN_MIN_OCCURRENCES } 
 import { db, prisma } from "../db.js";
 import { escapeLikePattern } from "../db-like.js";
 import { recordSchedulerTick, registerScheduler } from "../scheduler-heartbeat.js";
+import { newWork } from "../work-context.js";
 import { runFeedbackAdaptationForAllUsers } from "./feedback-adaptor.js";
 import { buildInteractionGraphsForAllUsers } from "./interaction-graph.js";
 import { remember } from "./memory.js";
@@ -537,15 +538,15 @@ export function startPatternLearner() {
   // so stop() can cancel it during the boot window — otherwise a deferred
   // analysis fires after shutdown.
   patternFirstRunTimer = setTimeout(
-    async () => {
+    newWork(async () => {
       patternFirstRunTimer = null;
       await runPatternAnalysisForAllUsers();
-    },
+    }),
     5 * 60 * 1000,
   );
   patternFirstRunTimer.unref?.();
 
-  patternIntervalId = setInterval(runPatternAnalysisForAllUsers, PATTERN_INTERVAL_MS);
+  patternIntervalId = setInterval(newWork(runPatternAnalysisForAllUsers), PATTERN_INTERVAL_MS);
 }
 
 export function stopPatternLearner() {

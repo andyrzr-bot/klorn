@@ -20,6 +20,7 @@ import {
   registerScheduler,
 } from "../scheduler-heartbeat.js";
 import { captureError } from "../sentry.js";
+import { newWork } from "../work-context.js";
 import { isUserIdleForAgent } from "./agent-idle.js";
 import { type AgentMode, normalizeAgentMode } from "./agent-mode.js";
 import { runAgentForUser } from "./autonomous-agent.js";
@@ -283,14 +284,17 @@ export function startAutonomousAgent() {
 
   // First run after 30 seconds. Track the handle so stop() can cancel it
   // during the boot window (otherwise a deferred tick fires after shutdown).
-  firstRunTimer = setTimeout(() => {
-    firstRunTimer = null;
-    runAutonomousAgent();
-  }, 30_000);
+  firstRunTimer = setTimeout(
+    newWork(() => {
+      firstRunTimer = null;
+      runAutonomousAgent();
+    }),
+    30_000,
+  );
   firstRunTimer.unref?.();
 
   // Check every minute, respects per-user intervals
-  intervalId = setInterval(runAutonomousAgent, CHECK_INTERVAL_MS);
+  intervalId = setInterval(newWork(runAutonomousAgent), CHECK_INTERVAL_MS);
 }
 
 /** Stop the autonomous agent */
