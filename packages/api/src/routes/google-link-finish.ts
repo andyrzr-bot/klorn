@@ -13,6 +13,7 @@
  * callback's own; the paths are the ones it redirected to.
  */
 
+import { rememberPrimaryGoogleAddress } from "../auth/google-grant-revoke.js";
 import type { LinkFinish } from "../auth/pending-links.js";
 import {
   findOwnedLinkedAccount,
@@ -269,10 +270,19 @@ export async function finishGooglePrimaryConnect(
           // Only overwrite refreshToken if Google returned a new one — preserve existing otherwise
           ...(tokens.refresh_token ? { refreshToken: encryptToken(tokens.refresh_token) } : {}),
           expiresAt: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+          // The reconnect may be a different Google account: forget the old
+          // address until it is read again, so a revoke's shared-grant check
+          // never trusts a stale one (unknown is re-read, never assumed).
+          googleEmail: null,
         },
       }),
     { label: "oauth.integration.upsert_user_token" },
   );
+  // Which Google account this grant is, for a later revoke's shared-grant
+  // check (auth/google-grant-revoke.ts); from Gmail's profile, since this
+  // flow asks for no userinfo scope. Not awaited: a slow read must not hold
+  // the redirect, and a revoke reads it itself when it is still missing.
+  void rememberPrimaryGoogleAddress(user.id, tokens, savedToken.accessToken);
   // Check-after-write for a NEW primary token: a parallel first connect
   // of a linked mailbox may have committed meanwhile. Fails closed.
   if (
