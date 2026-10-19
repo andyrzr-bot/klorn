@@ -13,7 +13,7 @@
 export function ProfileFact({ label, value }: { label: string; value: string | null }) {
   return (
     <div className="rounded-lg border border-line bg-surface-raised px-3 py-2">
-      <p className="text-[10px] font-medium uppercase tracking-wider text-ink-mid">{label}</p>
+      <p className="text-caption font-medium uppercase tracking-wider text-ink-mid">{label}</p>
       <p className="mt-1 truncate text-xs text-ink-mid">{value || "-"}</p>
     </div>
   );
@@ -23,7 +23,7 @@ export function ProfileFact({ label, value }: { label: string; value: string | n
 export function DetailStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-line bg-surface-raised px-3 py-2">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-mid">{label}</p>
+      <p className="text-caption font-semibold uppercase tracking-[0.14em] text-ink-mid">{label}</p>
       <p className="mt-1 truncate text-sm font-semibold text-ink">{value}</p>
     </div>
   );
@@ -32,12 +32,15 @@ export function DetailStat({ label, value }: { label: string; value: string }) {
 /** Compact action button used in the email toolbar (Archive / Delete / Read / Star / Next). */
 export function EmailActionButton({
   busy,
+  busyLabel,
   children,
   danger = false,
   disabled,
   onClick,
 }: {
   busy: boolean;
+  /** Localized "working" text shown while busy — atoms stay hook-free. */
+  busyLabel: string;
   children: string;
   danger?: boolean;
   disabled: boolean;
@@ -54,7 +57,7 @@ export function EmailActionButton({
           : "border-line bg-surface-panel text-ink-mid hover:border-line hover:bg-surface-hover"
       }`}
     >
-      {busy ? "Working" : children}
+      {busy ? busyLabel : children}
     </button>
   );
 }

@@ -135,7 +135,7 @@ func stateSelfChecks(sourceDir: URL) -> [(String, Bool)] {
           cachedBefore && leaving.queueCacheIsEmpty && leaving.queue == nil)
     check("sign-out clears a pending action error", leaving.actionError == nil)
     model.showActionError("pin failed")
-    check("a failed action is its own notice: no banner, no pill chip, no offline state",
+    check("a failed action is its own notice: no banner, no offline state",
           model.actionError == "pin failed" && model.loadError == nil && !model.loadOffline
           && model.connectionNotice == nil)
     model.dismissActionError()
@@ -167,16 +167,19 @@ func stateSelfChecks(sourceDir: URL) -> [(String, Bool)] {
     let blockingGuard = "SurfaceStateRules.isBlocking(model.surfaceState)"
     check("every surface that draws the skeleton for a missing queue checks the state first",
           text("MailSection.swift").contains(blockingGuard)
-          && text("TodayScreen.swift").contains("case .signedOut, .signingIn, .offline, .failed:"))
+          && text("TodayScreen.swift").contains("case .signedOut, .signingIn:")
+          && text("TodayScreen.swift").contains("case .offline, .failed:"))
     check("the skeleton has only its known call sites",
           users(of: "FirstSync" + "State()") == [
-              "FullList.swift", "MailboxList.swift", "TodayScreen.swift",
-          ])
+              "FullList.swift", "MailboxList.swift",
+          ]
+          // Today draws its own skeleton, shaped like the loaded day.
+          && users(of: "TodaySkel" + "eton()") == ["TodayScreen.swift"])
     check("load failures are recorded with their kind, in one place",
           text("AppModel.swift").components(separatedBy: "loadError = Self.describe(error)").count == 2
           && text("AppModel.swift").contains("loadOffline = kind == .offline"))
-    // Only a refresh may raise the "couldn't refresh" banner and the pill
-    // chip; pin, unpin, dismiss and snooze failures go to the action notice.
+    // Only a refresh may raise the "couldn't refresh" banner; pin, unpin,
+    // dismiss and snooze failures go to the action notice.
     check("only the queue refresh records a load failure; actions have their own channel",
           text("AppModel.swift").components(separatedBy: "            noteLoadFailure(error)\n").count == 2
           && text("AppModel.swift").components(separatedBy: "noteActionFailure(error)\n").count == 4)

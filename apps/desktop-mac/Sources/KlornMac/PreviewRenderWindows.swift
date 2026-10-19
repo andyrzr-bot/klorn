@@ -10,7 +10,7 @@ extension PreviewRender {
     private static let composeDraftJSON = """
     {"to":"sarah.kim@northwind-partners.com",
      "subject":"Contract review: signed copy attached",
-     "body":"Hi Sarah,\\n\\nBoth changes to clause 4 read fine. The signed copy is on its way from legal this afternoon.\\n\\nOne question before the counterparty signs: does the notice period start on the signing date or on delivery?\\n\\nThanks,\\nYong"}
+     "body":"Hi Sarah,\\n\\nBoth changes to clause 4 read fine. The signed copy is on its way from legal this evening.\\n\\nOne question before the counterparty signs: does the notice period start on the signing date or on delivery?\\n\\nThanks,\\nYong"}
     """
 
     static func renderWindows(dir: URL, dark: Bool) -> Bool {
@@ -28,16 +28,16 @@ extension PreviewRender {
             model.composeBody = draft["body"] ?? ""
         }
         shot("compose-window", size: ComposeWindowRules.defaultSize, model) {
-            ComposePanel(style: .window)
+            ComposePanel()
         }
         // The floor the window can be dragged to: nothing may clip there.
         shot("compose-window-min", size: ComposeWindowRules.minSize, model) {
-            ComposePanel(style: .window)
+            ComposePanel()
         }
         let empty = AppModel(tokenStore: InMemoryTokenStore())
         empty.seedForPreview(firewallJSON: "", emailJSON: "", selectedItemId: nil)
         shot("compose-window-empty", size: ComposeWindowRules.defaultSize, empty) {
-            ComposePanel(style: .window)
+            ComposePanel()
         }
 
         // The sheets, at the size each card asks for.

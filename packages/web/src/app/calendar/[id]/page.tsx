@@ -64,17 +64,17 @@ interface PrepPack {
   openCommitments: PrepCommitment[];
 }
 
-const READINESS_META: Record<Readiness, { label: string; className: string }> = {
+const READINESS_META: Record<Readiness, { labelKey: string; className: string }> = {
   ready: {
-    label: "Ready",
+    labelKey: "calendar.prep.ready",
     className: "bg-emerald-500/10 text-state-ok-ink ring-1 ring-inset ring-emerald-500/20",
   },
   watch: {
-    label: "Watch items",
+    labelKey: "calendar.prep.watch",
     className: "bg-amber-500/10 text-state-warn-ink ring-1 ring-inset ring-amber-500/20",
   },
   needs_review: {
-    label: "Needs review",
+    labelKey: "calendar.prep.needsReview",
     className: "bg-rose-500/10 text-rose-600 ring-1 ring-inset ring-rose-500/20",
   },
 };
@@ -195,18 +195,19 @@ function ExternalLinkIcon() {
 /** The join link, only when it is an https URL (lib/meeting-link). The link is
  *  invite data anyone can set, so anything else stays inert text, never a link. */
 function MeetingLinkLine({ link }: { link: string }) {
+  const { t } = useT();
   const href = safeMeetingHref(link);
   if (!href) {
-    return <p className="mt-2 break-all text-[12px] text-ink-dim">{link}</p>;
+    return <p className="mt-2 break-all text-caption text-ink-dim">{link}</p>;
   }
   return (
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="mt-2 inline-flex items-center gap-1 text-[12px] text-accent-deep hover:text-accent-deep"
+      className="mt-2 inline-flex items-center gap-1 text-caption text-accent-deep hover:text-accent-deep"
     >
-      Join meeting
+      {t("calendar.joinMeeting")}
       <ExternalLinkIcon />
     </a>
   );
@@ -235,7 +236,7 @@ function CalendarEventDetail({ id }: { id: string }) {
       })
       .catch((err) => {
         captureClientError(err, { scope: "calendar-detail.load" });
-        setError("Event not found.");
+        setError(t("calendar.eventNotFound"));
       })
       .finally(() => setLoading(false));
   }, [id]);
@@ -268,12 +269,12 @@ function CalendarEventDetail({ id }: { id: string }) {
   if (error || !event) {
     return (
       <div className="mx-auto max-w-3xl px-6 py-12 text-center">
-        <p className="text-sm text-ink-mid">{error ?? "Event not found."}</p>
+        <p className="text-sm text-ink-mid">{error ?? t("calendar.eventNotFound")}</p>
         <Link
           href="/calendar"
-          className="mt-3 inline-block text-[12px] text-accent-deep hover:underline"
+          className="mt-3 inline-block text-caption text-accent-deep hover:underline"
         >
-          ← Back to calendar
+          {t("calendar.backToCalendar")}
         </Link>
       </div>
     );
@@ -286,7 +287,7 @@ function CalendarEventDetail({ id }: { id: string }) {
       <div className="mx-auto max-w-3xl px-6 py-6">
         <Link
           href="/calendar"
-          className="mb-4 inline-flex items-center gap-1 text-[12px] text-ink-dim hover:text-ink-mid"
+          className="mb-4 inline-flex items-center gap-1 text-caption text-ink-dim hover:text-ink-mid"
         >
           <svg
             width="12"
@@ -301,7 +302,7 @@ function CalendarEventDetail({ id }: { id: string }) {
           >
             <polyline points="15 18 9 12 15 6" />
           </svg>
-          Calendar
+          {t("nav.calendar")}
         </Link>
 
         {/* Header */}
@@ -309,14 +310,14 @@ function CalendarEventDetail({ id }: { id: string }) {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <h1 className="break-words text-xl font-semibold text-ink">{event.title}</h1>
-              <p className="mt-1 text-[13px] text-ink-mid">
+              <p className="mt-1 text-label font-normal text-ink-mid">
                 {formatRange(event.startTime, event.endTime, event.allDay, userTimezone)}
               </p>
               {event.location && (
-                <p className="mt-1 break-words text-[12px] text-ink-dim">📍 {event.location}</p>
+                <p className="mt-1 break-words text-caption text-ink-dim">📍 {event.location}</p>
               )}
               {event.readOnly && (
-                <p className="mt-1 break-words text-[12px] text-ink-dim">
+                <p className="mt-1 break-words text-caption text-ink-dim">
                   {event.sourceLabel?.trim() || t("calendar.linkedSource")} ·{" "}
                   {t("calendar.readOnlyHint")}
                 </p>
@@ -332,17 +333,17 @@ function CalendarEventDetail({ id }: { id: string }) {
                   <button
                     type="button"
                     onClick={() => setConfirmDelete(false)}
-                    className="ease-strong rounded-md px-2 py-1 text-[11px] text-ink-dim transition duration-150 hover:text-ink-muted focus-ring min-h-9 min-w-9"
+                    className="ease-strong rounded-md px-2 py-1 text-caption text-ink-dim transition duration-150 hover:text-ink-muted focus-ring min-h-9 min-w-9"
                   >
-                    Cancel
+                    {t("common.cancel")}
                   </button>
                   <button
                     type="button"
                     onClick={handleDelete}
                     disabled={deleting}
-                    className="ease-strong rounded-md border border-state-danger-line bg-state-danger-bg px-2 py-1 text-[11px] font-medium text-state-danger-ink transition duration-150 hover:bg-state-danger-bg active:scale-[0.97] disabled:opacity-50 focus-ring min-h-9 min-w-9"
+                    className="ease-strong rounded-md border border-state-danger-line bg-state-danger-bg px-2 py-1 text-caption font-medium text-state-danger-ink transition duration-150 hover:bg-state-danger-bg active:scale-[0.97] disabled:opacity-50 focus-ring min-h-9 min-w-9"
                   >
-                    {deleting ? "Deleting…" : "Delete"}
+                    {deleting ? t("calendar.deleting") : t("common.delete")}
                   </button>
                 </>
               ) : (
@@ -350,7 +351,7 @@ function CalendarEventDetail({ id }: { id: string }) {
                   type="button"
                   onClick={() => setConfirmDelete(true)}
                   className="ease-strong rounded-md p-1.5 text-slate-300 transition duration-150 hover:text-state-danger-ink focus-ring min-h-9 min-w-9"
-                  aria-label="Delete event"
+                  aria-label={t("calendar.deleteEvent")}
                 >
                   <svg
                     width="14"
@@ -372,7 +373,7 @@ function CalendarEventDetail({ id }: { id: string }) {
           </div>
 
           {event.description && (
-            <p className="mt-4 whitespace-pre-wrap rounded-lg border border-line bg-surface-raised p-3 text-[13px] leading-6 text-ink-mid">
+            <p className="mt-4 whitespace-pre-wrap rounded-lg border border-line bg-surface-raised p-3 text-label font-normal leading-6 text-ink-mid">
               {event.description}
             </p>
           )}
@@ -383,19 +384,22 @@ function CalendarEventDetail({ id }: { id: string }) {
           <section className="panel-elevated mt-6 rounded-2xl border border-line/70 bg-surface-panel p-5">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-widest text-accent-deep">
-                  Prep pack
+                <p className="text-caption font-semibold uppercase tracking-widest text-accent-deep">
+                  {t("calendar.prep.title")}
                 </p>
-                <p className="mt-0.5 text-[11px] text-ink-mid">
-                  Mail {pack.relatedEmails.length} · Tasks {pack.openTasks.length} · Commitments{" "}
-                  {pack.openCommitments.length}
+                <p className="mt-0.5 text-caption text-ink-mid">
+                  {t("calendar.prep.counts", {
+                    mail: String(pack.relatedEmails.length),
+                    tasks: String(pack.openTasks.length),
+                    commitments: String(pack.openCommitments.length),
+                  })}
                 </p>
               </div>
               {readiness && (
                 <span
-                  className={`rounded-md px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide ${readiness.className}`}
+                  className={`rounded-md px-1.5 py-0.5 text-caption font-bold uppercase tracking-wide ${readiness.className}`}
                 >
-                  {readiness.label}
+                  {t(readiness.labelKey)}
                 </span>
               )}
             </div>
@@ -403,7 +407,7 @@ function CalendarEventDetail({ id }: { id: string }) {
             {pack.checklist.length > 0 && (
               <ul className="divide-y divide-line-soft overflow-hidden rounded-xl border border-line-soft">
                 {pack.checklist.map((item) => (
-                  <li key={item} className="row-wash px-3 py-2 text-[12px] text-ink-mid">
+                  <li key={item} className="row-wash px-3 py-2 text-caption text-ink-mid">
                     {item}
                   </li>
                 ))}
@@ -412,14 +416,14 @@ function CalendarEventDetail({ id }: { id: string }) {
 
             {pack.relatedEmails.length > 0 && (
               <div className="mt-5">
-                <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-ink-dim">
-                  Related mail
+                <p className="mb-2 text-caption font-semibold uppercase tracking-widest text-ink-dim">
+                  {t("calendar.prep.relatedMail")}
                 </p>
                 <ul className="divide-y divide-line-soft overflow-hidden rounded-xl border border-line-soft">
                   {pack.relatedEmails.map((m) => {
                     const name = senderName(m.from);
                     return (
-                      <li key={m.id} className="row-wash relative text-[12px]">
+                      <li key={m.id} className="row-wash relative text-caption">
                         {!m.isRead && (
                           <span
                             aria-hidden="true"
@@ -432,7 +436,7 @@ function CalendarEventDetail({ id }: { id: string }) {
                         >
                           <span
                             aria-hidden="true"
-                            className={`avatar-ring mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-[12px] font-semibold text-white ${avatarGradient(name)}`}
+                            className={`avatar-ring mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-caption font-semibold text-white ${avatarGradient(name)}`}
                           >
                             {senderInitials(name)}
                           </span>
@@ -440,11 +444,11 @@ function CalendarEventDetail({ id }: { id: string }) {
                             <span className="block break-words font-medium text-ink">
                               {m.subject}
                             </span>
-                            <span className="mt-0.5 block truncate text-[11px] text-ink-dim">
+                            <span className="mt-0.5 block truncate text-caption text-ink-dim">
                               {name}
                             </span>
                             {m.snippet && (
-                              <span className="mt-1 line-clamp-2 block text-[11px] text-ink-dim">
+                              <span className="mt-1 line-clamp-2 block text-caption text-ink-dim">
                                 {m.snippet}
                               </span>
                             )}
@@ -459,12 +463,12 @@ function CalendarEventDetail({ id }: { id: string }) {
 
             {pack.openTasks.length > 0 && (
               <div className="mt-5">
-                <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-ink-dim">
-                  Open tasks
+                <p className="mb-2 text-caption font-semibold uppercase tracking-widest text-ink-dim">
+                  {t("calendar.prep.openTasks")}
                 </p>
                 <ul className="divide-y divide-line-soft overflow-hidden rounded-xl border border-line-soft">
                   {pack.openTasks.map((t) => (
-                    <li key={t.id} className="row-wash px-3 py-2 text-[12px] text-ink-mid">
+                    <li key={t.id} className="row-wash px-3 py-2 text-caption text-ink-mid">
                       {t.title}
                     </li>
                   ))}
@@ -474,23 +478,23 @@ function CalendarEventDetail({ id }: { id: string }) {
 
             {pack.openCommitments.length > 0 && (
               <div className="mt-5">
-                <p className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-ink-dim">
-                  Open commitments
+                <p className="mb-2 text-caption font-semibold uppercase tracking-widest text-ink-dim">
+                  {t("calendar.prep.openCommitments")}
                 </p>
                 <ul className="divide-y divide-line-soft overflow-hidden rounded-xl border border-line-soft">
                   {pack.openCommitments.map((c) => (
-                    <li key={c.id} className="row-wash px-3 py-2 text-[12px] text-ink-mid">
+                    <li key={c.id} className="row-wash px-3 py-2 text-caption text-ink-mid">
                       <span
-                        className={`mr-2 rounded-md px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide ${
+                        className={`mr-2 rounded-md px-1.5 py-0.5 text-caption font-bold uppercase tracking-wide ${
                           c.owner === "USER"
                             ? "bg-accent/10 text-accent-deep ring-1 ring-inset ring-accent/20"
                             : "bg-surface-hover text-ink-mid"
                         }`}
                       >
                         {c.owner === "USER"
-                          ? "I owe"
+                          ? t("calendar.prep.iOwe")
                           : c.owner === "COUNTERPARTY"
-                            ? "They owe"
+                            ? t("calendar.prep.theyOwe")
                             : "—"}
                       </span>
                       {c.title}

@@ -13,6 +13,7 @@ import {
 import { hotkeyCaps, hotkeyRegistry, liveHotkeys } from "../lib/hotkeys";
 import { useT } from "../lib/i18n";
 import { useHotkeys, useKeyboardTriage } from "../lib/use-hotkeys";
+import { useMailSubscriptionsAvailable } from "../lib/use-mail-subscriptions";
 import { useToast } from "./toast";
 
 interface Command {
@@ -32,9 +33,14 @@ export default function CommandPalette() {
   const listboxId = useId();
   const router = useRouter();
   const triage = useKeyboardTriage();
-  const unifiedHome = useAuth().user?.unifiedHome === true;
+  const { user } = useAuth();
+  const unifiedHome = user?.unifiedHome === true;
   const { t } = useT();
   const { toast } = useToast();
+  // Subscriptions joins only once its list has loaded (absent while
+  // BULK_UNSUBSCRIBE_ENABLED is off). Asked only while open and signed in, so
+  // the palette costs nothing on every other page view.
+  const subscriptionsAvailable = useMailSubscriptionsAvailable(open && !!user);
 
   // Cmd/Ctrl+K is an entry in the HOTKEYS table like every other key; the
   // palette owns its handler, the shared listener dispatches it.
@@ -89,8 +95,8 @@ export default function CommandPalette() {
     : [
         {
           id: "approval-queue",
-          label: "Open decision queue",
-          sublabel: "Review decisions waiting for approval",
+          label: t("nav.v2.openApprovals"),
+          sublabel: t("commandPalette.approvalsHint"),
           action: () => router.push("/inbox"),
         },
       ];
@@ -117,8 +123,8 @@ export default function CommandPalette() {
     : [
         {
           id: "briefing",
-          label: "Open briefing",
-          sublabel: "Review today's work signals",
+          label: t("commandPalette.briefing"),
+          sublabel: t("commandPalette.briefingHint"),
           action: () => router.push("/briefing"),
         },
       ];
@@ -127,27 +133,49 @@ export default function CommandPalette() {
     ...homeCommands,
     {
       id: "mail",
-      label: "Open mail",
-      sublabel: "Triage today's inbox",
+      label: t("commandPalette.mail"),
+      sublabel: t("commandPalette.mailHint"),
       action: () => router.push("/email"),
     },
+    ...(subscriptionsAvailable
+      ? [
+          {
+            id: "subscriptions",
+            label: t("commandPalette.subscriptions"),
+            sublabel: t("commandPalette.subscriptionsHint"),
+            action: () => router.push("/email/subscriptions"),
+          },
+        ]
+      : []),
     {
       id: "calendar",
-      label: "Open calendar",
-      sublabel: "See meetings and prep context",
+      label: t("commandPalette.calendar"),
+      sublabel: t("commandPalette.calendarHint"),
       action: () => router.push("/calendar"),
     },
     ...briefingCommands,
     {
       id: "settings",
-      label: "Open settings",
-      sublabel: "Connections, guardrails, and memory",
+      label: t("commandPalette.settings"),
+      sublabel: t("commandPalette.settingsHint"),
       action: () => router.push("/settings"),
     },
     {
+      id: "usage",
+      label: t("commandPalette.usage"),
+      sublabel: t("commandPalette.usageHint"),
+      action: () => router.push("/usage"),
+    },
+    {
+      id: "billing",
+      label: t("commandPalette.billing"),
+      sublabel: t("commandPalette.billingHint"),
+      action: () => router.push("/billing"),
+    },
+    {
       id: "shortcuts",
-      label: "Keyboard shortcuts",
-      sublabel: "Show shortcut list (Cmd+/)",
+      label: t("commandPalette.shortcuts"),
+      sublabel: t("commandPalette.shortcutsHint", { keys: isMac ? "⌘/" : "Ctrl+/" }),
       action: () => {
         window.dispatchEvent(new KeyboardEvent("keydown", { key: "/", metaKey: true }));
       },
@@ -221,7 +249,7 @@ export default function CommandPalette() {
       <button
         type="button"
         className="absolute inset-0 bg-black/60"
-        aria-label="Close command palette"
+        aria-label={t("palette.close")}
         onClick={() => setOpen(false)}
       />
       <div
@@ -229,7 +257,7 @@ export default function CommandPalette() {
         className="relative w-full max-w-md rounded-xl border border-line bg-surface-panel shadow-2xl"
         role="dialog"
         aria-modal="true"
-        aria-label="Command palette"
+        aria-label={t("palette.label")}
         onKeyDown={handleKeyDown}
       >
         <div className="p-3 border-b border-line">
@@ -237,8 +265,8 @@ export default function CommandPalette() {
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search decisions, pages, settings..."
-            aria-label="Search commands"
+            placeholder={t("palette.placeholder")}
+            aria-label={t("palette.search")}
             className="w-full bg-transparent text-sm focus:outline-none placeholder-ink-dim"
             role="combobox"
             aria-expanded="true"
@@ -254,12 +282,14 @@ export default function CommandPalette() {
             and is not a live region. */}
         <div aria-live="polite" className="sr-only">
           {filtered.length === 0
-            ? "No matching commands"
-            : `${filtered.length} ${filtered.length === 1 ? "command" : "commands"} available`}
+            ? t("palette.noMatches")
+            : filtered.length === 1
+              ? t("palette.availableOne")
+              : t("palette.availableMany", { count: String(filtered.length) })}
         </div>
         <div id={listboxId} className="max-h-64 overflow-y-auto py-1" role="listbox">
           {filtered.length === 0 ? (
-            <p className="text-sm text-ink-dim px-4 py-3">No matching commands.</p>
+            <p className="text-sm text-ink-dim px-4 py-3">{t("palette.noMatchesSentence")}</p>
           ) : (
             filtered.map((cmd, i) => (
               <button
@@ -285,9 +315,9 @@ export default function CommandPalette() {
             ))
           )}
         </div>
-        <div className="border-t border-line px-4 py-2 flex items-center justify-between text-[10px] text-ink-mid">
-          <span>Use arrows to move, Enter to open</span>
-          <span>Esc to close</span>
+        <div className="border-t border-line px-4 py-2 flex items-center justify-between text-caption text-ink-mid">
+          <span>{t("palette.hintMove")}</span>
+          <span>{t("palette.hintClose")}</span>
         </div>
       </div>
     </div>

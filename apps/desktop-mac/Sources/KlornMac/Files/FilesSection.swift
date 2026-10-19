@@ -87,7 +87,7 @@ struct FilesSection: View {
                 FilesSkeleton()
             case .failed:
                 VStack(spacing: Theme.s3) {
-                    EmptyState(icon: "exclamationmark.triangle", title: L("files.error"), style: .window)
+                    EmptyState(icon: "exclamationmark.triangle", title: L("files.error"))
                     Button(L("today.retry")) { Task { await store.reload() } }
                         .buttonStyle(SolidButtonStyle(prominent: false))
                 }
@@ -113,7 +113,7 @@ struct FilesSection: View {
             } else {
                 (L("files.empty.title"), L("files.empty.body"))
             }
-        return EmptyState(icon: "folder", title: title, hint: hint, style: .window)
+        return EmptyState(icon: "folder", title: title, hint: hint)
     }
 
     private var rows: some View {
@@ -127,6 +127,7 @@ struct FilesSection: View {
             }
             pager.padding(.vertical, Theme.s3)
         }
+        .padding(.trailing, FilesRules.trailingInset)
         // A stale list (a new search on its way) is shown, dimmed.
         .opacity(store.stale ? 0.6 : 1)
         .accessibilityElement(children: .contain)

@@ -58,7 +58,7 @@ export default function BottomTabs() {
   const tabs = unified ? withFiles(UNIFIED_TABS, FILES_TAB, showFilesNav(user)) : TABS;
   // UNIFIED_HOME (P10): tab labels move off the retired 10px size to the
   // caption role (12px); the legacy bar is left as it was.
-  const labelSize = unified ? "text-caption" : "text-[10px]";
+  const labelSize = unified ? "text-caption" : "text-caption";
 
   const accountActive = ACCOUNT_ROUTES.some((r) => pathname === r || pathname.startsWith(`${r}/`));
 
@@ -74,14 +74,12 @@ export default function BottomTabs() {
   return (
     <>
       <nav
-        aria-label="Primary navigation"
+        aria-label={t("bottomTabs.nav")}
         className="md:hidden fixed bottom-0 inset-x-0 z-30 border-t border-line bg-surface-panel/92 pb-safe shadow-[0_-16px_44px_rgba(0,0,0,0.35)] backdrop-blur-xl"
       >
-        <ul
-          className={
-            unified && tabs.length === UNIFIED_TABS.length ? "grid grid-cols-5" : "grid grid-cols-6"
-          }
-        >
+        {/* One column per tab plus the account button: the legacy bar and the
+            unified bar without Files hold 5 items, the unified bar with Files 6. */}
+        <ul className={tabs.length > 4 ? "grid grid-cols-6" : "grid grid-cols-5"}>
           {tabs.map((tab) => {
             const active = (tab.routes ?? [tab.href]).some((route) => isActive(pathname, route));
             return (
@@ -111,7 +109,7 @@ export default function BottomTabs() {
             >
               <span
                 aria-hidden="true"
-                className={`flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gradient-to-br from-accent-solid to-accent-solid-hover text-[9px] font-bold text-accent-solid-ink ring-1 transition ${
+                className={`flex h-[22px] w-[22px] items-center justify-center rounded-full bg-gradient-to-br from-accent-solid to-accent-solid-hover text-caption font-bold text-accent-solid-ink ring-1 transition ${
                   accountActive || accountOpen ? "ring-accent" : "ring-transparent"
                 }`}
               >
@@ -178,7 +176,7 @@ function AccountSheet({ onClose, initials }: { onClose: () => void; initials: st
       {/* Backdrop */}
       <button
         type="button"
-        aria-label="Close account menu"
+        aria-label={t("bottomTabs.closeAccount")}
         onClick={onClose}
         className="absolute inset-0 bg-black/60"
       />
@@ -187,7 +185,7 @@ function AccountSheet({ onClose, initials }: { onClose: () => void; initials: st
         ref={sheetRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Account and settings"
+        aria-label={t("bottomTabs.account")}
         tabIndex={-1}
         className="absolute inset-x-0 bottom-0 animate-slide-up rounded-t-2xl border-t border-line bg-surface-panel pb-safe shadow-2xl shadow-slate-900/15 focus:outline-none"
       >
