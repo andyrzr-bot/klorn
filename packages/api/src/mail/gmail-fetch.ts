@@ -146,8 +146,9 @@ async function extractAttachmentsFromPayload(
           data = attachment.data.data || "";
         }
         if (data) {
-          contentText = (await extractAttachmentContentIsolated(decodeBase64Url(data), filename, mimeType))
-            .text;
+          contentText = (
+            await extractAttachmentContentIsolated(decodeBase64Url(data), filename, mimeType)
+          ).text;
         }
       } catch {
         contentText = null;

@@ -20,8 +20,9 @@
  * be SKIPPED as an unsupported type.
  */
 
+import { extractAttachmentContentIsolated } from "../mail/attachment-extract-isolated.js";
 import {
-  extractAttachmentContent,
+  type ExtractedAttachmentContent,
   isReadableEmailAttachment,
 } from "../mail/email-attachment-text.js";
 import { googleTextExportType, isGoogleAppsType } from "./providers/google-files.js";
@@ -70,15 +71,23 @@ export function isSummarisableFile(
   return isReadableEmailAttachment(view.name, view.type, sizeBytes);
 }
 
+/** Reads a file's text; production runs it off the event loop (attachment-extract-isolated.ts). */
+export type TextExtractor = (
+  bytes: Buffer,
+  name: string,
+  mimeType: string,
+) => ExtractedAttachmentContent | Promise<ExtractedAttachmentContent>;
+
 /** The file's text, at most DRIVE_SUMMARY_MAX_INPUT_CHARS characters, or why there is none. */
-export function extractSummaryText(
+export async function extractSummaryText(
   bytes: Buffer,
   name: string,
   mimeType: string | null,
-): SummaryText {
+  extract: TextExtractor = extractAttachmentContentIsolated,
+): Promise<SummaryText> {
   const view = extractorView(name, mimeType);
   if (view === null) return { ok: false, code: "unsupported-type" };
-  const extracted = extractAttachmentContent(bytes, view.name, view.type);
+  const extracted = await extract(bytes, view.name, view.type);
   if (extracted.status === "unsupported") return { ok: false, code: "unsupported-type" };
   if (extracted.status !== "readable") return { ok: false, code: "no-text" };
   // Cut in code units first (two per character covers any surrogate pair), so a

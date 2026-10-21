@@ -95,7 +95,10 @@ function runInWorker(
   });
   // Never the filename: it is the sender's text.
   const report = (what: string, err: unknown) => {
-    console.warn(`[ATTACHMENT] ${what} (${job.mimeType || "no type"}, ${job.bytes.byteLength} bytes)`, err);
+    console.warn(
+      `[ATTACHMENT] ${what} (${job.mimeType || "no type"}, ${job.bytes.byteLength} bytes)`,
+      err,
+    );
     captureError(err, {
       tags: { scope: "attachment-extract.worker" },
       extra: { mimeType: job.mimeType, bytes: job.bytes.byteLength },
@@ -116,7 +119,10 @@ function runInWorker(
       resolve(result);
     };
     const timer = setTimeout(() => {
-      report(`extraction stopped after ${timeoutMs} ms`, new Error("attachment extraction timed out"));
+      report(
+        `extraction stopped after ${timeoutMs} ms`,
+        new Error("attachment extraction timed out"),
+      );
       finish(degraded(TIMEOUT_REASON));
     }, timeoutMs);
     worker.once("message", (message: unknown) => {
