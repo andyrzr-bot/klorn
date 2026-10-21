@@ -21,6 +21,7 @@
  */
 
 import {
+  JUDGE_BUDGET_RESERVE_CENTS,
   LLM_BACKGROUND_RPM_MAX_WAIT_MS,
   LLM_RPM_FOREGROUND_RESERVE,
   LLM_USER_BACKGROUND_DAILY_CAP,
@@ -108,7 +109,7 @@ export class UserRateLimitedError extends Error {
  */
 export function checkAndRecordUserCall(
   userId: string,
-  options: { cost?: number; priority?: CallPriority } = {},
+  options: { cost?: number; priority?: CallPriority; reserved?: boolean } = {},
 ): void {
   const cost = options.cost ?? 1;
   const priority = options.priority ?? "foreground";
@@ -121,8 +122,15 @@ export function checkAndRecordUserCall(
     const retryAfter = Math.max(0, oldestRelevant + RPM_WINDOW_MS - now);
     throw new UserRateLimitedError("rpm", retryAfter, priority);
   }
+  // With the judge reserve on (JUDGE_BUDGET_RESERVE_CENTS > 0), a new-mail
+  // judge call is held back by the daily COST cap and its reserve, not by this
+  // count: classification runs up to ~4 calls a message, so 200 background
+  // calls are gone by mid-morning on a busy mailbox and the reserve would never
+  // be reached. It is still counted, so everything else stops sooner. Reserve
+  // off leaves the count exactly as it was.
+  const judgeBypassesCount = options.reserved === true && JUDGE_BUDGET_RESERVE_CENTS > 0;
   const cap = dailyCap(priority);
-  if (w.daily[priority] + cost > cap) {
+  if (!judgeBypassesCount && w.daily[priority] + cost > cap) {
     throw new UserRateLimitedError("daily", Math.max(0, w.dailyResetAt - now), priority);
   }
 
@@ -141,6 +149,8 @@ function sleep(ms: number): Promise<void> {
 export interface AwaitSlotOptions {
   cost?: number;
   priority?: CallPriority;
+  /** A new-mail judge call: see checkAndRecordUserCall. */
+  reserved?: boolean;
   /**
    * Max total time a background call may wait for an RPM slot.
    * Defaults to LLM_BACKGROUND_RPM_MAX_WAIT_MS; 0 means fail fast.
