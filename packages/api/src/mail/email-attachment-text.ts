@@ -203,7 +203,12 @@ function isLegacyHwp(filename: string, mimeType: string): boolean {
   );
 }
 
-function metadataText(filename: string, mimeType: string, size: number, reason: string): string {
+export function metadataText(
+  filename: string,
+  mimeType: string,
+  size: number,
+  reason: string,
+): string {
   return [
     `파일명: ${filename}`,
     `MIME: ${mimeType || "application/octet-stream"}`,
