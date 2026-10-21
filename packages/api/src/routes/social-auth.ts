@@ -1,6 +1,12 @@
 import formbody from "@fastify/formbody";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { buildAppleAuthUrl, exchangeAppleCode, verifyAppleIdToken } from "../auth/apple.js";
+import {
+  beginDesktopConfirmation,
+  desktopConfirmExpiredPage,
+  desktopConfirmPage,
+  pairingCode,
+} from "../auth/desktop-confirm.js";
 import { isLoginBinding, mintExchangeCode } from "../auth/exchange-codes.js";
 import {
   buildNaverAuthUrl,
@@ -272,18 +278,20 @@ export function socialAuthRoutes(
               desktopHandoffPage(`${statePayload.appScheme}://oauth-callback?code=${relayCode}`),
             );
           }
-          const entry = desktopLoginTokens.get(nonce);
-          if (entry) desktopLoginTokens.set(nonce, { ...entry, jwt: token });
+          // Same confirmation step as the Google poll path
+          // (auth/desktop-confirm.ts): parked only once this browser confirms.
+          // A nonce that expired or was used meanwhile gets the expired page now,
+          // not after the person clicks confirm.
+          const live = desktopLoginTokens.get(nonce);
+          if (!live || live.expiresAt < Date.now() || live.jwt !== undefined || live.relayed) {
+            reply.header("Cache-Control", "no-store");
+            reply.type("text/html");
+            return reply.code(400).send(desktopConfirmExpiredPage());
+          }
+          const confirmId = beginDesktopConfirmation(nonce, token);
+          reply.header("Cache-Control", "no-store");
           reply.type("text/html");
-          // Same terminal document as the Google poll path: the browser leg
-          // must end in a committed page, and the app's poller does the rest.
-          return reply.send(`<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Klorn Login</title>
-<style>body{font-family:system-ui;background:#0a0a0a;color:#e5e7eb;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
-.box{text-align:center;padding:40px}.ok{font-size:48px;margin-bottom:16px}.t{font-size:14px;color:#9ca3af;margin-top:12px}</style>
-</head><body><div class="box"><div class="ok">\u2713</div><h2>Login Successful</h2>
-<p class="t">Return to the Klorn desktop app.<br>You can close this tab.</p>
-</div></body></html>`);
+          return reply.send(desktopConfirmPage(confirmId, pairingCode(nonce)));
         }
         return reply.redirect(redirect);
       } catch (err) {

@@ -1,5 +1,13 @@
 import crypto from "node:crypto";
+import formbody from "@fastify/formbody";
 import type { FastifyInstance } from "fastify";
+import {
+  beginDesktopConfirmation,
+  desktopConfirmExpiredPage,
+  desktopConfirmPage,
+  pairingCode,
+  takeDesktopConfirmation,
+} from "../auth/desktop-confirm.js";
 import {
   exchangeCodes,
   isLoginBinding,
@@ -82,6 +90,15 @@ export { desktopHandoffPage, isAllowedNativeScheme };
 /// Desktop sign-in nonce state, shared with routes/social-auth.ts so the
 /// Apple/Naver desktop legs park/relay into the same map the
 /// /desktop-token/:nonce poller reads. Module-level: single registration.
+/// The browser's last page of a desktop sign-in parked for the app's poller.
+export const DESKTOP_LOGIN_DONE_PAGE = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Klorn Login</title>
+<style>body{font-family:system-ui;background:#0a0a0a;color:#e5e7eb;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+.box{text-align:center;padding:40px}.ok{font-size:48px;margin-bottom:16px}.t{font-size:14px;color:#9ca3af;margin-top:12px}</style>
+</head><body><div class="box"><div class="ok">\u2713</div><h2>Login Successful</h2>
+<p class="t">Return to the Klorn desktop app.<br>You can close this tab.</p>
+</div></body></html>`;
+
 export const desktopLoginTokens = new Map<
   string,
   { jwt?: string; expiresAt: number; challenge?: string; relayed?: boolean }
@@ -963,6 +980,37 @@ export function authRoutes(app: FastifyInstance) {
     },
   );
 
+  // POST /api/auth/desktop-confirm — the browser that completed a desktop poll
+  // sign-in confirms it; only now is the session parked for the app's poller
+  // (auth/desktop-confirm.ts). The confirm form is a plain urlencoded POST, so
+  // the parser lives in this route's own scope: every other auth route stays
+  // JSON-only, which a cross-site HTML form cannot send.
+  app.register(async (scope) => {
+    await scope.register(formbody);
+    scope.post(
+      "/desktop-confirm",
+      { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
+      async (request, reply) => {
+        const { confirm } = (request.body ?? {}) as { confirm?: unknown };
+        const pending = takeDesktopConfirmation(confirm);
+        const entry = pending ? desktopLoginTokens.get(pending.nonce) : undefined;
+        reply.header("Cache-Control", "no-store");
+        reply.type("text/html");
+        if (
+          !pending ||
+          !entry ||
+          entry.expiresAt < Date.now() ||
+          entry.jwt !== undefined ||
+          entry.relayed
+        ) {
+          return reply.code(400).send(desktopConfirmExpiredPage());
+        }
+        desktopLoginTokens.set(pending.nonce, { ...entry, jwt: pending.jwt });
+        return reply.send(DESKTOP_LOGIN_DONE_PAGE);
+      },
+    );
+  });
+
   // GET /api/auth/desktop-token/:nonce — Desktop app polls this after login.
   // Returns 404 for nonces that were not issued by /desktop-nonce so attackers
   // cannot extract tokens by enumerating arbitrary nonces.
@@ -1381,18 +1429,21 @@ export function authRoutes(app: FastifyInstance) {
                 desktopHandoffPage(`${statePayload.appScheme}://oauth-callback?code=${relayCode}`),
               );
             }
-            const existing = desktopLoginTokens.get(nonce);
-            if (existing) {
-              desktopLoginTokens.set(nonce, { ...existing, jwt: token });
+            // Poll flow: parked only once this browser confirms, against the
+            // pairing code the app shows (auth/desktop-confirm.ts). Parking at
+            // once let whoever minted the nonce poll a lured victim's session.
+            // A nonce that expired or was used meanwhile gets the expired page now,
+            // not after the person clicks confirm.
+            const live = desktopLoginTokens.get(nonce);
+            if (!live || live.expiresAt < Date.now() || live.jwt !== undefined || live.relayed) {
+              reply.header("Cache-Control", "no-store");
+              reply.type("text/html");
+              return reply.code(400).send(desktopConfirmExpiredPage());
             }
+            const confirmId = beginDesktopConfirmation(nonce, token);
+            reply.header("Cache-Control", "no-store");
             reply.type("text/html");
-            return reply.send(`<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Klorn Login</title>
-<style>body{font-family:system-ui;background:#0a0a0a;color:#e5e7eb;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
-.box{text-align:center;padding:40px}.ok{font-size:48px;margin-bottom:16px}.t{font-size:14px;color:#9ca3af;margin-top:12px}</style>
-</head><body><div class="box"><div class="ok">✓</div><h2>Login Successful</h2>
-<p class="t">Return to the Klorn desktop app.<br>You can close this tab.</p>
-</div></body></html>`);
+            return reply.send(desktopConfirmPage(confirmId, pairingCode(nonce)));
           }
 
           // Issue a short-lived exchange code instead of putting the JWT in the URL.
