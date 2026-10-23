@@ -55,6 +55,16 @@ const DOCK_CLEARANCE =
 const DOCKLESS_CLEARANCE =
   "pb-[calc(62px+env(safe-area-inset-bottom))] md:pb-[env(safe-area-inset-bottom)]";
 
+/**
+ * The same clearances as scroll padding, so a control scrolled into view on
+ * focus is not left under what covers the end of <main> (WCAG 2.4.11): the
+ * bottom tab bar below 768px, and the assistant button (bottom right, where
+ * a row's "More actions" button sits) wherever it shows.
+ */
+const DOCK_SCROLL_PADDING =
+  "scroll-pb-[max(calc(62px+72px+env(safe-area-inset-bottom)),152px)] md:scroll-pb-[calc(72px+env(safe-area-inset-bottom))]";
+const DOCKLESS_SCROLL_PADDING = "max-md:scroll-pb-[calc(62px+env(safe-area-inset-bottom))]";
+
 function isAppShellRoute(pathname: string): boolean {
   return APP_SHELL_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`));
 }
@@ -117,15 +127,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-dvh overflow-hidden bg-surface-panel text-ink">
-      {/* Skip link (WCAG 2.4.1) — the first focusable element, hidden until a
-          keyboard user tabs to it, so they can jump past the whole sidebar to
-          the content on every route. */}
-      <a
-        href="#main"
-        className="sr-only rounded-md bg-accent-solid px-4 py-2 text-sm font-semibold text-accent-solid-ink focus-visible:not-sr-only focus-visible:absolute focus-visible:left-4 focus-visible:top-4 focus-visible:z-50"
-      >
-        {t("appShell.skipToContent")}
-      </a>
+      {/* The skip link is rendered once for every route by the root layout
+          (components/skip-link.tsx); it jumps past the sidebar to #main. */}
       <Sidebar />
       <div className="relative flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Mobile header — pt-safe respects iPhone notch in PWA. The hamburger
@@ -145,7 +148,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <main
           id="main"
           tabIndex={-1}
-          className={`relative z-10 flex-1 overflow-y-auto ${showDock ? DOCK_CLEARANCE : DOCKLESS_CLEARANCE} focus:outline-none`}
+          className={`scroll-stable relative z-10 flex-1 overflow-y-auto ${showDock ? `${DOCK_CLEARANCE} ${DOCK_SCROLL_PADDING}` : `${DOCKLESS_CLEARANCE} ${DOCKLESS_SCROLL_PADDING}`} focus:outline-none`}
         >
           {/* Inline, so it pushes content down rather than covering it; only on
               the home screen and Settings, where installing is on-topic. */}

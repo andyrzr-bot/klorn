@@ -35,8 +35,8 @@ import { safeHttpsLink } from "../safe-https-link.js";
 import { type DriveProviderName, isReadOnlyDriveProvider } from "./drive-providers.js";
 import { type ConnectedDriveProvider, KLORN_DRIVE_SOURCE_KEY } from "./drive-rows.js";
 import {
-  DRIVE_PROVIDER_ENABLED,
   type DriveProviderEnabledMap,
+  driveProvidersFor,
   driveSourceScope,
   isDriveRowVisible,
 } from "./drive-scope.js";
@@ -92,6 +92,8 @@ export interface DriveListOptions {
    * only parents that exist (unlike an external source, see D2).
    */
   readonly folder?: string | null;
+  /** Folders only, files left out: the web's Move picker lists one level's folders. */
+  readonly foldersOnly?: boolean;
 }
 
 export interface DriveSearchOptions extends DriveListOptions {
@@ -186,6 +188,7 @@ function filtersOf(options: DriveListOptions): Prisma.DriveFileWhereInput[] {
       { parentExternalId: options.folder },
     );
   }
+  if (options.foldersOnly === true) filters.push({ isFolder: true });
   const cursor = options.cursor;
   if (cursor !== undefined) {
     filters.push({
@@ -211,7 +214,7 @@ function toPage(rows: DriveWireRow[], limit: number): DrivePage {
 /** One page of the user's files, newest first. */
 export async function listFiles(
   options: DriveListOptions,
-  providerEnabled: DriveProviderEnabledMap = DRIVE_PROVIDER_ENABLED,
+  providerEnabled: DriveProviderEnabledMap = driveProvidersFor(options.userId),
 ): Promise<DrivePage> {
   const limit = pageLimit(options.limit);
   const rows = await prisma.driveFile.findMany({
@@ -226,7 +229,7 @@ export async function listFiles(
 /** One page of the user's files whose name contains the text, newest first. */
 export async function searchFiles(
   options: DriveSearchOptions,
-  providerEnabled: DriveProviderEnabledMap = DRIVE_PROVIDER_ENABLED,
+  providerEnabled: DriveProviderEnabledMap = driveProvidersFor(options.userId),
 ): Promise<DrivePage> {
   const text = normaliseDriveSearchText(options.text);
   if (text === null) return EMPTY_PAGE;
@@ -251,7 +254,7 @@ export async function searchFiles(
 export async function getFile(
   userId: string,
   id: string,
-  providerEnabled: DriveProviderEnabledMap = DRIVE_PROVIDER_ENABLED,
+  providerEnabled: DriveProviderEnabledMap = driveProvidersFor(userId),
 ): Promise<DriveFileWire | null> {
   if (!isDriveFileId(id)) return null;
   const row = await prisma.driveFile.findUnique({
@@ -289,7 +292,7 @@ export async function connectedAccountFiles(
   userId: string,
   account: ConnectedAccountRef,
   options: { readonly take: number },
-  providerEnabled: DriveProviderEnabledMap = DRIVE_PROVIDER_ENABLED,
+  providerEnabled: DriveProviderEnabledMap = driveProvidersFor(userId),
 ): Promise<ConnectedAccountFile[]> {
   return await prisma.driveFile.findMany({
     where: { AND: [driveSourceScope(providerEnabled), ...accountRowsOf(userId, account)] },
@@ -318,7 +321,7 @@ export async function connectedAccountRows(
   userId: string,
   account: ConnectedAccountRef,
   options: { readonly externalIds: readonly string[]; readonly countUpTo: number },
-  providerEnabled: DriveProviderEnabledMap = DRIVE_PROVIDER_ENABLED,
+  providerEnabled: DriveProviderEnabledMap = driveProvidersFor(userId),
 ): Promise<ConnectedAccountRows> {
   const held = await prisma.driveFile.findMany({
     where: { AND: [driveSourceScope(providerEnabled), ...accountRowsOf(userId, account)] },

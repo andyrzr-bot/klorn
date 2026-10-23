@@ -50,7 +50,11 @@ import {
 } from "../config.js";
 import { prisma } from "../db.js";
 import { withDbRetry } from "../db-retry.js";
-import { googleDriveRoutesEnabled, visibleDriveProviders } from "../drive/drive-scope.js";
+import {
+  driveProvidersFor,
+  filesVisibleFor,
+  googleDriveRoutesEnabled,
+} from "../drive/drive-scope.js";
 import { DRIVE_LINK_STATE_MARKER } from "../drive/providers/google-auth.js";
 import { sendPasswordResetEmail, sendVerificationEmail } from "../mail/email.js";
 import { boundedFromValue, extractEmailAddress } from "../mail/email-address.js";
@@ -78,7 +82,7 @@ import {
   recordLoginAttempt,
 } from "../security/login-throttle.js";
 import { captureError } from "../sentry.js";
-import { localMinuteOfDay, normalizeTimeZone } from "../time-zone.js";
+import { localMinuteOfDay, normalizeTimeZone, normalizeTimeZoneMode } from "../time-zone.js";
 import { deleteUserAndAllData } from "../user-deletion.js";
 import { isGoogleLinkMarker } from "./google-link-finish.js";
 import { handOffAccountLink, linkStartScheme } from "./link-handoff.js";
@@ -621,7 +625,7 @@ export function authRoutes(app: FastifyInstance) {
       const user = await prisma.user.findUnique({
         where: { id: payload.userId },
         // The user's timezone lives on AutomationConfig (User has no such column).
-        include: { automationConfig: { select: { timezone: true } } },
+        include: { automationConfig: { select: { timezone: true, timezoneMode: true } } },
       });
       if (!user) return reply.code(404).send({ error: "User not found" });
 
@@ -681,6 +685,9 @@ export function authRoutes(app: FastifyInstance) {
           // the user's intended zone instead of the browser default (which can
           // disagree — e.g., iOS PWA falling back to UTC).
           timezone: normalizeTimeZone(user.automationConfig?.timezone),
+          // "AUTO" (no saved choice) tells the client to render in the device
+          // zone and sync it here; "MANUAL" pins `timezone` above.
+          timezoneMode: normalizeTimeZoneMode(user.automationConfig?.timezoneMode),
           googleConnected: googleStatus.connected,
           googleNeedsReconnect: googleStatus.needsReconnect,
           // Whether ANY mail source is attached — the primary Google grant or
@@ -708,7 +715,7 @@ export function authRoutes(app: FastifyInstance) {
           // Files tab and Today's recent files show only while the drive is on
           // and at least one of its sources is (DRIVE_ENABLED plus a
           // connector's own flag), the same switch every drive reader honours.
-          files: visibleDriveProviders().length > 0,
+          files: filesVisibleFor(user.id),
           // Server-driven client flag (TEAM_MODE_ENABLED, P12): the web offers
           // "When is everyone free?" only when this is true and the user has a
           // saved team. /api/teams answers 403 TEAM_REQUIRED while it is off.
@@ -1217,7 +1224,7 @@ export function authRoutes(app: FastifyInstance) {
       // Only the dark POST /api/drive/google/link signs this marker. While the
       // drive is off nothing is parked: the code is never held, never exchanged.
       if (statePayload.email === DRIVE_LINK_STATE_MARKER) {
-        if (!googleDriveRoutesEnabled()) {
+        if (!googleDriveRoutesEnabled(driveProvidersFor(statePayload.userId))) {
           return reply.redirect(`${webUrl}${LINK_FLOW_PATHS[DRIVE_LINK_STATE_MARKER].failed}`);
         }
         return handOffAccountLink(reply, {
