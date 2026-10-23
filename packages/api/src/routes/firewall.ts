@@ -63,6 +63,11 @@ import {
 import { gmailCategoryOf, rowSignalFor } from "../judge/row-signals.js";
 import { resolveTierReason } from "../judge/tier-reason-strings.js";
 import { manualOverrideReason, type Tier, toLiveTier } from "../judge/tiers.js";
+import {
+  isInTodayPushWindow,
+  TODAY_PUSH_WINDOW_HOURS,
+  todayPushCutoff,
+} from "../judge/today-push-window.js";
 import { getInteractionGraph } from "../learning/interaction-graph.js";
 import { describePolicy } from "../learning/ontology.js";
 import { getTrustScoresBulk } from "../learning/trust-score.js";
@@ -592,6 +597,7 @@ export async function firewallRoutes(app: FastifyInstance) {
               tierReason: string | null;
               priority: number;
               surfacedAt: Date;
+              createdAt: Date;
               inputHash: string | null;
               agentTierSetAt: Date | null;
               isManualOverride: boolean;
@@ -610,6 +616,7 @@ export async function firewallRoutes(app: FastifyInstance) {
           tierReason: true,
           priority: true,
           surfacedAt: true,
+          createdAt: true,
           inputHash: true,
           agentTierSetAt: true,
           isManualOverride: true,
@@ -859,6 +866,31 @@ export async function firewallRoutes(app: FastifyInstance) {
       const dedupedItems = collapseEmailThreads(scopedItems, threadKeyOf);
       const threadCounts = countEmailThreads(scopedItems, threadKeyOf);
 
+      const now = new Date();
+      const todayPushIds: string[] = [];
+      // Today's window is judged per THREAD, like the web's grouped PUSH page
+      // (messages are filtered before grouping): a collapsed card is in when
+      // any PUSH message of its thread is, so an old kept card with a fresh
+      // sibling still shows. A row's time is its mail's receivedAt, else the
+      // item's createdAt (no mail behind it).
+      const windowTimeOf = (row: (typeof items)[number]): Date | string =>
+        emailById.get(row.sourceId)?.receivedAt ?? row.createdAt;
+      const pushThreadInWindow = new Set<string>();
+      for (const row of scopedItems) {
+        const key = row.source === "EMAIL" ? threadKeyOf(row) : null;
+        if (
+          key &&
+          toLiveTier(row.tier) === "PUSH" &&
+          isInTodayPushWindow(windowTimeOf(row), row.createdAt, now)
+        ) {
+          pushThreadInWindow.add(key);
+        }
+      }
+      const inTodayPushWindow = (row: (typeof items)[number], item: FirewallItem): boolean => {
+        const key = row.source === "EMAIL" ? threadKeyOf(row) : null;
+        if (key) return pushThreadInWindow.has(key);
+        return isInTodayPushWindow(item.email?.receivedAt, row.createdAt, now);
+      };
       for (const row of dedupedItems) {
         // toLiveTier maps legacy CALL rows → PUSH (not QUEUE), the retired
         // v1 AUTO lane → QUEUE, and any unknown/null tier → QUEUE. The AUTO
@@ -996,10 +1028,20 @@ export async function firewallRoutes(app: FastifyInstance) {
         }
 
         tiers[tier].push(item);
+        if (tier === "PUSH" && inTodayPushWindow(row, item)) {
+          todayPushIds.push(item.id);
+        }
       }
 
       return {
         tiers,
+        // Today's PUSH block (today-push-window.ts): which PUSH cards it lists.
+        // Additive; the lanes and the summary above stay whole for Mail.
+        todayPush: {
+          windowHours: TODAY_PUSH_WINDOW_HOURS,
+          since: todayPushCutoff(now).toISOString(),
+          ids: todayPushIds,
+        },
         summary: {
           SILENT: tiers.SILENT.length,
           INFO: tiers.INFO.length,
