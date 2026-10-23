@@ -204,10 +204,11 @@ async function enforceCostGates(
   // BYOK: a signed-in user with their OWN provider key spends their credit, not
   // Klorn's, so the shared global ceiling neither gates nor bills them — that
   // is the whole point of BYOK as an escape hatch when the shared budget is
-  // exhausted. We still CHECK their per-user cap (a broken key that forces an
-  // env fallthrough must not dodge the cap forever) but do NOT pre-bill it: the
-  // post-call true-up charges $0 when their key served and the real cost only
-  // on a genuine env fallthrough (where servedByUserKey is false).
+  // exhausted. We still CHECK their per-user cap — past it the call runs on
+  // their own key alone, so a broken key can never fall through to env money
+  // there — but do NOT pre-bill it: the post-call true-up charges $0 when their
+  // key served and the real cost only on a genuine env fallthrough below the
+  // cap (where servedByUserKey is false).
   if (!userKeyAvailable) {
     const globalGate = await checkGlobalCostGate();
     if (!globalGate.allowed) {

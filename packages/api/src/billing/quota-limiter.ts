@@ -44,6 +44,8 @@ interface UserWindow {
 const windows = new Map<string, UserWindow>();
 
 const RPM_WINDOW_MS = 60_000;
+/** How far past the background count a reserved (lane judge) call may go. */
+const JUDGE_COUNT_HEADROOM = 2;
 
 function dailyCap(priority: CallPriority): number {
   return priority === "foreground" ? LLM_USER_FOREGROUND_DAILY_CAP : LLM_USER_BACKGROUND_DAILY_CAP;
@@ -122,15 +124,17 @@ export function checkAndRecordUserCall(
     const retryAfter = Math.max(0, oldestRelevant + RPM_WINDOW_MS - now);
     throw new UserRateLimitedError("rpm", retryAfter, priority);
   }
-  // With the judge reserve on (JUDGE_BUDGET_RESERVE_CENTS > 0), a new-mail
-  // judge call is held back by the daily COST cap and its reserve, not by this
-  // count: classification runs up to ~4 calls a message, so 200 background
-  // calls are gone by mid-morning on a busy mailbox and the reserve would never
-  // be reached. It is still counted, so everything else stops sooner. Reserve
-  // off leaves the count exactly as it was.
-  const judgeBypassesCount = options.reserved === true && JUDGE_BUDGET_RESERVE_CENTS > 0;
-  const cap = dailyCap(priority);
-  if (!judgeBypassesCount && w.daily[priority] + cost > cap) {
+  // With the judge reserve on (JUDGE_BUDGET_RESERVE_CENTS > 0), a reserved
+  // (lane judge) call may go past this count, up to JUDGE_COUNT_HEADROOM times
+  // it: classification runs up to ~4 calls a message, so 200 background calls
+  // are gone by mid-morning on a busy mailbox and the cost reserve would never
+  // be reached. It is still counted, so everything else stops sooner, and it
+  // stays bounded — a mail flood, or a free/local model the cost cap cannot
+  // see, cannot make it unlimited. Reserve off leaves the count exactly as it
+  // was.
+  const judgeHeadroom = options.reserved === true && JUDGE_BUDGET_RESERVE_CENTS > 0;
+  const cap = dailyCap(priority) * (judgeHeadroom ? JUDGE_COUNT_HEADROOM : 1);
+  if (w.daily[priority] + cost > cap) {
     throw new UserRateLimitedError("daily", Math.max(0, w.dailyResetAt - now), priority);
   }
 

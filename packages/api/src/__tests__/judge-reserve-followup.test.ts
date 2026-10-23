@@ -171,6 +171,19 @@ describe("background call-count cap and the judge reserve", () => {
     ).not.toThrow();
   });
 
+  it("the judge's headroom is bounded: twice the background count, then it stops too", async () => {
+    process.env.JUDGE_BUDGET_RESERVE_CENTS = "25";
+    const limiter = await exhaustBackground(5);
+    for (let i = 0; i < 5; i++) {
+      vi.advanceTimersByTime(60_000);
+      limiter.checkAndRecordUserCall("u1", { priority: "background", reserved: true });
+    }
+    vi.advanceTimersByTime(60_000);
+    expect(() =>
+      limiter.checkAndRecordUserCall("u1", { priority: "background", reserved: true }),
+    ).toThrow(/background limit/);
+  });
+
   it("with the reserve off (the default), the judge is counted like every other call", async () => {
     const limiter = await exhaustBackground(5);
     expect(() =>

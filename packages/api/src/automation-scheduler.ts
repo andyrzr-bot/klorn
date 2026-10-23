@@ -1525,8 +1525,12 @@ async function runUserCycle(
               // push, that mail would be stranded outside the sweep forever.
               syncedLinkedInboxIds.push(inbox.id);
               linkedNewCount += linkedResult.newCount;
+              // A budget refusal ends only the summaries: this inbox still gets
+              // its lastSyncedAt and the next inboxes still sync.
               if (linkedResult.newCount > 0) {
-                await summarizeUnsummarizedEmails(config.userId, linkedResult.newCount);
+                await runBudgetedExtras([
+                  () => summarizeUnsummarizedEmails(config.userId, linkedResult.newCount),
+                ]);
               }
               // Stamp the last successful sync so the UI's "Synced Xm ago" is real
               // (the column had a reader but no writer — it showed "Not yet synced"
