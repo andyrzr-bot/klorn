@@ -161,6 +161,17 @@ describe("the text comes from the attachment pipeline's extractor", () => {
   });
 });
 
+describe("an extractor that could not read the file this time", () => {
+  it("is an error the run retries, not a file with no text", async () => {
+    const busy = Object.assign(new Error("busy"), { name: "AttachmentExtractionUnavailableError" });
+    await expect(
+      extractSummaryText(Buffer.from("text"), "notes.txt", "text/plain", () => {
+        throw busy;
+      }),
+    ).rejects.toBe(busy);
+  });
+});
+
 describe("Google's own formats are read as their export (D5d)", () => {
   const DOC = "application/vnd.google-apps.document";
   const SLIDES = "application/vnd.google-apps.presentation";
