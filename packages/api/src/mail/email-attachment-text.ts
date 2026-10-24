@@ -1,4 +1,4 @@
-import { inflateRawSync } from "node:zlib";
+import { inflateRawSync, constants as zlibConstants } from "node:zlib";
 import {
   collectPdfLiteralStrings,
   collectTextRuns,
@@ -311,20 +311,76 @@ function extractUtf16TextChunks(buffer: Buffer): string[] {
   return chunks;
 }
 
+/** How far into a legacy HWP file deflate streams are looked for, and how densely. */
+const INFLATE_SCAN_MAX_OFFSET = 1_000_000;
+const INFLATE_SCAN_STEP = 64;
+/** Compressed bytes a probe may read before a candidate offset is judged. */
+const INFLATE_PROBE_BYTES = 1_024;
+/** Offsets inflated in full once their probe found text; HWP files have a few sections. */
+const INFLATE_MAX_FULL_READS = 16;
+const INFLATE_MAX_CHUNKS = 80;
+
+/**
+ * Text from the raw-deflate streams of a legacy HWP file (its BodyText
+ * sections sit at 64- or 512-byte boundaries of an OLE container, so the scan
+ * tries every 64th offset).
+ *
+ * A candidate whose first block header cannot start a text stream is skipped
+ * without calling zlib. The rest are probed with 1 KB of input, inflated as far
+ * as that goes, and only an offset whose probe yields text is inflated in full.
+ * Inflating each offset straight to the end of the file was quadratic: a file
+ * of empty stored blocks — each one valid deflate — sent all 15,625 attempts
+ * through the whole buffer, 2 MB in 8.7 s on the event loop (2026-10-23).
+ */
 function extractInflatedTextChunks(buffer: Buffer): string[] {
   const chunks: string[] = [];
-  const maxOffset = Math.min(buffer.length - 16, 1_000_000);
-  for (let offset = 0; offset < maxOffset; offset += 64) {
+  const maxOffset = Math.min(buffer.length - 16, INFLATE_SCAN_MAX_OFFSET);
+  let fullReads = 0;
+  for (let offset = 0; offset < maxOffset; offset += INFLATE_SCAN_STEP) {
+    if (!mayStartTextStream(buffer, offset)) continue;
+    if (!probeYieldsText(buffer.subarray(offset, offset + INFLATE_PROBE_BYTES))) continue;
+    fullReads++;
     try {
       const inflated = inflateRawCapped(buffer.subarray(offset));
-      if (inflated.length < 16) continue;
       chunks.push(...extractUtf16TextChunks(inflated), ...extractAsciiKoreanTextChunks(inflated));
-      if (chunks.length >= 80) break;
     } catch {
-      // Most offsets are not deflate streams. Keep scanning sparsely.
+      // The stream broke after the probe's window; what the probe saw stands
+      // only if the full read succeeds, so nothing is added.
     }
+    if (chunks.length >= INFLATE_MAX_CHUNKS || fullReads >= INFLATE_MAX_FULL_READS) break;
   }
   return chunks;
+}
+
+/**
+ * The first deflate block header, read without zlib (RFC 1951 §3.2.3–3.2.4):
+ * block type 3 is invalid, and a stored block needs LEN = ~NLEN and some data.
+ * An empty stored block is valid deflate but carries no text, and is what a
+ * flood of them is made of. Real HWP sections start with a Huffman block.
+ */
+function mayStartTextStream(buffer: Buffer, offset: number): boolean {
+  const blockType = (buffer[offset] >> 1) & 0b11;
+  if (blockType === 0b11) return false;
+  if (blockType !== 0b00) return true;
+  const length = buffer.readUInt16LE(offset + 1);
+  const lengthComplement = buffer.readUInt16LE(offset + 3);
+  return length > 0 && (length ^ 0xffff) === lengthComplement;
+}
+
+/** Whether the start of a possible deflate stream inflates to readable text. */
+function probeYieldsText(window: Buffer): boolean {
+  try {
+    // Z_SYNC_FLUSH: a stream cut off by the window yields what it has instead of throwing.
+    const head = inflateRawSync(window, {
+      maxOutputLength: MAX_EXTRACTABLE_BYTES,
+      finishFlush: zlibConstants.Z_SYNC_FLUSH,
+    });
+    if (head.length < 16) return false;
+    return extractUtf16TextChunks(head).length > 0 || extractAsciiKoreanTextChunks(head).length > 0;
+  } catch {
+    // Most offsets are not deflate streams.
+    return false;
+  }
 }
 
 function extractAsciiKoreanTextChunks(buffer: Buffer): string[] {
