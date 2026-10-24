@@ -1,11 +1,11 @@
-import { deflateRawSync } from "node:zlib";
+import { deflateRawSync, constants as zlibConstants } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import {
   extractAttachmentContent,
   inflateRawCapped,
   isReadableEmailAttachment,
 } from "../mail/email-attachment-text.js";
-import { expectLinear, repeatTo } from "./helpers/linear-timing.js";
+import { expectLinear, fastestMs, repeatTo } from "./helpers/linear-timing.js";
 
 describe("inflateRawCapped — decompression-bomb guard", () => {
   it("inflates a normal stream back to the original", () => {
@@ -107,6 +107,29 @@ describe("email attachment text extraction", () => {
     expect(result.text).toContain("현대무용");
   });
 
+  it("recovers text from a deflated legacy hwp section, wherever it starts", () => {
+    // HWP 5 keeps BodyText sections raw-deflated inside an OLE file, at
+    // 64-byte (mini-sector) or 512-byte boundaries.
+    const section = deflateRawSync(
+      Buffer.from(
+        `이름: 김하늘\n역할: 연출\n${"공연 일정과 리허설 메모. ".repeat(400)}`,
+        "utf16le",
+      ),
+    );
+    for (const at of [64, 512, 4096, 65_536]) {
+      const hwp = Buffer.concat([
+        Buffer.from("HWP Document File V5\0"),
+        Buffer.alloc(at - 21, 0x01),
+        section,
+        Buffer.alloc(300, 0x02),
+      ]);
+      const result = extractAttachmentContent(hwp, "profile.hwp", "application/haansofthwp");
+      expect(result.status, `section at ${at}`).toBe("readable");
+      expect(result.text, `section at ${at}`).toContain("김하늘");
+      expect(result.text, `section at ${at}`).toContain("리허설");
+    }
+  });
+
   it("recovers readable text from legacy hwp binary payloads", () => {
     const hwp = Buffer.concat([
       Buffer.from("HWP Document File V5\0"),
@@ -172,6 +195,40 @@ describe("email attachment extraction stays linear on crafted attachments", () =
     );
     expectLinear((n) => repeatTo(n, "<t>"), xlsx);
     expectLinear((n) => repeatTo(n, "<"), pptx);
+  });
+
+  it("legacy hwp: a flood of empty stored deflate blocks", () => {
+    // Each 5-byte block (non-final, stored, LEN 0) is a valid deflate block, so
+    // every probe offset used to inflate all the way to the end of the file:
+    // 2 MB took 8.7 s (security review, 2026-10-23).
+    expectLinear(
+      (n) => repeatTo(n, "\u0000\u0000\u0000ÿÿ"),
+      (raw) => extract(Buffer.from(raw, "latin1"), "x.hwp", "application/haansofthwp")(),
+    );
+  });
+
+  it("legacy hwp: a small file of streams that each inflate to megabytes", () => {
+    // 7.7 KB of deflate → 7.9 MB of "A", repeated 20 times (155 KB): every
+    // probe overflows, so each offset earned a full read — 4.3 s before the
+    // full reads shared one output budget.
+    const stream = deflateRawSync(Buffer.alloc(7_900_000, 0x41), { level: 9 });
+    const unit = Buffer.concat([stream, Buffer.alloc((64 - (stream.length % 64)) % 64, 0xfe)]);
+    const file = Buffer.concat(Array.from({ length: 20 }, () => unit));
+    expect(fastestMs(() => extract(file, "x.hwp", "application/haansofthwp")())).toBeLessThan(1000);
+  });
+
+  it("legacy hwp: a flood of tiny streams that each inflate to kilobytes of zeros", () => {
+    // 61 bytes of fixed-Huffman deflate → 9 KB of zeros, one at every 64-byte
+    // offset: 1 KB of probe input is no bound on its own (4.9 s per MB).
+    const unit = deflateRawSync(Buffer.alloc(9_000, 0), {
+      strategy: zlibConstants.Z_FIXED,
+      level: 9,
+    }).toString("latin1");
+    const padded = unit + "\u0000".repeat(64 - unit.length);
+    expectLinear(
+      (n) => repeatTo(n, padded),
+      (raw) => extract(Buffer.from(raw, "latin1"), "x.hwp", "application/haansofthwp")(),
+    );
   });
 
   it("hwpx tab, br and closing-tag floods", () => {
