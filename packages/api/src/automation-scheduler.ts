@@ -255,6 +255,20 @@ export async function hasBriefingBeenSentToday(userId: string, timeZone: string)
  * per-user timestamps removes that class of misses.
  */
 const lastEmailSyncAt = new Map<string, number>();
+/**
+ * Google tokens that can still be used: a refresh token, or an access token
+ * that has not expired. A row with neither is dead — getAuthedClient returns
+ * null and logs "needs reconnect" — so it must not count as connected, or the
+ * account attempts a Gmail and Calendar sync on every tick, forever.
+ */
+export function usableGoogleTokenWhere(userIds: string[], now: Date) {
+  return {
+    userId: { in: userIds },
+    provider: "google",
+    OR: [{ refreshToken: { not: null } }, { expiresAt: { gt: now } }],
+  };
+}
+
 function isEmailSyncDue(userId: string): boolean {
   const last = lastEmailSyncAt.get(userId);
   if (!last) return true;
@@ -1051,12 +1065,13 @@ async function runAutomations() {
         automationUsers.map((u) => [u.id, { plan: u.plan, role: u.role }]),
       );
 
-      // Pre-fetch which users have a Google token. Abandoned signups never
-      // OAuth-connect, so trying to sync Gmail/Calendar for them throws
-      // "Gmail not connected" on every tick — wasted DB+OAuth lookups and
-      // log noise. One query per batch beats N per-user roundtrips.
+      // Pre-fetch which users have a usable Google token. Abandoned signups
+      // never OAuth-connect, and a dead token (no refresh token, access token
+      // expired) can never sync again until the user reconnects; trying either
+      // on every tick is wasted DB+OAuth lookups and log noise. One query per
+      // batch beats N per-user roundtrips.
       const googleTokens = await prisma.userToken.findMany({
-        where: { userId: { in: configUserIds }, provider: "google" },
+        where: usableGoogleTokenWhere(configUserIds, new Date()),
         select: { userId: true },
       });
       const googleConnectedUserIds = new Set(googleTokens.map((t) => t.userId));
