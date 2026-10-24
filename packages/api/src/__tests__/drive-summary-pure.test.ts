@@ -22,7 +22,7 @@ import {
   utcDayKey,
   utcDayKeyBefore,
 } from "../drive/summary-policy.js";
-import { MAX_EXTRACTABLE_BYTES } from "../mail/email-attachment-text.js";
+import { extractAttachmentContent, MAX_EXTRACTABLE_BYTES } from "../mail/email-attachment-text.js";
 import { MemoryObjectStore } from "../storage/memory-store.js";
 import type { ObjectStore } from "../storage/object-store.js";
 import { setObjectStoreForTests } from "../storage/runtime.js";
@@ -47,6 +47,10 @@ function countingSource(count: number, size: number) {
   };
   return { source, state };
 }
+
+/** The production extractor runs in a worker thread; these cases test what is done with its answer. */
+const readText = (bytes: Buffer, name: string, mimeType: string | null) =>
+  extractSummaryText(bytes, name, mimeType, extractAttachmentContent);
 
 describe("readCappedBytes: the cap is checked while the bytes stream", () => {
   it("collects a file under the cap whole", async () => {
@@ -121,30 +125,26 @@ describe("a storage read has a deadline", () => {
 });
 
 describe("the text comes from the attachment pipeline's extractor", () => {
-  it("reads a text file and caps the text before any model sees it", () => {
+  it("reads a text file and caps the text before any model sees it", async () => {
     const long = "가".repeat(DRIVE_SUMMARY_MAX_INPUT_CHARS + 500);
-    const result = extractSummaryText(Buffer.from(long, "utf8"), "notes.txt", "text/plain");
+    const result = await readText(Buffer.from(long, "utf8"), "notes.txt", "text/plain");
     expect(result.ok).toBe(true);
     if (result.ok) expect([...result.text]).toHaveLength(DRIVE_SUMMARY_MAX_INPUT_CHARS);
   });
 
-  it("an unknown binary type is unsupported, an empty text has no text", () => {
-    expect(extractSummaryText(Buffer.from([1, 2, 3]), "blob.bin", null)).toEqual({
+  it("an unknown binary type is unsupported, an empty text has no text", async () => {
+    expect(await readText(Buffer.from([1, 2, 3]), "blob.bin", null)).toEqual({
       ok: false,
       code: "unsupported-type",
     });
-    expect(extractSummaryText(Buffer.from("   \n "), "empty.txt", "text/plain")).toEqual({
+    expect(await readText(Buffer.from("   \n "), "empty.txt", "text/plain")).toEqual({
       ok: false,
       code: "no-text",
     });
   });
 
-  it("a PDF with no text layer is skipped, not summarised from the extractor's placeholder", () => {
-    const result = extractSummaryText(
-      Buffer.from("%PDF-1.4\n%%EOF"),
-      "scan.pdf",
-      "application/pdf",
-    );
+  it("a PDF with no text layer is skipped, not summarised from the extractor's placeholder", async () => {
+    const result = await readText(Buffer.from("%PDF-1.4\n%%EOF"), "scan.pdf", "application/pdf");
     expect(result).toEqual({ ok: false, code: "no-text" });
   });
 
@@ -161,6 +161,17 @@ describe("the text comes from the attachment pipeline's extractor", () => {
   });
 });
 
+describe("an extractor that could not read the file this time", () => {
+  it("is an error the run retries, not a file with no text", async () => {
+    const busy = Object.assign(new Error("busy"), { name: "AttachmentExtractionUnavailableError" });
+    await expect(
+      extractSummaryText(Buffer.from("text"), "notes.txt", "text/plain", () => {
+        throw busy;
+      }),
+    ).rejects.toBe(busy);
+  });
+});
+
 describe("Google's own formats are read as their export (D5d)", () => {
   const DOC = "application/vnd.google-apps.document";
   const SLIDES = "application/vnd.google-apps.presentation";
@@ -172,18 +183,18 @@ describe("Google's own formats are read as their export (D5d)", () => {
     }
   });
 
-  it("whatever their name says: the export's type decides, not an extension", () => {
+  it("whatever their name says: the export's type decides, not an extension", async () => {
     // Named like an image or an Office file, the export is still plain text or CSV.
     expect(isSummarisableFile("diagram.png", DOC, null)).toBe(true);
-    const asDocx = extractSummaryText(Buffer.from("Minutes of the review."), "notes.docx", DOC);
+    const asDocx = await readText(Buffer.from("Minutes of the review."), "notes.docx", DOC);
     expect(asDocx).toEqual({ ok: true, text: "Minutes of the review." });
-    const asXlsx = extractSummaryText(Buffer.from("region,total\nEU,12\n"), "budget.xlsx", SHEET);
+    const asXlsx = await readText(Buffer.from("region,total\nEU,12\n"), "budget.xlsx", SHEET);
     expect(asXlsx).toEqual({ ok: true, text: "region,total\nEU,12" });
-    const deck = extractSummaryText(Buffer.from("Slide one\n\nSlide two"), "deck.pptx", SLIDES);
+    const deck = await readText(Buffer.from("Slide one\n\nSlide two"), "deck.pptx", SLIDES);
     expect(deck).toEqual({ ok: true, text: "Slide one\n\nSlide two" });
   });
 
-  it("any other Google format has no text export: never fetched, unsupported", () => {
+  it("any other Google format has no text export: never fetched, unsupported", async () => {
     for (const type of [
       "application/vnd.google-apps.form",
       "application/vnd.google-apps.drawing",
@@ -191,7 +202,7 @@ describe("Google's own formats are read as their export (D5d)", () => {
     ]) {
       // A name that looks readable does not make it so.
       expect(isSummarisableFile("survey.txt", type, null), type).toBe(false);
-      expect(extractSummaryText(Buffer.from("text"), "survey.txt", type)).toEqual({
+      expect(await readText(Buffer.from("text"), "survey.txt", type)).toEqual({
         ok: false,
         code: "unsupported-type",
       });

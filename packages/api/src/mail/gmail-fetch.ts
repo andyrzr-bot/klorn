@@ -8,7 +8,8 @@
 import { type gmail_v1, google } from "googleapis";
 import { Semaphore } from "../semaphore.js";
 import { captureError } from "../sentry.js";
-import { extractAttachmentContent, isReadableEmailAttachment } from "./email-attachment-text.js";
+import { extractAttachmentContentIsolated } from "./attachment-extract-isolated.js";
+import { isReadableEmailAttachment } from "./email-attachment-text.js";
 import type { RawEmailAttachment } from "./email-attachments.js";
 import { htmlToPlainText } from "./email-text.js";
 import {
@@ -149,7 +150,9 @@ async function extractAttachmentsFromPayload(
           data = attachment.data.data || "";
         }
         if (data) {
-          contentText = extractAttachmentContent(decodeBase64Url(data), filename, mimeType).text;
+          contentText = (
+            await extractAttachmentContentIsolated(decodeBase64Url(data), filename, mimeType)
+          ).text;
         }
       } catch {
         contentText = null;

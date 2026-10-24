@@ -64,6 +64,26 @@ export function isReadableEmailAttachment(
   );
 }
 
+/**
+ * Whether extracting this file means parsing its bytes. Images, unknown types
+ * and oversized files get a metadata answer without reading the content, so
+ * they need no isolation (attachment-extract-isolated.ts).
+ */
+export function needsParsing(filename: string, mimeType: string, byteLength: number): boolean {
+  if (byteLength > MAX_EXTRACTABLE_BYTES) return false;
+  const lower = filename.toLowerCase();
+  return (
+    isDocx(lower, mimeType) ||
+    isXlsx(lower, mimeType) ||
+    isPptx(lower, mimeType) ||
+    isHwpx(lower, mimeType) ||
+    isLegacyHwp(lower, mimeType) ||
+    isPlainTextLike(lower, mimeType) ||
+    mimeType.includes("pdf") ||
+    lower.endsWith(".pdf")
+  );
+}
+
 export function extractAttachmentContent(
   buffer: Buffer,
   filename: string,
@@ -293,20 +313,24 @@ function extractLegacyHwpText(buffer: Buffer): string | null {
   return uniqueLines(chunks).join("\n") || null;
 }
 
-function extractUtf16TextChunks(buffer: Buffer): string[] {
+/**
+ * Readable UTF-16LE runs, at both byte alignments. Each run is decoded in one
+ * call once it ends: building it a character at a time made a string node per
+ * character, about 30× the text in memory, so a 6 MB run ran a 128 MB heap
+ * out (review of #1535, 2026-10-24). The readable set has no surrogates, so
+ * decoding the run is the same text as joining its code units.
+ */
+export function extractUtf16TextChunks(buffer: Buffer): string[] {
   const chunks: string[] = [];
   for (const offset of [0, 1]) {
-    let current = "";
-    for (let i = offset; i + 1 < buffer.length; i += 2) {
-      const code = buffer.readUInt16LE(i);
-      if (isReadableTextCode(code)) {
-        current += String.fromCharCode(code);
-      } else {
-        pushReadableChunk(chunks, current);
-        current = "";
-      }
+    let runStart = offset;
+    let i = offset;
+    for (; i + 1 < buffer.length; i += 2) {
+      if (isReadableTextCode(buffer.readUInt16LE(i))) continue;
+      pushReadableChunk(chunks, buffer.toString("utf16le", runStart, i));
+      runStart = i + 2;
     }
-    pushReadableChunk(chunks, current);
+    pushReadableChunk(chunks, buffer.toString("utf16le", runStart, i));
   }
   return chunks;
 }

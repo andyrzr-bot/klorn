@@ -245,7 +245,7 @@ async function summariseSource(ctx: RunContext, source: SummarySource): Promise<
       : await attemptFailed(ctx, "storage-error");
   }
   if (!bytes.ok) return await settleUnread(ctx, bytes.reason, source);
-  const text = extractSummaryText(bytes.bytes, source.name, source.mimeType);
+  const text = await extractSummaryText(bytes.bytes, source.name, source.mimeType);
   if (!text.ok) return await skip(ctx, text.code, source.etag);
 
   const refused = await takeSlots(ctx);

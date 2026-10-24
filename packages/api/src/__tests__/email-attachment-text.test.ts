@@ -2,6 +2,7 @@ import { deflateRawSync, constants as zlibConstants } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import {
   extractAttachmentContent,
+  extractUtf16TextChunks,
   inflateRawCapped,
   isReadableEmailAttachment,
 } from "../mail/email-attachment-text.js";
@@ -270,3 +271,70 @@ function makeZip(files: Record<string, string>): Buffer {
   }
   return Buffer.concat(chunks);
 }
+
+describe("extractUtf16TextChunks decodes whole runs (2026-10-24)", () => {
+  // The previous implementation, character by character: the reference.
+  function previous(buffer: Buffer): string[] {
+    const readable = (code: number) =>
+      code === 0x09 ||
+      code === 0x0a ||
+      code === 0x0d ||
+      code === 0x20 ||
+      (code >= 0x21 && code <= 0x7e) ||
+      (code >= 0xac00 && code <= 0xd7a3) ||
+      (code >= 0x3130 && code <= 0x318f) ||
+      (code >= 0x1100 && code <= 0x11ff);
+    const push = (chunks: string[], value: string) => {
+      const cleaned = value.replace(/\s+/g, " ").trim();
+      if (cleaned.length < 6 || !/[가-힣A-Za-z0-9]/.test(cleaned)) return;
+      chunks.push(cleaned);
+    };
+    const chunks: string[] = [];
+    for (const offset of [0, 1]) {
+      let current = "";
+      for (let i = offset; i + 1 < buffer.length; i += 2) {
+        const code = buffer.readUInt16LE(i);
+        if (readable(code)) current += String.fromCharCode(code);
+        else {
+          push(chunks, current);
+          current = "";
+        }
+      }
+      push(chunks, current);
+    }
+    return chunks;
+  }
+
+  it("matches the character-by-character reference on text, binary and odd lengths", () => {
+    const samples = [
+      Buffer.from("이름: 박서연\n역할: 배우\n연락처: 010-2222-3333", "utf16le"),
+      Buffer.concat([
+        Buffer.from([0, 1, 2]),
+        Buffer.from("Quarterly plan 2027", "utf16le"),
+        Buffer.from([9]),
+      ]),
+      Buffer.concat([
+        Buffer.from("가나다라마바사", "utf16le"),
+        Buffer.from([0xff, 0xfe]),
+        Buffer.from("ㄱㄴㄷ abc def", "utf16le"),
+      ]),
+    ];
+    let seed = 7;
+    const random = () => {
+      seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
+      return seed;
+    };
+    for (let n = 0; n < 200; n++) {
+      const bytes = Buffer.alloc(1 + (random() % 400));
+      for (let i = 0; i < bytes.length; i++) {
+        // Bias toward readable code units so runs actually form.
+        bytes[i] =
+          random() % 3 === 0 ? random() % 256 : [0x41, 0x00, 0x20, 0xac, 0x31][random() % 5];
+      }
+      samples.push(bytes);
+    }
+    for (const sample of samples) {
+      expect(extractUtf16TextChunks(sample)).toEqual(previous(sample));
+    }
+  });
+});
