@@ -316,6 +316,10 @@ const INFLATE_SCAN_MAX_OFFSET = 1_000_000;
 const INFLATE_SCAN_STEP = 64;
 /** Compressed bytes a probe may read before a candidate offset is judged. */
 const INFLATE_PROBE_BYTES = 1_024;
+/** Output a probe may produce: deflate expands up to ~1000×, so 1 KB in is not a bound on its own. */
+const INFLATE_PROBE_MAX_OUTPUT = 65_536;
+/** Total probe output per file; past it the scan stops. */
+const INFLATE_SCAN_OUTPUT_BUDGET = MAX_EXTRACTABLE_BYTES;
 /** Offsets inflated in full once their probe found text; HWP files have a few sections. */
 const INFLATE_MAX_FULL_READS = 16;
 const INFLATE_MAX_CHUNKS = 80;
@@ -326,19 +330,26 @@ const INFLATE_MAX_CHUNKS = 80;
  * tries every 64th offset).
  *
  * A candidate whose first block header cannot start a text stream is skipped
- * without calling zlib. The rest are probed with 1 KB of input, inflated as far
- * as that goes, and only an offset whose probe yields text is inflated in full.
+ * without calling zlib. The rest are probed with 1 KB of input and at most
+ * 64 KB of output, and only an offset whose probe yields text (or overflows the
+ * probe) is inflated in full. All probes together may produce 8 MB.
  * Inflating each offset straight to the end of the file was quadratic: a file
  * of empty stored blocks — each one valid deflate — sent all 15,625 attempts
- * through the whole buffer, 2 MB in 8.7 s on the event loop (2026-10-23).
+ * through the whole buffer, 2 MB in 8.7 s on the event loop (2026-10-23). And
+ * 1 KB of input alone is no bound: a file of tiny streams that each inflate to
+ * ~9 KB of zeros took 4.9 s per MB.
  */
 function extractInflatedTextChunks(buffer: Buffer): string[] {
   const chunks: string[] = [];
   const maxOffset = Math.min(buffer.length - 16, INFLATE_SCAN_MAX_OFFSET);
   let fullReads = 0;
+  let probeOutput = 0;
   for (let offset = 0; offset < maxOffset; offset += INFLATE_SCAN_STEP) {
+    if (probeOutput >= INFLATE_SCAN_OUTPUT_BUDGET) break;
     if (!mayStartTextStream(buffer, offset)) continue;
-    if (!probeYieldsText(buffer.subarray(offset, offset + INFLATE_PROBE_BYTES))) continue;
+    const probe = probeStream(buffer.subarray(offset, offset + INFLATE_PROBE_BYTES));
+    probeOutput += probe.outputBytes;
+    if (!probe.worthFullRead) continue;
     fullReads++;
     try {
       const inflated = inflateRawCapped(buffer.subarray(offset));
@@ -367,19 +378,28 @@ function mayStartTextStream(buffer: Buffer, offset: number): boolean {
   return length > 0 && (length ^ 0xffff) === lengthComplement;
 }
 
-/** Whether the start of a possible deflate stream inflates to readable text. */
-function probeYieldsText(window: Buffer): boolean {
+/**
+ * Whether the start of a possible deflate stream is worth inflating in full: it
+ * yields readable text, or it is so compressed that it passed the probe's output
+ * cap (repetitive text can be). `outputBytes` is what the probe cost.
+ */
+function probeStream(window: Buffer): { outputBytes: number; worthFullRead: boolean } {
   try {
     // Z_SYNC_FLUSH: a stream cut off by the window yields what it has instead of throwing.
     const head = inflateRawSync(window, {
-      maxOutputLength: MAX_EXTRACTABLE_BYTES,
+      maxOutputLength: INFLATE_PROBE_MAX_OUTPUT,
       finishFlush: zlibConstants.Z_SYNC_FLUSH,
     });
-    if (head.length < 16) return false;
-    return extractUtf16TextChunks(head).length > 0 || extractAsciiKoreanTextChunks(head).length > 0;
-  } catch {
+    const hasText =
+      head.length >= 16 &&
+      (extractUtf16TextChunks(head).length > 0 || extractAsciiKoreanTextChunks(head).length > 0);
+    return { outputBytes: head.length, worthFullRead: hasText };
+  } catch (err) {
+    if (err instanceof RangeError) {
+      return { outputBytes: INFLATE_PROBE_MAX_OUTPUT, worthFullRead: true };
+    }
     // Most offsets are not deflate streams.
-    return false;
+    return { outputBytes: 0, worthFullRead: false };
   }
 }
 

@@ -1,4 +1,4 @@
-import { deflateRawSync } from "node:zlib";
+import { deflateRawSync, constants as zlibConstants } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import {
   extractAttachmentContent,
@@ -203,6 +203,20 @@ describe("email attachment extraction stays linear on crafted attachments", () =
     // 2 MB took 8.7 s (security review, 2026-10-23).
     expectLinear(
       (n) => repeatTo(n, "\u0000\u0000\u0000ÿÿ"),
+      (raw) => extract(Buffer.from(raw, "latin1"), "x.hwp", "application/haansofthwp")(),
+    );
+  });
+
+  it("legacy hwp: a flood of tiny streams that each inflate to kilobytes of zeros", () => {
+    // 61 bytes of fixed-Huffman deflate → 9 KB of zeros, one at every 64-byte
+    // offset: 1 KB of probe input is no bound on its own (4.9 s per MB).
+    const unit = deflateRawSync(Buffer.alloc(9_000, 0), {
+      strategy: zlibConstants.Z_FIXED,
+      level: 9,
+    }).toString("latin1");
+    const padded = unit + "\u0000".repeat(64 - unit.length);
+    expectLinear(
+      (n) => repeatTo(n, padded),
       (raw) => extract(Buffer.from(raw, "latin1"), "x.hwp", "application/haansofthwp")(),
     );
   });
