@@ -15,6 +15,25 @@ private let navCheckQueueJSON = """
  "summary":{"PUSH":2,"MEETING":0,"QUEUE":20,"INFO":3,"SILENT":4,"AUTO":0,"total":29}}
 """
 
+/// Today's PUSH window (founder decision 2026-10-23): five open PUSH cards,
+/// two inside the server's window. The window ids come from the server.
+private let navCheckWindowJSON = """
+{"tiers":{
+  "PUSH":[\(navCheckItems("p", "PUSH", 5))],
+  "MEETING":[],"QUEUE":[],"INFO":[],"SILENT":[],"AUTO":[]},
+ "summary":{"PUSH":5,"MEETING":0,"QUEUE":0,"INFO":0,"SILENT":0,"AUTO":0,"total":5},
+ "todayPush":{"windowHours":72,"since":"2026-07-26T08:00:00.000Z","ids":["p2","p4"]}}
+"""
+
+/// The same five PUSH cards with none inside the window.
+private let navCheckEmptyWindowJSON = """
+{"tiers":{
+  "PUSH":[\(navCheckItems("p", "PUSH", 5))],
+  "MEETING":[],"QUEUE":[],"INFO":[],"SILENT":[],"AUTO":[]},
+ "summary":{"PUSH":5,"MEETING":0,"QUEUE":0,"INFO":0,"SILENT":0,"AUTO":0,"total":5},
+ "todayPush":{"windowHours":72,"since":"2026-07-26T08:00:00.000Z","ids":[]}}
+"""
+
 private func navCheckItems(_ prefix: String, _ tier: String, _ count: Int) -> String {
     (1...count).map { index in
         """
@@ -128,6 +147,31 @@ func navSelfChecks(sourceDir: URL) -> [(String, Bool)] {
     } else {
         check("the Today fixture decodes", false)
     }
+    if let windowed = try? JSONDecoder().decode(
+        FirewallResponse.self, from: Data(navCheckWindowJSON.utf8)),
+       let empty = try? JSONDecoder().decode(
+        FirewallResponse.self, from: Data(navCheckEmptyWindowJSON.utf8))
+    {
+        let push = TodayRules.lanes(windowed).first { $0.tier == .push }
+        check("today: Push lists only the server's window, header count = rows",
+              push?.rows.map(\.id) == ["p2", "p4"] && push?.count == 2
+              && push?.remaining == 0 && push?.older == 3)
+        check("today: Mail's Push lane is untouched by the window",
+              windowed.items(for: .push).count == 5 && windowed.summary.push == 5)
+        let emptyPush = TodayRules.lanes(empty).first { $0.tier == .push }
+        check("today: an empty window keeps a calm Push lane with a way to older mail",
+              emptyPush?.count == 0 && emptyPush?.rows.isEmpty == true && emptyPush?.older == 5)
+        check("today: a window id leaves with its card",
+              windowed.removingIDs(["p2"]).todayPush?.ids == ["p4"]
+              && windowed.movingItem(id: "p4", to: .queue).todayPush?.ids == ["p2"])
+        check("today: no window from an older server lists every Push card",
+              TodayRules.lanes(
+                (try? JSONDecoder().decode(
+                    FirewallResponse.self, from: Data(navCheckQueueJSON.utf8)))!
+              ).first { $0.tier == .push }?.older == 0)
+    } else {
+        check("the Today window fixture decodes", false)
+    }
     check("today: signed out and failed are their own states, never the skeleton",
           TodayRules.state(phase: .signedOut, hasQueue: false, loadError: nil) == .signedOut
           && TodayRules.state(phase: .signedOut, hasQueue: false, loadError: "x") == .signedOut
@@ -136,6 +180,32 @@ func navSelfChecks(sourceDir: URL) -> [(String, Bool)] {
           && TodayRules.state(phase: .signedIn, hasQueue: false, loadError: nil) == .loading)
     check("today: a loaded queue stays on screen through a failed refresh",
           TodayRules.state(phase: .signedIn, hasQueue: true, loadError: "x") == .ready)
+    do {
+        // The calm header (founder decision 2026-10-24): counts for Push and
+        // Meeting only, Queue + Info as one waiting figure, Silent never.
+        func lane(_ tier: Tier, _ count: Int) -> TodayLane {
+            TodayLane(tier: tier, style: .rows, count: count, rows: [])
+        }
+        let busy = TodayRules.headerSummary(
+            [lane(.push, 3), lane(.meeting, 2), lane(.queue, 856), lane(.info, 64)])
+        check("today header: counts only Push and Meeting, Queue + Info fold into waiting",
+              busy.needs.map(\.tier) == [.push, .meeting] && busy.needs.map(\.count) == [3, 2]
+              && !busy.calm && busy.waiting == 920)
+        let calm = TodayRules.headerSummary([lane(.push, 0), lane(.queue, 5), lane(.info, 1)])
+        check("today header: calm when Push and Meeting are both zero, still naming the wait",
+              calm.needs.isEmpty && calm.calm && calm.waiting == 6)
+        let meetingOnly = TodayRules.headerSummary([lane(.meeting, 4)])
+        check("today header: a zero lane is left out and nothing waiting shows nothing",
+              meetingOnly.needs.map(\.tier) == [.meeting] && !meetingOnly.calm
+              && meetingOnly.waiting == 0)
+        check("today header: never carries Silent, large waits stay as is",
+              TodayRules.headerSummary([lane(.silent, 866), lane(.queue, 12_345)]).waiting == 12_345
+              && TodayRules.headerSummary([lane(.silent, 866)]).needs.isEmpty)
+        check("today header: the waiting phrase is singular only for one",
+              TodayRules.waitingLine(1) == L("today.waiting.one")
+              && TodayRules.waitingLine(920) == L("today.waiting.many", 920)
+              && TodayRules.waitingLine(920).contains("920"))
+    }
     check("today: the briefing line is the headline, else the first plain line",
           TodayRules.briefingLine(structure: nil, briefing: "first\nsecond") == "first"
           && TodayRules.briefingLine(structure: nil, briefing: nil) == nil
@@ -292,7 +362,10 @@ func navSelfChecks(sourceDir: URL) -> [(String, Bool)] {
            L("a11y.position", 4, 5)]
               .allSatisfy { $0.contains("4") && !$0.contains("%") })
     check("new string formats render",
-          L("today.row.a11y", "x", "y").contains("x") && !L("today.row.a11y", "x", "y").contains("%"))
+          L("today.row.a11y", "x", "y").contains("x") && !L("today.row.a11y", "x", "y").contains("%")
+          && L("today.lane.push.older", "Lx").contains("Lx")
+          && !L("today.lane.push.older", "Lx").contains("%")
+          && L("today.lane.push.older", "Lx") != "today.lane.push.older")
 
     // MARK: source pins
     let files = swiftSources(under: sourceDir)

@@ -186,10 +186,15 @@ private struct AccountRows: View {
                 Button(action: actions.onOpenPreferences) { row(inbox) }
                     .buttonStyle(.plain)
                     .help(status(inbox))
-                    .accessibilityLabel(
-                        "\(inboxDisplayLabel(email: inbox.email, kind: inbox.kind)). \(status(inbox))")
+                    .accessibilityLabel(a11yLabel(inbox))
             }
         }
+    }
+
+    private func a11yLabel(_ inbox: InboxOption) -> String {
+        let name = inboxDisplayLabel(email: inbox.email, kind: inbox.kind)
+        let beta = MailSourceCatalog.isBeta(inbox.provider) ? ", \(L("common.beta"))" : ""
+        return "\(name)\(beta). \(status(inbox))"
     }
 
     private func status(_ inbox: InboxOption) -> String {
@@ -200,6 +205,9 @@ private struct AccountRows: View {
         HStack(spacing: Theme.s2) {
             SourceBadge(provider: inbox.provider)
             VStack(alignment: .leading, spacing: 1) {
+                // No visible beta chip here: it truncated the address and
+                // the N / iC badge already names the source. VoiceOver still
+                // says "beta" (`a11yLabel`); Settings ▸ Accounts shows it.
                 Text(inboxDisplayLabel(email: inbox.email, kind: inbox.kind))
                     .font(Theme.Typo.label).foregroundStyle(Theme.text)
                     .lineLimit(1).truncationMode(.middle)

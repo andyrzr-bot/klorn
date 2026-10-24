@@ -11,8 +11,9 @@
  * described by `description` when given. Focus moves into the sheet body on
  * open (or `initialFocusRef`), Tab / Shift+Tab are trapped inside (shared
  * lib/focusable trap), Escape and a scrim click close it, and focus returns
- * to the element that opened it. Escape that ends an IME composition is
- * ignored.
+ * to the element that opened it (or to `returnFocusRef`, when the sheet's
+ * action removed that element), whichever is still on the page, else to
+ * `fallbackFocusRef`. Escape that ends an IME composition is ignored.
  *
  * Stacking: the sheet registers in the shared lib/modal-stack and only the
  * TOP overlay handles Escape / Tab, so a confirm or a second sheet opened over
@@ -42,6 +43,19 @@ export interface SheetProps {
   footer?: ReactNode;
   /** Element to focus on open; defaults to the first focusable control. */
   initialFocusRef?: RefObject<HTMLElement | null>;
+  /**
+   * Element to focus on close instead of the one that opened the sheet: for a
+   * sheet whose action removed its opener (a deleted row's menu button).
+   * Read when the sheet closes.
+   */
+  returnFocusRef?: RefObject<HTMLElement | null>;
+  /** Focused on close when neither the return target nor the opener is on the page any more. */
+  fallbackFocusRef?: RefObject<HTMLElement | null>;
+  /**
+   * The close button shows as unavailable (aria-disabled) while the sheet
+   * cannot be dismissed; `onClose` still decides what a press does.
+   */
+  closeUnavailable?: boolean;
   /** Label for the close button. */
   closeLabel?: string;
 }
@@ -70,6 +84,9 @@ export function Sheet({
   children,
   footer,
   initialFocusRef,
+  returnFocusRef,
+  fallbackFocusRef,
+  closeUnavailable = false,
   closeLabel = "Close",
 }: SheetProps) {
   const [phase, setPhase] = useState<Phase>("closed");
@@ -78,6 +95,9 @@ export function Sheet({
   const tokenRef = useRef<symbol>(Symbol("sheet"));
   const openerRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
+  const returnFocusPropRef = useRef(returnFocusRef);
+  const fallbackFocusPropRef = useRef(fallbackFocusRef);
+  const wasOpenRef = useRef(false);
   const titleId = useId();
   const descriptionId = useId();
 
@@ -85,11 +105,20 @@ export function Sheet({
     onCloseRef.current = onClose;
   }, [onClose]);
 
+  // Must stay above the open/close effect: effects run in order, so in the
+  // commit that closes the sheet this one has stored that render's target
+  // before the close below reads it.
+  useEffect(() => {
+    returnFocusPropRef.current = returnFocusRef;
+    fallbackFocusPropRef.current = fallbackFocusRef;
+  }, [returnFocusRef, fallbackFocusRef]);
+
   // open → enter (offscreen) → open; close → exit → closed after EXIT_MS.
   useEffect(() => {
     if (open) {
       openerRef.current =
         document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      wasOpenRef.current = true;
       setPhase("enter");
       return;
     }
@@ -97,7 +126,17 @@ export function Sheet({
     const timer = window.setTimeout(() => setPhase("closed"), EXIT_MS);
     const opener = openerRef.current;
     openerRef.current = null;
-    opener?.focus();
+    // Only a sheet that was open hands focus back (not one mounted closed), and
+    // only to an element still on the page: the target, the opener, the fallback.
+    if (wasOpenRef.current) {
+      const candidates = [
+        returnFocusPropRef.current?.current,
+        opener,
+        fallbackFocusPropRef.current?.current,
+      ];
+      candidates.find((element) => element?.isConnected)?.focus();
+    }
+    wasOpenRef.current = false;
     return () => window.clearTimeout(timer);
   }, [open]);
 
@@ -168,16 +207,29 @@ export function Sheet({
       >
         <div className="flex shrink-0 items-start gap-3 border-b border-line-soft py-3 pr-2 pl-5">
           <div className="min-w-0 flex-1 pt-2.5">
-            <h2 id={titleId} className="text-title text-ink [word-break:keep-all]">
+            <h2
+              id={titleId}
+              className="text-title text-ink [overflow-wrap:anywhere] [word-break:keep-all]"
+            >
               {title}
             </h2>
             {description && (
-              <p id={descriptionId} className="mt-1 text-body text-ink-muted [word-break:keep-all]">
+              <p
+                id={descriptionId}
+                className="mt-1 text-body text-ink-muted [overflow-wrap:anywhere] [word-break:keep-all]"
+              >
                 {description}
               </p>
             )}
           </div>
-          <Button variant="ghost" size="icon" aria-label={closeLabel} onClick={onClose}>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={closeLabel}
+            aria-disabled={closeUnavailable || undefined}
+            className="aria-disabled:cursor-not-allowed aria-disabled:opacity-60"
+            onClick={onClose}
+          >
             <CloseGlyph />
           </Button>
         </div>
