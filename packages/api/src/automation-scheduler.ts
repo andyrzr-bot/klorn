@@ -71,6 +71,7 @@ import { findReingestedHistoryFailClosed } from "./mail/imap-history.js";
 import { runProactiveDrafts } from "./mail/proactive-drafts.js";
 import { syncSentMessages } from "./mail/sent-messages.js";
 import { notifyConversationsUpdated } from "./notify/conversations-updated.js";
+import { desktopAlertTag } from "./notify/desktop-alert.js";
 import { formatUrgentEmailBody, senderName } from "./notify/notification-format.js";
 import { escalateUnackedPush } from "./notify/phone-escalation.js";
 import { sendPushNotification } from "./notify/push.js";
@@ -102,6 +103,7 @@ import {
 } from "./time-zone.js";
 import { pushNotification } from "./websocket.js";
 import { withTimeout } from "./with-timeout.js";
+import { newWork } from "./work-context.js";
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
 // Self-overlap guard: true while a tick is mid-flight. The pg advisory lock is
@@ -435,6 +437,26 @@ function startOfUtcDay(): Date {
   const d = new Date();
   d.setUTCHours(0, 0, 0, 0);
   return d;
+}
+
+/**
+ * Run each step in order; a DailyCostCapExceededError ends only that step.
+ * Any other error propagates exactly as before. Returns whether the budget
+ * stopped a step, so the caller can log and nudge once.
+ */
+export async function runBudgetedExtras(
+  steps: ReadonlyArray<() => Promise<unknown>>,
+): Promise<boolean> {
+  let capped = false;
+  for (const step of steps) {
+    try {
+      await step();
+    } catch (err) {
+      if (!(err instanceof Error && err.name === "DailyCostCapExceededError")) throw err;
+      capped = true;
+    }
+  }
+  return capped;
 }
 
 /**
@@ -840,6 +862,9 @@ export async function ensureUrgentEmailNotification(
     title: "Urgent email",
     message: userBody,
     createdAt: notification.createdAt.toISOString(),
+    // Same interrupt as the firewall PUSH bell row (shared title + dedupe) →
+    // OS banner in the desktop shell, under the Web Push gate.
+    ...(await desktopAlertTag(userId, "push")),
   });
   return notification;
 }
@@ -1431,9 +1456,26 @@ async function runUserCycle(
         // this background path was the one left gated on newCount > 0). The
         // backlog is the last SUMMARY_BACKLOG_MAX_AGE_DAYS only; older mail is
         // summarized when opened.
-        await summarizeUnsummarizedEmails(config.userId, Math.max(syncResult.newCount, 10));
-        await syncRecentCandidateIntakes(config.userId, Math.max(syncResult.newCount, 10));
-        await notifyCandidateEmails(config.userId);
+        // A budget refusal here ends only these extras, not the cycle: the
+        // linked inboxes, the judge backfill and auto-reply below still run.
+        // Ending the cycle used to stop linked-inbox sync for the rest of the
+        // day once the cap was reached with unsummarized mail left.
+        const extrasCapped = await runBudgetedExtras([
+          () => summarizeUnsummarizedEmails(config.userId, Math.max(syncResult.newCount, 10)),
+          () => syncRecentCandidateIntakes(config.userId, Math.max(syncResult.newCount, 10)),
+          () => notifyCandidateEmails(config.userId),
+        ]);
+        if (extrasCapped) {
+          console.log(`[AUTOMATION] Summaries paused for ${config.userId} — daily cost cap`);
+          await maybeNudgeFreeDailyLimit(config.userId, configUserPlan, configUserRole).catch(
+            (nudgeErr) => {
+              console.warn(
+                `[AUTOMATION] free-limit nudge threw unexpectedly for ${config.userId}:`,
+                nudgeErr,
+              );
+            },
+          );
+        }
 
         // Multi-account (Pro): also sync each LINKED secondary inbox via
         // its own OAuth client so the firewall classifies its mail too.
@@ -1483,8 +1525,12 @@ async function runUserCycle(
               // push, that mail would be stranded outside the sweep forever.
               syncedLinkedInboxIds.push(inbox.id);
               linkedNewCount += linkedResult.newCount;
+              // A budget refusal ends only the summaries: this inbox still gets
+              // its lastSyncedAt and the next inboxes still sync.
               if (linkedResult.newCount > 0) {
-                await summarizeUnsummarizedEmails(config.userId, linkedResult.newCount);
+                await runBudgetedExtras([
+                  () => summarizeUnsummarizedEmails(config.userId, linkedResult.newCount),
+                ]);
               }
               // Stamp the last successful sync so the UI's "Synced Xm ago" is real
               // (the column had a reader but no writer — it showed "Not yet synced"
@@ -1987,10 +2033,10 @@ export function startAutomationScheduler() {
   registerScheduler("automation", CHECK_INTERVAL_MS);
 
   // Run once on start
-  runAutomations();
+  newWork(runAutomations)();
 
   // Then check every minute
-  intervalId = setInterval(runAutomations, CHECK_INTERVAL_MS);
+  intervalId = setInterval(newWork(runAutomations), CHECK_INTERVAL_MS);
 }
 
 /** Stop the automation scheduler */

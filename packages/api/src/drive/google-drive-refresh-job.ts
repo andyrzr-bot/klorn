@@ -26,8 +26,10 @@
  * does nothing, and records no heartbeat, so a sweep that hangs shows as stale.
  */
 
+import { cohortRestriction, GOOGLE_DRIVE_FLAGS } from "../config.js";
 import { recordSchedulerTick, registerScheduler } from "../scheduler-heartbeat.js";
 import { captureError } from "../sentry.js";
+import { newWork } from "../work-context.js";
 import { googleDriveRoutesEnabled } from "./drive-scope.js";
 import { type AccountRefreshOutcome, refreshGoogleDriveAccount } from "./google-drive-refresh.js";
 import { type DueDriveAccount, dueDriveRefreshAccounts } from "./linked-drive-accounts.js";
@@ -72,7 +74,12 @@ async function refreshSafely(
 
 async function sweepDue(clock: () => Date): Promise<RefreshSweepResult> {
   const cutoff = new Date(clock().getTime() - GOOGLE_REFRESH_STALE_MS);
-  const due = await dueDriveRefreshAccounts("GOOGLE", cutoff, GOOGLE_REFRESH_ACCOUNTS_PER_SWEEP);
+  const due = await dueDriveRefreshAccounts(
+    "GOOGLE",
+    cutoff,
+    GOOGLE_REFRESH_ACCOUNTS_PER_SWEEP,
+    cohortRestriction(GOOGLE_DRIVE_FLAGS),
+  );
   const outcomes: Array<AccountRefreshOutcome | "failed"> = [];
   for (const account of due) {
     // A flip off mid-sweep stops it at the next account.
@@ -129,12 +136,15 @@ function tick(): void {
 export function startDriveGoogleRefreshScheduler(): void {
   if (intervalId || firstRunTimer) return;
   registerScheduler(SCHEDULER_NAME, GOOGLE_DRIVE_REFRESH_INTERVAL_MS);
-  firstRunTimer = setTimeout(() => {
-    firstRunTimer = null;
-    tick();
-    intervalId = setInterval(tick, GOOGLE_DRIVE_REFRESH_INTERVAL_MS);
-    intervalId.unref?.();
-  }, FIRST_SWEEP_DELAY_MS);
+  firstRunTimer = setTimeout(
+    newWork(() => {
+      firstRunTimer = null;
+      tick();
+      intervalId = setInterval(newWork(tick), GOOGLE_DRIVE_REFRESH_INTERVAL_MS);
+      intervalId.unref?.();
+    }),
+    FIRST_SWEEP_DELAY_MS,
+  );
   firstRunTimer.unref?.();
 }
 

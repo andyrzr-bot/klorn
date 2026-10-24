@@ -1,6 +1,20 @@
 import crypto from "node:crypto";
+import formbody from "@fastify/formbody";
 import type { FastifyInstance } from "fastify";
-import { exchangeCodes } from "../auth/exchange-codes.js";
+import {
+  beginDesktopConfirmation,
+  desktopConfirmExpiredPage,
+  desktopConfirmPage,
+  pairingCode,
+  takeDesktopConfirmation,
+} from "../auth/desktop-confirm.js";
+import {
+  exchangeCodes,
+  isLoginBinding,
+  loginBindingMatches,
+  mintExchangeCode,
+} from "../auth/exchange-codes.js";
+import { removeAndRevokeGoogle } from "../auth/google-grant-revoke.js";
 import { desktopHandoffPage, isAllowedNativeScheme } from "../auth/native-handoff.js";
 import { LINK_FLOW_PATHS } from "../auth/pending-links.js";
 import {
@@ -36,7 +50,11 @@ import {
 } from "../config.js";
 import { prisma } from "../db.js";
 import { withDbRetry } from "../db-retry.js";
-import { googleDriveRoutesEnabled, visibleDriveProviders } from "../drive/drive-scope.js";
+import {
+  driveProvidersFor,
+  filesVisibleFor,
+  googleDriveRoutesEnabled,
+} from "../drive/drive-scope.js";
 import { DRIVE_LINK_STATE_MARKER } from "../drive/providers/google-auth.js";
 import { sendPasswordResetEmail, sendVerificationEmail } from "../mail/email.js";
 import { boundedFromValue, extractEmailAddress } from "../mail/email-address.js";
@@ -64,7 +82,7 @@ import {
   recordLoginAttempt,
 } from "../security/login-throttle.js";
 import { captureError } from "../sentry.js";
-import { localMinuteOfDay, normalizeTimeZone } from "../time-zone.js";
+import { localMinuteOfDay, normalizeTimeZone, normalizeTimeZoneMode } from "../time-zone.js";
 import { deleteUserAndAllData } from "../user-deletion.js";
 import { isGoogleLinkMarker } from "./google-link-finish.js";
 import { handOffAccountLink, linkStartScheme } from "./link-handoff.js";
@@ -76,6 +94,15 @@ export { desktopHandoffPage, isAllowedNativeScheme };
 /// Desktop sign-in nonce state, shared with routes/social-auth.ts so the
 /// Apple/Naver desktop legs park/relay into the same map the
 /// /desktop-token/:nonce poller reads. Module-level: single registration.
+/// The browser's last page of a desktop sign-in parked for the app's poller.
+export const DESKTOP_LOGIN_DONE_PAGE = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Klorn Login</title>
+<style>body{font-family:system-ui;background:#0a0a0a;color:#e5e7eb;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+.box{text-align:center;padding:40px}.ok{font-size:48px;margin-bottom:16px}.t{font-size:14px;color:#9ca3af;margin-top:12px}</style>
+</head><body><div class="box"><div class="ok">\u2713</div><h2>Login Successful</h2>
+<p class="t">Return to the Klorn desktop app.<br>You can close this tab.</p>
+</div></body></html>`;
+
 export const desktopLoginTokens = new Map<
   string,
   { jwt?: string; expiresAt: number; challenge?: string; relayed?: boolean }
@@ -181,6 +208,8 @@ const googleLoginQuerySchema = {
     // Rides the signed state to the callback — Google is the path most people
     // take, so attribution that skipped it would report almost nothing.
     attr: { type: "string", maxLength: 300 },
+    // Web sign-in only: the browser's login binding (auth/exchange-codes.ts).
+    lb: { type: "string", maxLength: 64 },
   },
 } as const;
 
@@ -596,7 +625,7 @@ export function authRoutes(app: FastifyInstance) {
       const user = await prisma.user.findUnique({
         where: { id: payload.userId },
         // The user's timezone lives on AutomationConfig (User has no such column).
-        include: { automationConfig: { select: { timezone: true } } },
+        include: { automationConfig: { select: { timezone: true, timezoneMode: true } } },
       });
       if (!user) return reply.code(404).send({ error: "User not found" });
 
@@ -656,6 +685,9 @@ export function authRoutes(app: FastifyInstance) {
           // the user's intended zone instead of the browser default (which can
           // disagree — e.g., iOS PWA falling back to UTC).
           timezone: normalizeTimeZone(user.automationConfig?.timezone),
+          // "AUTO" (no saved choice) tells the client to render in the device
+          // zone and sync it here; "MANUAL" pins `timezone` above.
+          timezoneMode: normalizeTimeZoneMode(user.automationConfig?.timezoneMode),
           googleConnected: googleStatus.connected,
           googleNeedsReconnect: googleStatus.needsReconnect,
           // Whether ANY mail source is attached — the primary Google grant or
@@ -683,7 +715,7 @@ export function authRoutes(app: FastifyInstance) {
           // Files tab and Today's recent files show only while the drive is on
           // and at least one of its sources is (DRIVE_ENABLED plus a
           // connector's own flag), the same switch every drive reader honours.
-          files: visibleDriveProviders().length > 0,
+          files: filesVisibleFor(user.id),
           // Server-driven client flag (TEAM_MODE_ENABLED, P12): the web offers
           // "When is everyone free?" only when this is true and the user has a
           // saved team. /api/teams answers 403 TEAM_REQUIRED while it is off.
@@ -911,13 +943,22 @@ export function authRoutes(app: FastifyInstance) {
     "/google/login",
     { schema: { querystring: googleLoginQuerySchema } },
     async (request, reply) => {
-      const { source, nonce, appScheme, attr } = request.query as {
+      const { source, nonce, appScheme, attr, lb } = request.query as {
         source?: string;
         nonce?: string;
         appScheme?: string;
         attr?: string;
+        lb?: string;
       };
       const isDesktop = source === "desktop" && nonce;
+      // A web sign-in must say which browser started it, or its session could
+      // be completed in another (login CSRF; auth/exchange-codes.ts). A page
+      // loaded before this shipped sends none: back to /login, which loads
+      // the current page, and the next attempt works.
+      if (!isDesktop && !isLoginBinding(lb)) {
+        const webUrl = process.env.WEB_URL || "http://localhost:8001";
+        return reply.redirect(`${webUrl}/login?error=session_expired`);
+      }
       if (isDesktop) {
         const entry = desktopLoginTokens.get(nonce as string);
         if (!entry || entry.jwt !== undefined || entry.relayed || entry.expiresAt < Date.now()) {
@@ -933,6 +974,7 @@ export function authRoutes(app: FastifyInstance) {
           // Carry an allowlisted native scheme so the callback can deep-link the
           // token back to the user's own app instead of parking it for polling.
           ...(isDesktop && isAllowedNativeScheme(appScheme) ? { appScheme } : {}),
+          ...(!isDesktop ? { lb } : {}),
           ...(attr ? { attr } : {}),
         },
         // Same short replay window as every other OAuth-initiating route — an
@@ -944,6 +986,37 @@ export function authRoutes(app: FastifyInstance) {
       return reply.redirect(url);
     },
   );
+
+  // POST /api/auth/desktop-confirm — the browser that completed a desktop poll
+  // sign-in confirms it; only now is the session parked for the app's poller
+  // (auth/desktop-confirm.ts). The confirm form is a plain urlencoded POST, so
+  // the parser lives in this route's own scope: every other auth route stays
+  // JSON-only, which a cross-site HTML form cannot send.
+  app.register(async (scope) => {
+    await scope.register(formbody);
+    scope.post(
+      "/desktop-confirm",
+      { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
+      async (request, reply) => {
+        const { confirm } = (request.body ?? {}) as { confirm?: unknown };
+        const pending = takeDesktopConfirmation(confirm);
+        const entry = pending ? desktopLoginTokens.get(pending.nonce) : undefined;
+        reply.header("Cache-Control", "no-store");
+        reply.type("text/html");
+        if (
+          !pending ||
+          !entry ||
+          entry.expiresAt < Date.now() ||
+          entry.jwt !== undefined ||
+          entry.relayed
+        ) {
+          return reply.code(400).send(desktopConfirmExpiredPage());
+        }
+        desktopLoginTokens.set(pending.nonce, { ...entry, jwt: pending.jwt });
+        return reply.send(DESKTOP_LOGIN_DONE_PAGE);
+      },
+    );
+  });
 
   // GET /api/auth/desktop-token/:nonce — Desktop app polls this after login.
   // Returns 404 for nonces that were not issued by /desktop-nonce so attackers
@@ -983,7 +1056,11 @@ export function authRoutes(app: FastifyInstance) {
     "/exchange-code",
     { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
     async (request, reply) => {
-      const { code } = (request.body ?? {}) as { code?: string };
+      const { code, nonce, web } = (request.body ?? {}) as {
+        code?: string;
+        nonce?: unknown;
+        web?: unknown;
+      };
       if (!code || typeof code !== "string") {
         return reply.code(400).send({ error: "Missing code" });
       }
@@ -994,6 +1071,19 @@ export function authRoutes(app: FastifyInstance) {
         return reply.code(410).send({ error: "Code expired" });
       }
       exchangeCodes.delete(code);
+      // A web sign-in's code redeems only in the browser that started it
+      // (login CSRF). Deleted either way: a wrong browser never gets a retry.
+      if (entry.binding && !loginBindingMatches(entry.binding, nonce)) {
+        return reply.code(403).send({ error: "This sign-in was started in another browser" });
+      }
+      // An unbound code is a native app's deep-link relay. The web callback
+      // page says it is the web (body.web): without this, an attacker could
+      // run the desktop flow for their own account and hand the victim
+      // /auth/callback?code=<relay code>, the same login CSRF by another door.
+      // Native apps send no `web`, so their relay works unchanged.
+      if (!entry.binding && web === true) {
+        return reply.code(403).send({ error: "This sign-in was started in another browser" });
+      }
       return { token: entry.jwt };
     },
   );
@@ -1115,7 +1205,13 @@ export function authRoutes(app: FastifyInstance) {
       if (!state) {
         return reply.code(400).send({ error: "Missing state parameter" });
       }
-      let statePayload: { userId: string; email: string; appScheme?: string; attr?: string };
+      let statePayload: {
+        userId: string;
+        email: string;
+        appScheme?: string;
+        attr?: string;
+        lb?: string;
+      };
       try {
         statePayload = verifyToken(state);
       } catch {
@@ -1128,7 +1224,7 @@ export function authRoutes(app: FastifyInstance) {
       // Only the dark POST /api/drive/google/link signs this marker. While the
       // drive is off nothing is parked: the code is never held, never exchanged.
       if (statePayload.email === DRIVE_LINK_STATE_MARKER) {
-        if (!googleDriveRoutesEnabled()) {
+        if (!googleDriveRoutesEnabled(driveProvidersFor(statePayload.userId))) {
           return reply.redirect(`${webUrl}${LINK_FLOW_PATHS[DRIVE_LINK_STATE_MARKER].failed}`);
         }
         return handOffAccountLink(reply, {
@@ -1155,6 +1251,12 @@ export function authRoutes(app: FastifyInstance) {
           appScheme: statePayload.appScheme,
           webUrl,
         });
+      }
+
+      // A web sign-in without a login binding is refused before Google's code
+      // is spent or any account touched (login CSRF; auth/exchange-codes.ts).
+      if (statePayload.email === "__google_login__" && !isLoginBinding(statePayload.lb)) {
+        return reply.redirect(`${webUrl}/login?error=session_expired`);
       }
 
       try {
@@ -1316,9 +1418,8 @@ export function authRoutes(app: FastifyInstance) {
             // that completed OAuth, not whoever polls the nonce. No scheme → the
             // legacy poll flow (kept for clients that haven't adopted the relay).
             if (isAllowedNativeScheme(statePayload.appScheme)) {
-              const relayCode = crypto.randomBytes(20).toString("hex");
-              exchangeCodes.set(relayCode, { jwt: token, expiresAt: Date.now() + 60_000 });
-              setTimeout(() => exchangeCodes.delete(relayCode), 60_000);
+              // Unbound: redeemable only outside the web callback (see /exchange-code).
+              const relayCode = mintExchangeCode(token);
               // Keep the entry, still WITHOUT a jwt — deleting it made the app's
               // poll answer "nonce not recognized" (404) the moment the browser
               // blocked the scheme launch, turning a recoverable state into a
@@ -1335,27 +1436,29 @@ export function authRoutes(app: FastifyInstance) {
                 desktopHandoffPage(`${statePayload.appScheme}://oauth-callback?code=${relayCode}`),
               );
             }
-            const existing = desktopLoginTokens.get(nonce);
-            if (existing) {
-              desktopLoginTokens.set(nonce, { ...existing, jwt: token });
+            // Poll flow: parked only once this browser confirms, against the
+            // pairing code the app shows (auth/desktop-confirm.ts). Parking at
+            // once let whoever minted the nonce poll a lured victim's session.
+            // A nonce that expired or was used meanwhile gets the expired page now,
+            // not after the person clicks confirm.
+            const live = desktopLoginTokens.get(nonce);
+            if (!live || live.expiresAt < Date.now() || live.jwt !== undefined || live.relayed) {
+              reply.header("Cache-Control", "no-store");
+              reply.type("text/html");
+              return reply.code(400).send(desktopConfirmExpiredPage());
             }
+            const confirmId = beginDesktopConfirmation(nonce, token);
+            reply.header("Cache-Control", "no-store");
             reply.type("text/html");
-            return reply.send(`<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Klorn Login</title>
-<style>body{font-family:system-ui;background:#0a0a0a;color:#e5e7eb;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
-.box{text-align:center;padding:40px}.ok{font-size:48px;margin-bottom:16px}.t{font-size:14px;color:#9ca3af;margin-top:12px}</style>
-</head><body><div class="box"><div class="ok">✓</div><h2>Login Successful</h2>
-<p class="t">Return to the Klorn desktop app.<br>You can close this tab.</p>
-</div></body></html>`);
+            return reply.send(desktopConfirmPage(confirmId, pairingCode(nonce)));
           }
 
           // Issue a short-lived exchange code instead of putting the JWT in the URL.
           // The frontend exchanges it via POST /api/auth/exchange-code (60 s window).
           // No integration flag: login is identity-only now, so it has nothing
           // truthful to say about the Gmail/Calendar connection state.
-          const xcode = crypto.randomBytes(20).toString("hex");
-          exchangeCodes.set(xcode, { jwt: token, expiresAt: Date.now() + 60_000 });
-          setTimeout(() => exchangeCodes.delete(xcode), 60_000);
+          // Bound to the browser that started the sign-in (checked above).
+          const xcode = mintExchangeCode(token, statePayload.lb);
           return reply.redirect(`${webUrl}/auth/callback?code=${xcode}`);
         }
 
@@ -1391,9 +1494,13 @@ export function authRoutes(app: FastifyInstance) {
   // DELETE /api/auth/google — Disconnect Google account
   app.delete("/google", { preHandler: requireAuth }, async (request, reply) => {
     const userId = getUserId(request);
-    await prisma.userToken.deleteMany({
-      where: { userId, provider: "google" },
-    });
+    // Revoked at Google too, unless another row holds the same Google account.
+    await removeAndRevokeGoogle(
+      userId,
+      { primary: true },
+      () => prisma.userToken.deleteMany({ where: { userId, provider: "google" } }),
+      (removed) => removed.count > 0,
+    );
     return reply.code(204).send();
   });
 
@@ -1478,11 +1585,18 @@ export function authRoutes(app: FastifyInstance) {
   app.delete("/google/linked-inboxes/:id", { preHandler: requireAuth }, async (request, reply) => {
     const userId = getUserId(request);
     const { id } = request.params as { id: string };
-    const result = await prisma.linkedInboxAccount.deleteMany({
-      // provider-scoped so this Google-surface endpoint can never remove a
-      // NAVER row by id — Naver disconnects live on /api/naver-imap.
-      where: { id, userId, provider: "GOOGLE" },
-    });
+    // Revoked at Google too, unless another row holds the same Google account.
+    const result = await removeAndRevokeGoogle(
+      userId,
+      { inboxIds: [id] },
+      () =>
+        prisma.linkedInboxAccount.deleteMany({
+          // provider-scoped so this Google-surface endpoint can never remove a
+          // NAVER row by id — Naver disconnects live on /api/naver-imap.
+          where: { id, userId, provider: "GOOGLE" },
+        }),
+      (removed) => removed.count > 0,
+    );
     if (result.count === 0) {
       return reply.code(404).send({ error: "Linked inbox not found" });
     }
@@ -1825,6 +1939,8 @@ export function authRoutes(app: FastifyInstance) {
       // an earlier login that never got summarized must not be stranded forever.
       summarizeUnsummarizedEmails(userId, Math.max(emailResult.newCount, 10)).catch((err) => {
         console.warn("[AUTH] init-sync background summarize failed:", err);
+        // The daily budget line is expected back-pressure, not a fault.
+        if (err instanceof Error && err.name === "DailyCostCapExceededError") return;
         captureError(err, { tags: { scope: "auth.init-sync.summarize" }, extra: { userId } });
       });
     } catch (err) {

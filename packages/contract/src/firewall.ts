@@ -95,6 +95,11 @@ export interface FirewallEmailContext {
    *  `GET /api/email?filter=attachments`, which matches any attachment row;
    *  aligning the two is a follow-up. Null / absent = no claim. */
   hasAttachment?: boolean | null;
+  /** Messages of this mail's thread in the returned list (the card the
+   *  thread collapsed to). Same thread definition as `GET /api/email?threads=1`
+   *  (account-scoped thread id; no thread id = its own thread). Set on EMAIL
+   *  items, 1 for a single message; absent on PENDING_ACTION previews. */
+  threadCount?: number;
 }
 
 export type RowSignalWire =
@@ -149,9 +154,24 @@ export interface FirewallItem {
   agentSet?: true;
 }
 
+/**
+ * Today's "Needs you now" window (founder decision, 2026-10-23): the PUSH
+ * cards Today lists — mail received in the last `windowHours`, an item with no
+ * mail by its creation time. Mail's lanes are not narrowed by it.
+ */
+export interface TodayPushWindow {
+  windowHours: number;
+  /** ISO cutoff: the earliest received time inside the window. */
+  since: string;
+  /** Ids of the PUSH cards in `tiers.PUSH` inside the window, in lane order. */
+  ids: string[];
+}
+
 export interface FirewallResponse {
   tiers: Record<Tier, FirewallItem[]>;
   summary: Record<Tier, number> & { total: number };
+  /** Absent from servers older than the window. */
+  todayPush?: TodayPushWindow;
 }
 
 /**

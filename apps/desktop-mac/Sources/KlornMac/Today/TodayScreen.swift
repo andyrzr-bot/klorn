@@ -48,7 +48,9 @@ struct TodayScreen: View {
                     // the content out directly and cut it at the frame.
                     Color.clear.overlay(alignment: .topLeading) { ready }.clipped()
                 } else {
-                    ScrollView { ready }
+                    // The bottom clears the floating assistant button, so
+                    // the last rail card is never stuck under it.
+                    ScrollView { ready.padding(.bottom, AssistantDock.contentClearance) }
                 }
             }
         }
@@ -65,6 +67,7 @@ struct TodayScreen: View {
                         hint: L("today.clear.detail"))
                         .padding(.top, TodayLayout.anchorInColumn)
                 } else {
+                    TodayHeaderLine(summary: TodayRules.headerSummary(lanes))
                     ForEach(lanes, id: \.tier) { lane in
                         TodayLaneGroup(lane: lane, now: now, open: open)
                     }
@@ -106,6 +109,42 @@ struct TodayScreen: View {
     private func open(_ item: FirewallItem) {
         model.revealInMail(item)
         actions.onSelect(item)
+    }
+}
+
+/// The day in one calm line (founder decision 2026-10-24): counts for Push
+/// and Meeting only, else "Nothing needs you right now", then one quiet
+/// "N waiting in Mail" for Queue + Info that opens Mail. Silent never shows.
+private struct TodayHeaderLine: View {
+    @Environment(AppModel.self) private var model
+    let summary: TodayHeaderSummary
+
+    var body: some View {
+        HStack(spacing: Theme.s4) {
+            ForEach(summary.needs, id: \.tier) { need in
+                HStack(spacing: Theme.s1) {
+                    Circle().fill(Theme.tint(need.tier)).frame(width: 6, height: 6)
+                        .accessibilityHidden(true)
+                    Text(L("today.header.lane", need.count, need.tier.label))
+                        .foregroundStyle(Theme.text)
+                }
+            }
+            if summary.calm {
+                Text(L("tier.push.empty")).foregroundStyle(Theme.textDim)
+            }
+            if summary.waiting > 0 {
+                Button { model.go(to: .tier(.queue)) } label: {
+                    Text(TodayRules.waitingLine(summary.waiting))
+                        .foregroundStyle(Theme.textDim)
+                        .frame(minHeight: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).hoverDim()
+            }
+        }
+        .font(Theme.Typo.caption.monospacedDigit())
+        .lineLimit(1)
+        .padding(.horizontal, Theme.s1)
     }
 }
 
@@ -151,20 +190,40 @@ private struct TodayLaneGroup: View {
                     }
                     if lane.remaining > 0 {
                         rowDivider
-                        Button(action: openLane) {
-                            Text(L("today.lane.more", lane.remaining))
-                                .font(Theme.Typo.label).foregroundStyle(Theme.textDim)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, Theme.s3)
-                                .frame(height: 32)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain).hoverDim()
+                        laneLink(L("today.lane.more", lane.remaining))
+                    } else if lane.older > 0 {
+                        rowDivider
+                        laneLink(L("today.lane.push.older", lane.tier.label))
                     }
+                }
+                .todayPanel()
+            } else if lane.style == .rows, lane.older > 0 {
+                // Nothing inside Today's window: a calm line, and older PUSH
+                // one click away in Mail so nothing becomes unreachable.
+                VStack(spacing: 0) {
+                    Text(L("tier.push.empty"))
+                        .font(Theme.Typo.label).foregroundStyle(Theme.textDim)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, Theme.s3).padding(.vertical, Theme.s2)
+                    rowDivider
+                    laneLink(L("today.lane.push.older", lane.tier.label))
                 }
                 .todayPanel()
             }
         }
+    }
+
+    /// A quiet link row that opens this lane in Mail.
+    private func laneLink(_ title: String) -> some View {
+        Button(action: openLane) {
+            Text(title)
+                .font(Theme.Typo.label).foregroundStyle(Theme.textDim)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, Theme.s3)
+                .frame(height: 32)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).hoverDim()
     }
 
     private var rowDivider: some View {
@@ -172,8 +231,9 @@ private struct TodayLaneGroup: View {
     }
 }
 
-/// A Today mail row under the one-badge rule: who, what, when. The lane is
-/// the group it sits in; the reply state and the reason are in the reader.
+/// A Today mail row under the one-badge rule: who, what, when, and why (the
+/// lane reason, or the snippet). The lane is the group it sits in; the reply
+/// state is in the reader.
 private struct TodayMailRow: View {
     @Environment(AppModel.self) private var model
     let item: FirewallItem
@@ -189,7 +249,7 @@ private struct TodayMailRow: View {
         Button(action: open) {
             WindowRowBody(content: content)
                 .padding(.horizontal, Theme.s3).padding(.vertical, Theme.s2)
-                .frame(maxWidth: .infinity, minHeight: Theme.rowHeight, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: Theme.mailRowHeight, alignment: .leading)
                 .background(hovering ? Theme.surfaceHover : .clear)
                 .contentShape(Rectangle())
         }

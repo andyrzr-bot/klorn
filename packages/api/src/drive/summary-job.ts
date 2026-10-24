@@ -19,8 +19,10 @@
  * does nothing. Across processes the claim keeps two from running the same row.
  */
 
+import { cohortRestriction, DRIVE_SUMMARY_FLAGS } from "../config.js";
 import { recordSchedulerTick, registerScheduler } from "../scheduler-heartbeat.js";
 import { captureError } from "../sentry.js";
+import { newWork } from "../work-context.js";
 import { driveSummariesLive } from "./summary-policy.js";
 import { runClaimedSummary, type SummaryRunOutcome } from "./summary-run.js";
 import {
@@ -67,7 +69,11 @@ async function runSafely(lease: SummaryLease, now: Date): Promise<SummaryRunOutc
 
 /** The sweep's candidates: the users oldest-due first, their rows round-robin. */
 async function pickDue(now: Date): Promise<SummaryRow[]> {
-  const users = await dueSummaryUsers(now, DRIVE_SUMMARY_BATCH);
+  const users = await dueSummaryUsers(
+    now,
+    DRIVE_SUMMARY_BATCH,
+    cohortRestriction(DRIVE_SUMMARY_FLAGS),
+  );
   const rowsByUser: SummaryRow[][] = [];
   for (const userId of users) {
     rowsByUser.push(await dueSummariesOf(userId, now, DRIVE_SUMMARY_PER_USER_PER_SWEEP));
@@ -139,12 +145,15 @@ function tick(): void {
 export function startDriveSummaryScheduler(): void {
   if (intervalId || firstRunTimer) return;
   registerScheduler("drive-summary", DRIVE_SUMMARY_INTERVAL_MS);
-  firstRunTimer = setTimeout(() => {
-    firstRunTimer = null;
-    tick();
-    intervalId = setInterval(tick, DRIVE_SUMMARY_INTERVAL_MS);
-    intervalId.unref?.();
-  }, FIRST_SWEEP_DELAY_MS);
+  firstRunTimer = setTimeout(
+    newWork(() => {
+      firstRunTimer = null;
+      tick();
+      intervalId = setInterval(newWork(tick), DRIVE_SUMMARY_INTERVAL_MS);
+      intervalId.unref?.();
+    }),
+    FIRST_SWEEP_DELAY_MS,
+  );
   firstRunTimer.unref?.();
 }
 

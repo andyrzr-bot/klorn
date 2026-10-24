@@ -197,11 +197,15 @@ extension PreviewRender {
         let size = CGSize(width: 1280, height: 800)
         let date = ISO8601DateFormatter().date(from: "2026-07-29T08:30:00Z") ?? Date()
         var ok = true
+        // Built once here, in the function's own (main-actor) scope: a closure
+        // created inside the nested `shot` would capture the non-Sendable
+        // `actions` from the outer scope, which Swift 6.3's region analysis
+        // rejects in release builds (#SendingRisksDataRace).
+        let shell = { MainShell(actions: actions, renderDate: date) }
         func shot(_ name: String, _ model: AppModel, _ prepare: (AppModel) -> Void = { _ in }) {
             prepare(model)
-            ok = writeShot(name, size: size, align: .top, model: model, dir: dir, dark: dark) {
-                MainShell(actions: actions, renderDate: date)
-            } && ok
+            ok = writeShot(
+                name, size: size, align: .top, model: model, dir: dir, dark: dark, shell) && ok
         }
 
         let model = navModel(firewallJSON: navFirewallJSON)
@@ -213,6 +217,18 @@ extension PreviewRender {
         // Mixed lanes (M7): the one place a row carries its lane chip.
         shot("mail-all", navModel(firewallJSON: navFirewallJSON)) { $0.listMode = .inbox }
         shot("calendar-full", model) { $0.listMode = .calendar }
+        // Settings ▸ Accounts: the connected inboxes, beta sources tagged.
+        ok = writeShot(
+            "settings-accounts", size: CGSize(width: 560, height: 300), align: .top,
+            model: model, dir: dir, dark: dark
+        ) {
+            InboxAccountsSection(model: model)
+                .padding(22)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.panel, in: RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.line))
+                .padding(14)
+        } && ok
         shot("assistant", model) { $0.showAssistantPane(.approvals) }
         // The demo day's briefing, the source of the landing's `.brief` card.
         shot("assistant-briefing", model) { $0.showAssistantPane(.briefing) }

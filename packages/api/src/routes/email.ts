@@ -41,6 +41,7 @@ import {
 } from "../judge/email-lanes.js";
 import { resolveTierReason } from "../judge/tier-reason-strings.js";
 import { isTier } from "../judge/tiers.js";
+import { TODAY_WINDOW, todayPushCutoff } from "../judge/today-push-window.js";
 import { getCachedInteractionNode } from "../learning/interaction-graph.js";
 import {
   getTrustScore,
@@ -73,6 +74,7 @@ import {
 } from "../mail/email-sync.js";
 import { coercePlainBody, htmlToPlainText, renderableEmailHtmlFor } from "../mail/email-text.js";
 import { getLinkedInboxClients, resolveMailClient } from "../mail/gmail.js";
+import { NOT_KLORN_ADDRESS } from "../mail/klorn-mailbox.js";
 import { hasAnyMailSource } from "../mail/mail-source.js";
 import { getMeetingContext } from "../mail/meeting-context.js";
 import { needsReplyReasonText } from "../mail/needs-reply-reason-strings.js";
@@ -645,6 +647,9 @@ const listEmailsQuerySchema = {
     // Opt-in: one row per thread (its newest message in the view). Honoured
     // only together with a lane (`tier`, ALL included); ignored otherwise.
     threads: { type: "string", enum: ["0", "1", "false", "true"] },
+    // Opt-in, lane views only: Today's PUSH block window (today-push-window.ts).
+    // Only Today sends it; Mail's lane lists never do.
+    window: { type: "string", enum: [TODAY_WINDOW] },
   },
 } as const;
 
@@ -725,7 +730,7 @@ export async function emailRoutes(app: FastifyInstance) {
       preHandler: laneThreadsUserLimit(app),
     },
     async (request, reply): Promise<EmailListResponse> => {
-      const { filter, search, category, page, inbox, tier, hideHandled, threads } =
+      const { filter, search, category, page, inbox, tier, hideHandled, threads, window } =
         request.query as {
           filter?: string;
           search?: string;
@@ -747,6 +752,10 @@ export async function emailRoutes(app: FastifyInstance) {
           // thread's newest message in the view, with `threadCount` — and `total`
           // counts threads. Without a lane it is ignored (the list as before).
           threads?: string;
+          // OPT-IN ("today"), lane views only: mail received inside Today's
+          // PUSH window. Narrows rows and `total` alike, so Today's header
+          // count and block agree. Absent = every lane view as before.
+          window?: string;
         };
       const uid = getUserId(request);
       const hideHandledRows = hideHandled === "1" || hideHandled === "true";
@@ -757,6 +766,14 @@ export async function emailRoutes(app: FastifyInstance) {
           .code(400)
           .send({ error: `tier must be one of ${LANE_FILTERS.join(", ")}.` } as never);
       }
+      // The window narrows a lane page and nothing else: refused without one,
+      // never silently dropped onto the plain list.
+      if (window !== undefined && !lane) {
+        return reply
+          .code(400)
+          .send({ error: "window can only narrow a lane (tier) view." } as never);
+      }
+      const receivedSince = window === TODAY_WINDOW ? todayPushCutoff(new Date()) : undefined;
       const laneOnly = lane && lane !== "ALL" ? lane : null;
       const groupByThread = Boolean(lane) && (threads === "1" || threads === "true");
       // Grouping pages through the SQL lane view (ALL included), so it takes the
@@ -876,6 +893,7 @@ export async function emailRoutes(app: FastifyInstance) {
           category,
           search,
           hideHandled: hideHandledRows,
+          receivedSince,
           skip: (pageNum - 1) * pageSize,
           take: pageSize,
         });
@@ -898,6 +916,7 @@ export async function emailRoutes(app: FastifyInstance) {
           category,
           search,
           hideHandled: hideHandledRows,
+          receivedSince,
           skip: (pageNum - 1) * pageSize,
           take: pageSize,
         });
@@ -1439,6 +1458,8 @@ export async function emailRoutes(app: FastifyInstance) {
         // as "not analyzed" forever — pressing Sync with 0 new mail summarized 0.
         summarizeUnsummarizedEmails(uid, Math.max(result.newCount, 10)).catch((err) => {
           console.warn(`[EMAIL-SYNC] background summarize failed for user ${uid}`, err);
+          // The daily budget line is expected back-pressure, not a fault.
+          if (err instanceof Error && err.name === "DailyCostCapExceededError") return;
           captureError(err, { tags: { scope: "email.sync.summarize" }, extra: { userId: uid } });
         });
         analyzePendingEmailAttachments(uid, Math.max(10, result.newCount * 3))
@@ -1521,8 +1542,12 @@ export async function emailRoutes(app: FastifyInstance) {
       // Flag OFF keeps the historical GOOGLE-only selector. Flag ON (Phase 1:
       // the contract carries `provider` and actions dispatch by provider, with
       // unsupported ones refusing loudly as 501) surfaces every connected
-      // mailbox — NAVER rows have been in this table since Phase 0b.
-      where: providerInboxSelectorEnabled() ? { userId: uid } : { userId: uid, provider: "GOOGLE" },
+      // mailbox — NAVER rows have been in this table since Phase 0b — except
+      // the Klorn address (E1a): no client handles it yet (unlink, From,
+      // titles), so it stays out until E3 adds that.
+      where: providerInboxSelectorEnabled()
+        ? { userId: uid, ...NOT_KLORN_ADDRESS }
+        : { userId: uid, provider: "GOOGLE" },
       select: { id: true, email: true, needsReconnect: true, provider: true, purpose: true },
       orderBy: { email: "asc" },
     });
@@ -1550,7 +1575,7 @@ export async function emailRoutes(app: FastifyInstance) {
           needsReconnect: l.needsReconnect,
           purpose: asPurpose(l.purpose),
           // No cast on purpose: the Prisma enum and the contract union are the
-          // same five values today, and this assignment is what fails the
+          // same six values today, and this assignment is what fails the
           // build the day a migration adds a provider the contract lacks.
           provider: l.provider,
         })),

@@ -9,7 +9,6 @@
  * retry when the list could not be read; a healthy phone shows nothing extra.
  */
 
-import type { LiveTier } from "@klorn/contract";
 import Link from "next/link";
 import Button from "../../components/ui/button";
 import { LANE_DOT_CLASS, useLaneName } from "../../components/ui/lane-chip";
@@ -19,7 +18,9 @@ import { useT } from "../../lib/i18n";
 import { sourceGlyph } from "../../lib/source-provider";
 import type { ConnectedAccountsState } from "../../lib/use-connected-accounts";
 import { laneThreads, type TimeContext } from "./mail-column";
-import { useLaneCounts } from "./use-today-data";
+import { MAIL_HREF, preselectMailLane } from "./mail-link";
+import { todayHeaderSummary, todayLaneCount, todayWaitingKey } from "./model";
+import { useLaneCounts, useLaneMail } from "./use-today-data";
 
 export const ACCOUNTS_HREF = "/settings/accounts";
 
@@ -75,34 +76,53 @@ export function TodayHeader({ time, accounts, showAccounts }: TodayHeaderProps) 
   );
 }
 
-const STRIP_LANES: readonly LiveTier[] = ["PUSH", "MEETING", "QUEUE", "INFO"]; // lane-subset: SILENT is the "quietly filed" figure after them
-
 /**
- * The day in one line (TodayScreen.dc): threads per lane, then how many went
- * to Silent. Real counts from the lane-counts read Today already shares with
- * Mail; nothing shows until they arrive, and a failed read shows nothing.
+ * The day in one calm line (founder decision 2026-10-24): counts only for the
+ * lanes that need the user — Push (the PUSH block's windowed count, the same
+ * cache entry) and Meeting — then one quiet "N waiting in Mail" for Queue +
+ * Info that opens Mail. Silent is never counted here. Nothing shows until the
+ * lane counts arrive, and a failed read shows nothing; Push is left out while
+ * its windowed read is pending or failed rather than showing the whole lane.
  */
 function DayStrip() {
   const { t } = useT();
   const laneName = useLaneName();
   const { counts } = useLaneCounts(true);
+  const push = useLaneMail("PUSH", true);
   if (!counts) return null;
-  const quiet = laneThreads(counts, "SILENT") ?? 0;
+  const { needs, calm, waiting } = todayHeaderSummary({
+    push: todayLaneCount(
+      "PUSH",
+      laneThreads(counts, "PUSH"),
+      push.loading || push.failed ? null : push.total,
+    ),
+    meeting: todayLaneCount("MEETING", laneThreads(counts, "MEETING"), null),
+    queue: laneThreads(counts, "QUEUE"),
+    info: laneThreads(counts, "INFO"),
+  });
   return (
     <ul
       aria-label={t("today.strip.label")}
       className="flex flex-wrap items-center gap-x-3.5 gap-y-1 text-caption tabular-nums text-ink-muted"
     >
-      {STRIP_LANES.map((lane) => (
-        <li key={lane} className="flex items-center gap-1.5">
+      {needs.map(({ lane, count }) => (
+        <li key={lane} className="flex items-center gap-1.5 text-ink-soft">
           <span aria-hidden="true" className={`size-1.5 rounded-full ${LANE_DOT_CLASS[lane]}`} />
-          {t("today.strip.lane", {
-            count: String(laneThreads(counts, lane) ?? 0),
-            lane: laneName(lane),
-          })}
+          {t("today.strip.lane", { count: String(count), lane: laneName(lane) })}
         </li>
       ))}
-      {quiet > 0 && <li>· {t("today.strip.quiet", { count: String(quiet) })}</li>}
+      {calm && <li>{t("today.lane.push.empty")}</li>}
+      {waiting > 0 && (
+        <li>
+          <Link
+            href={MAIL_HREF}
+            onClick={() => preselectMailLane("QUEUE")}
+            className="focus-ring rounded-control text-ink-muted underline-offset-2 transition-colors duration-120 ease-fluid hover:text-ink-soft hover:underline"
+          >
+            {t(todayWaitingKey(waiting), { count: String(waiting) })}
+          </Link>
+        </li>
+      )}
     </ul>
   );
 }

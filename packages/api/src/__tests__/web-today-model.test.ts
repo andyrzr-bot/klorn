@@ -17,7 +17,12 @@ import {
   findConflicts,
   laneBlock,
   nowMarkerIndex,
+  olderOutsideWindow,
   orderEvents,
+  todayHeaderSummary,
+  todayLaneCount,
+  todayLaneQuery,
+  todayWaitingKey,
 } from "../../../web/src/app/today/model";
 import { connectedAccounts } from "../../../web/src/lib/connected-accounts";
 import {
@@ -407,5 +412,84 @@ describe("the home hint and the landing mark", () => {
     expect(() => forgetHome()).not.toThrow();
     expect(landingHome()).toBe(LEGACY_HOME);
     expect(takeLegacyLanding()).toBe(false);
+  });
+});
+
+describe("Today PUSH window (founder decision 2026-10-23)", () => {
+  it("only the PUSH block asks for Today's window; every other lane reads as Mail does", () => {
+    expect(todayLaneQuery("PUSH")).toBe("&threads=1&window=today");
+    expect(todayLaneQuery("MEETING")).toBe("&threads=1");
+    expect(todayLaneQuery("QUEUE")).toBe("&threads=1");
+  });
+
+  it("the header's Push count is the block's windowed thread total, not the whole lane", () => {
+    // 80 open PUSH threads in the lane, 2 received in the window.
+    expect(todayLaneCount("PUSH", 80, 2)).toBe(2);
+    expect(todayLaneCount("PUSH", 80, 0)).toBe(0);
+    // Unknown until the windowed read lands — never the whole-lane figure.
+    expect(todayLaneCount("PUSH", 80, null)).toBeNull();
+  });
+
+  it("other lanes keep the lane-counts figure, falling back to the list total", () => {
+    expect(todayLaneCount("MEETING", 7, 3)).toBe(7);
+    expect(todayLaneCount("QUEUE", null, 41)).toBe(41);
+    expect(todayLaneCount("INFO", null, null)).toBeNull();
+  });
+
+  it("counts the older PUSH threads left for Mail", () => {
+    expect(olderOutsideWindow(80, 2)).toBe(78);
+    expect(olderOutsideWindow(2, 2)).toBe(0);
+    expect(olderOutsideWindow(null, 2)).toBe(0);
+    expect(olderOutsideWindow(80, null)).toBe(0);
+    expect(olderOutsideWindow(1, 3)).toBe(0);
+  });
+});
+
+describe("Today's calm header (founder decision 2026-10-24)", () => {
+  it("counts only Push and Meeting, and folds Queue + Info into one waiting figure", () => {
+    const summary = todayHeaderSummary({ push: 3, meeting: 2, queue: 856, info: 64 });
+    expect(summary.needs).toEqual([
+      { lane: "PUSH", count: 3 },
+      { lane: "MEETING", count: 2 },
+    ]);
+    expect(summary.calm).toBe(false);
+    expect(summary.waiting).toBe(920);
+  });
+
+  it("never carries a Silent figure", () => {
+    const summary = todayHeaderSummary({ push: 1, meeting: 0, queue: 0, info: 0 });
+    expect(Object.keys(summary).sort()).toEqual(["calm", "needs", "waiting"]);
+    expect(summary.needs.map((n) => n.lane)).toEqual(["PUSH"]);
+  });
+
+  it("is calm when Push and Meeting are both zero, still saying what waits in Mail", () => {
+    const summary = todayHeaderSummary({ push: 0, meeting: 0, queue: 5, info: 1 });
+    expect(summary).toEqual({ needs: [], calm: true, waiting: 6 });
+  });
+
+  it("is not calm while the windowed Push read is pending", () => {
+    const summary = todayHeaderSummary({ push: null, meeting: 0, queue: 4, info: null });
+    expect(summary).toEqual({ needs: [], calm: false, waiting: 4 });
+  });
+
+  it("drops a zero lane and the waiting figure when nothing waits", () => {
+    expect(todayHeaderSummary({ push: 0, meeting: 4, queue: 0, info: 0 })).toEqual({
+      needs: [{ lane: "MEETING", count: 4 }],
+      calm: false,
+      waiting: 0,
+    });
+    expect(todayHeaderSummary({ push: 0, meeting: 0, queue: null, info: null }).waiting).toBe(0);
+  });
+
+  it("keeps a large waiting figure as is", () => {
+    expect(todayHeaderSummary({ push: 0, meeting: 0, queue: 12_000, info: 345 }).waiting).toBe(
+      12_345,
+    );
+  });
+
+  it("picks the singular key for exactly one, the plural key otherwise", () => {
+    expect(todayWaitingKey(1)).toBe("today.strip.waiting.one");
+    expect(todayWaitingKey(2)).toBe("today.strip.waiting.many");
+    expect(todayWaitingKey(920)).toBe("today.strip.waiting.many");
   });
 });

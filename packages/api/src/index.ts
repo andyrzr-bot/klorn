@@ -2,6 +2,7 @@ import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import Fastify from "fastify";
+import { reportPendingGoogleRevokes } from "./auth/google-grant-revoke.js";
 import {
   ensureDemoUser,
   getUserId,
@@ -10,12 +11,15 @@ import {
   revokeDemoAccessIfDisabled,
 } from "./auth.js";
 import { startBackgroundAgent } from "./background.js";
+import { ADVERTISED_PRO_PRICE_WEB } from "./billing/advertised-price.js";
+import { checkPaddlePriceMatchesAdvertised } from "./billing/paddle-price-check.js";
 import {
   caldavCalendarEnabled,
   deviceCalendarEnabled,
   driveEnabled,
   genericImapEnabled,
   icloudInboxEnabled,
+  klornMailboxEnabled,
   outlookInboxEnabled,
 } from "./config.js";
 import { makeCorsOriginCallback } from "./cors-origin.js";
@@ -44,6 +48,7 @@ import { caldavCalendarRoutes } from "./routes/caldav-calendar.js";
 import { calendarRoutes } from "./routes/calendar.js";
 import { chatConversationRoutes } from "./routes/chat-conversations.js";
 import { chatRoutes } from "./routes/chat-pending-actions.js";
+import { reportRolloutCohort } from "./routes/cohort-gate.js";
 import { commitmentRoutes } from "./routes/commitments.js";
 import { cronRoutes } from "./routes/cron.js";
 import { deviceCalendarRoutes } from "./routes/device-calendar.js";
@@ -62,6 +67,7 @@ import {
   klornDriveRoutesEnabled,
   warnIfKlornDriveQuotaMissing,
 } from "./routes/klorn-drive.js";
+import { klornMailboxInboundRoutes } from "./routes/klorn-mailbox-inbound.js";
 import { linkCompleteRoutes } from "./routes/link-complete.js";
 import { mcpRoutes } from "./routes/mcp.js";
 import { memoryRoutes } from "./routes/memory.js";
@@ -90,6 +96,7 @@ import { checkStoragePurgesAtStartup } from "./storage/purge-sweep.js";
 import { checkObjectStorageAtStartup } from "./storage/runtime.js";
 import { purgeAllUserData } from "./user-deletion.js";
 import { getClientCount, initWebSocket } from "./websocket.js";
+import { registerWorkContextHook } from "./work-context.js";
 
 // Initialize Sentry FIRST so every captureError() across the app actually
 // reports. Without this call `initialized` stays false and every captureError
@@ -120,6 +127,9 @@ attachPerfMonitor(app);
 // Global error handler: never reflect a 5xx's raw message to the client
 // (Fastify's default does). 4xx pass through; 5xx are logged + generic.
 app.setErrorHandler(handleError);
+// Every request is a unit of work with its own start time; the data-wipe fence
+// rejects writes from work that began before the account's wipe finished.
+registerWorkContextHook(app);
 
 // Security response headers (X-Content-Type-Options: nosniff, HSTS,
 // Referrer-Policy, frameguard, etc.). CSP is disabled: this is a JSON API plus
@@ -342,6 +352,12 @@ await app.register(klornDriveRoutes({ gate: klornDriveRoutesEnabled }), { prefix
 await app.register(googleDriveLinkRoutes({ gate: googleDriveRoutesEnabled }), {
   prefix: "/api/drive/google",
 });
+// The Klorn mailbox's inbound webhook (step E1b): Resend Inbound's email.received,
+// dark until KLORN_MAILBOX_ENABLED. Its own plugin, so the gate cannot reach the
+// Stripe and Paddle webhooks.
+await app.register(klornMailboxInboundRoutes({ gate: klornMailboxEnabled }), {
+  prefix: "/api/mailbox",
+});
 // Which account types this deployment can connect, for the first run's provider
 // grid (productization plan P8) — dark until ONBOARDING_V2 (the default 404 while off).
 await app.register(providersAvailableRoutes, { prefix: "/api/providers" });
@@ -363,6 +379,8 @@ await app.register(phoneRoutes, { prefix: "/api/phone" });
 // answer-ready the moment the listener binds.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { healthResponse } from "./ops/health-response.js";
+import { newWork } from "./work-context.js";
 
 const PKG_VERSION: string | null = (() => {
   try {
@@ -375,26 +393,30 @@ const PKG_VERSION: string | null = (() => {
   }
 })();
 
-app.get("/api/health", async () => {
-  let dbOk = false;
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    dbOk = true;
-  } catch {
-    // DB unreachable
-  }
-  return {
-    status: dbOk ? "ok" : "degraded",
-    db: dbOk ? "connected" : "unreachable",
-    timestamp: new Date().toISOString(),
-    uptime: Math.floor(process.uptime()),
+function probeHealth() {
+  return healthResponse(() => prisma.$queryRaw`SELECT 1`, {
     version: PKG_VERSION ?? null,
     commit:
       process.env.RENDER_GIT_COMMIT ||
       process.env.GIT_COMMIT_SHA ||
       process.env.VERCEL_GIT_COMMIT_SHA ||
       null,
-  };
+    now: new Date(),
+    uptimeSeconds: Math.floor(process.uptime()),
+  });
+}
+
+// Liveness: 200 while the process serves requests; `db` in the body says
+// whether the database answered. See ops/health-response.ts.
+app.get("/api/health", async (_request, reply) => {
+  const { body } = await probeHealth();
+  return reply.code(200).send(body);
+});
+
+// Readiness: 503 while the database probe fails, for status-code monitors.
+app.get("/api/health/ready", async (_request, reply) => {
+  const { ready, body } = await probeHealth();
+  return reply.code(ready ? 200 : 503).send(body);
 });
 
 // Scheduler liveness for external monitors (UptimeRobot etc). 503 when any
@@ -473,10 +495,13 @@ const WIPE_DATA_ROUTE = {
 
 app.delete("/api/user/me/data", WIPE_DATA_ROUTE, async (request, reply) => {
   const userId = getUserId(request);
-  // Exhaustive user-data wipe (keeps the account row): stored objects first,
-  // then access, then every row, then a final sweep. See user-deletion.ts.
-  await purgeAllUserData(userId);
-  return reply.code(204).send();
+  // Exhaustive user-data wipe (keeps the account row), fenced against work
+  // already running for the user. See user-deletion.ts. 202: access is gone and
+  // the purge did not commit yet; the data-wipe sweep finishes it.
+  const outcome = await purgeAllUserData(userId);
+  return outcome === "purged"
+    ? reply.code(204).send()
+    : reply.code(202).send({ status: "pending" });
 });
 
 app.get("/api/notion/status", async () => ({
@@ -571,6 +596,19 @@ reportJudgeModelResolution(JUDGE_MODEL_RESOLUTION);
 // The count-based JUDGE_HEALTH_WINDOW knob is retired (#1319): say so once.
 warnRetiredJudgeHealthEnv();
 
+// What Paddle actually bills lives outside this repo, on a price object any
+// dashboard user can edit. Twice now it has silently stopped matching the
+// pages: 2026-08-12 ($7.99 advertised, $8.99 charged) and 2026-10-15 (pages
+// at $8.99, Paddle edited to $29.99 — customers billed ABOVE the quoted
+// price, found out from a passing remark). Nothing announced either one.
+//
+// Deliberately not awaited: this is an outbound call to a third party and it
+// must not sit in front of the server accepting connections. It warns and
+// returns; it never throws and never blocks startup.
+void checkPaddlePriceMatchesAdvertised({ advertised: ADVERTISED_PRO_PRICE_WEB }).catch((err) => {
+  console.warn(`[PADDLE] price check failed unexpectedly: ${(err as Error).message}`);
+});
+
 // Startup DB calls are wrapped in withDbRetry so a Neon cold-start (suspended
 // compute waking up) does not kill the container. If retries are exhausted we
 // exit so Render restarts the process — this is safer than a permanent 503
@@ -656,6 +694,12 @@ try {
   void checkStoragePurgesAtStartup({ backgroundDisabled: BG_DISABLED });
   // The Klorn drive refuses every upload without KLORN_DRIVE_QUOTA_BYTES (P3).
   warnIfKlornDriveQuotaMissing();
+  reportRolloutCohort([
+    "DRIVE_ENABLED",
+    "KLORN_DRIVE_ENABLED",
+    "GOOGLE_DRIVE_ENABLED",
+    "DRIVE_SUMMARIES_ENABLED",
+  ]);
 
   // Start autonomous background agent
   if (!BG_DISABLED) startBackgroundAgent();
@@ -767,6 +811,44 @@ try {
       });
   }
 
+  // The data-wipe fence's snapshot of recent wipes (every 30 s), which the
+  // write check reads instead of the database. Always on: the check runs on
+  // every fenced write, background agents or not.
+  import("./privacy/data-wipe-fence.js")
+    .then(({ startDataWipeRefresh }) => {
+      startDataWipeRefresh();
+    })
+    .catch((err) => {
+      console.error("[STARTUP] data-wipe snapshot refresh failed to start:", err);
+      captureError(err, { tags: { context: "startup:data-wipe-refresh" } });
+    });
+
+  // Primary grants' Google addresses, for the revoke's shared-grant check
+  // (every 6 hours); see auth/google-address-backfill.ts.
+  if (!BG_DISABLED) {
+    import("./auth/google-address-backfill.js")
+      .then(({ startGoogleAddressBackfill }) => {
+        startGoogleAddressBackfill();
+      })
+      .catch((err) => {
+        console.error("[STARTUP] Google address backfill failed to start:", err);
+        captureError(err, { tags: { context: "startup:google-address-backfill" } });
+      });
+  }
+
+  // Data wipes whose purge did not commit (every 10 minutes); see
+  // privacy/data-wipe-sweep.ts.
+  if (!BG_DISABLED) {
+    import("./privacy/data-wipe-sweep.js")
+      .then(({ startDataWipeSweep }) => {
+        startDataWipeSweep();
+      })
+      .catch((err) => {
+        console.error("[STARTUP] data-wipe sweep failed to start:", err);
+        captureError(err, { tags: { context: "startup:data-wipe" } });
+      });
+  }
+
   // Drive file summaries (step D4; every 5 minutes). While DRIVE_SUMMARIES_ENABLED
   // or DRIVE_ENABLED is off a sweep reads nothing and runs nothing.
   if (!BG_DISABLED) {
@@ -797,9 +879,12 @@ try {
   const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
   if (RENDER_URL) {
     const KEEP_ALIVE_MS = 10 * 60 * 1000; // every 10 minutes
-    setInterval(() => {
-      fetch(`${RENDER_URL}/api/health`).catch(() => {});
-    }, KEEP_ALIVE_MS);
+    setInterval(
+      newWork(() => {
+        fetch(`${RENDER_URL}/api/health`).catch(() => {});
+      }),
+      KEEP_ALIVE_MS,
+    );
   }
 } catch (err) {
   // Say WHY before dying. This block used to swallow the error and exit
@@ -831,8 +916,12 @@ for (const signal of ["SIGTERM", "SIGINT"] as const) {
     console.log(`[SHUTDOWN] ${signal} received — draining connections`);
     const hardExit = setTimeout(() => process.exit(1), 10_000);
     hardExit.unref();
+    // Google revoke retries live only in memory (auth/google-grant-revoke.ts):
+    // say which ones this exit cuts off, and give Sentry a moment to ship it.
+    const pendingRevokes = reportPendingGoogleRevokes();
     app
       .close()
+      .then(() => (pendingRevokes > 0 ? flushSentry(2_000) : undefined))
       .then(() => process.exit(0))
       .catch(() => process.exit(1));
   });

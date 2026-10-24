@@ -31,6 +31,12 @@ vi.mock("../db.js", async () => {
       findUnique: vi.fn(async () => ({ email: "user@example.com" })),
     },
     waitlist: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+    dataWipe: {
+      upsert: vi.fn(async () => ({})),
+      findUnique: vi.fn(async () => ({ purgedAt: null })),
+    },
+    // The account-row lock, the pending-record lock and the stamp each return one row.
+    $queryRaw: vi.fn(async () => [{ purgedAt: new Date(), fenceUntil: new Date() }]),
     $transaction: vi.fn(async (work: unknown) => {
       state.order.push("rows");
       return Array.isArray(work) ? Promise.all(work) : (work as (tx: unknown) => unknown)(prisma);
@@ -82,14 +88,16 @@ describe.each([
   ["deleteUserAndAllData", deleteUserAndAllData],
   ["purgeAllUserData", purgeAllUserData],
 ])("%s with object storage on", (name, remove) => {
-  // The data wipe cuts off access, purges, then sweeps once more; account
+  // The data wipe records the wipe and cuts off access, then purges; account
   // deletion is one transaction.
-  const passes = name === "purgeAllUserData" ? ["rows", "rows", "rows"] : ["rows"];
+  const passes = name === "purgeAllUserData" ? ["rows", "rows"] : ["rows"];
   it("a failing store leaves a pending purge, and the rows are gone anyway", async () => {
     vi.spyOn(store, "deleteByPrefix").mockRejectedValue(
       new StorageError("unreachable", "object storage did not answer (TimeoutError)"),
     );
-    await expect(remove("user-1")).resolves.toBeUndefined();
+    await expect(remove("user-1")).resolves.toBe(
+      name === "purgeAllUserData" ? "purged" : undefined,
+    );
     expect(state.order).toEqual(passes);
     expect(pending()).toEqual(["user-1"]);
     expect(db.tables.storagePurge?.[0]).toMatchObject({ attempts: 1, lastError: "unreachable" });
@@ -103,15 +111,23 @@ describe.each([
     expect(state.order).toEqual(passes);
   });
 
-  it("stops before any row when the pending purge cannot be recorded", async () => {
+  it("deletes no data row when the pending purge cannot be recorded", async () => {
     state.db = {
       ...db,
       model: () => {
         throw new Error("database is down");
       },
     };
-    await expect(remove("user-1")).rejects.toThrow("database is down");
-    expect(state.order).toEqual([]);
+    if (name === "purgeAllUserData") {
+      // The wipe cut off access first; the rows wait for the sweep, which
+      // records the objects' purge before it deletes a row.
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      await expect(remove("user-1")).resolves.toBe("pending");
+      expect(state.order).toEqual(["rows"]);
+    } else {
+      await expect(remove("user-1")).rejects.toThrow("database is down");
+      expect(state.order).toEqual([]);
+    }
     expect(store.keys()).toHaveLength(3);
   });
 });

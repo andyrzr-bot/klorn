@@ -246,6 +246,13 @@ describe("the linked drive accounts (D5a, D5b): one module, the purge and the ke
       const before = text.slice(0, match.index ?? 0);
       const name = [...before.matchAll(/function (\w+)\(/g)].at(-1)?.[1] ?? "";
       const window = text.slice(match.index ?? 0, (match.index ?? 0) + 500);
+      if (name === "countGoogleDriveGrantsFor") {
+        // The Google revoke's shared-grant check: over every user, a count of
+        // grants for one address, so no row, and no token, leaves the module.
+        expect(window).toMatch(/linkedDriveAccount\.count\(/);
+        expect(window).not.toMatch(/select|accessToken|refreshToken|grantedScopes/);
+        continue;
+      }
       if (name === "dueDriveRefreshAccounts") {
         // D5d: over every user, so it carries out the (id, userId) pair only;
         // the pass then loads each account by (id, userId, provider).
@@ -307,6 +314,9 @@ describe("the linked drive accounts (D5a, D5b): one module, the purge and the ke
     const naming = files.filter((f) => ACCOUNT_NAME.test(codeOf(f.text))).map((f) => f.path);
     expect(naming.sort()).toEqual([
       ACCOUNTS_MODULE,
+      // The data-wipe fence lists the model's name among the tables its
+      // trigger guards; it never queries the table.
+      "privacy/data-wipe-fence.ts",
       "purge-user-data.ts",
       "scripts/reencrypt-tokens.ts",
     ]);
@@ -601,6 +611,9 @@ describe("drive text reaches an LLM only wrapped", () => {
     // Loads summary-run.ts on demand; imports nothing from the LLM itself.
     "drive/summary-triggers.ts",
     "purge-user-data.ts",
+    // Reads a Google Drive grant's ciphers (through the account module) only to
+    // revoke it at Google; no file rows, no LLM.
+    "auth/google-grant-revoke.ts",
     // Reads only whether any drive source is on (user.files on /me, P12), and
     // hands a drive link's callback to the grant module (D5b); no rows.
     "routes/auth.ts",
@@ -646,8 +659,9 @@ describe("drive text reaches an LLM only wrapped", () => {
       (match) => match[1],
     );
     expect(driveImports).toEqual(["../drive/drive-scope.js", "../drive/providers/google-auth.js"]);
+    // The switches only, per user since the rollout cohort (L23).
     expect(text).toMatch(
-      /import \{ googleDriveRoutesEnabled, visibleDriveProviders \} from "\.\.\/drive\/drive-scope\.js";/,
+      /import \{\s*driveProvidersFor,\s*filesVisibleFor,\s*googleDriveRoutesEnabled,\s*\} from "\.\.\/drive\/drive-scope\.js";/,
     );
     expect(text).toMatch(
       /import \{ DRIVE_LINK_STATE_MARKER \} from "\.\.\/drive\/providers\/google-auth\.js";/,
@@ -667,7 +681,7 @@ describe("drive text reaches an LLM only wrapped", () => {
     expect(exchange).toBeGreaterThan(branch);
     const body = callback.slice(branch, callback.indexOf("\n      }\n", branch));
     expect(body).toMatch(
-      /if \(!googleDriveRoutesEnabled\(\)\) \{\s*return reply\.redirect\(`\$\{webUrl\}\$\{LINK_FLOW_PATHS\[DRIVE_LINK_STATE_MARKER\]\.failed\}`\);\s*\}\s*return handOffAccountLink\(reply, \{/,
+      /if \(!googleDriveRoutesEnabled\(driveProvidersFor\(statePayload\.userId\)\)\) \{\s*return reply\.redirect\(`\$\{webUrl\}\$\{LINK_FLOW_PATHS\[DRIVE_LINK_STATE_MARKER\]\.failed\}`\);\s*\}\s*return handOffAccountLink\(reply, \{/,
     );
     expect(body).not.toMatch(/getToken|completeGoogleDriveLink/);
   });

@@ -1,8 +1,9 @@
 /**
  * Files (productization plan P12) — the pure rules behind /files and Today's
  * recent files: how the drive list is asked for, how a size reads, and which
- * links a row may open. The list itself is read-only (decision V4: list,
- * search, summarise; no upload or edit from here).
+ * links a row may open. The list itself only reads. Changing the Klorn drive
+ * (D3) is drive-model.ts and upload-model.ts; decision V4 keeps every
+ * external source read-only (list, search, summarise).
  */
 
 /** One page of /files. The server serves at most 100. */
@@ -20,6 +21,8 @@ export interface FilesListRequest {
   limit?: number;
   /** One Klorn drive folder's `externalId`; absent or null lists every source. */
   folder?: string | null;
+  /** Folders only (the Move picker): the server leaves the files out. */
+  foldersOnly?: boolean;
 }
 
 /** GET /api/drive/files with the search, page, size and folder, URL-encoded. */
@@ -28,12 +31,14 @@ export function filesListPath({
   cursor,
   limit = FILES_PAGE_SIZE,
   folder,
+  foldersOnly = false,
 }: FilesListRequest): string {
   const params = new URLSearchParams({ limit: String(limit) });
   const text = q?.trim().slice(0, SEARCH_MAX_CHARS);
   if (text) params.set("q", text);
   if (cursor) params.set("cursor", cursor);
   if (folder) params.set("folder", folder);
+  if (foldersOnly) params.set("foldersOnly", "true");
   return `${DRIVE_FILES_PATH}?${params.toString()}`;
 }
 

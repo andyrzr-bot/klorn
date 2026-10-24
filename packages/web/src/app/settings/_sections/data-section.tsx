@@ -37,7 +37,16 @@ export function DataSection() {
       }
       localStorage.removeItem(PROFILE_KEY);
       localStorage.removeItem(PINNED_CHATS_KEY);
-      toast(t("settings.toast.workspaceDeleted"), "info");
+      // 202: access is already gone and the server finishes the purge itself
+      // (the data-wipe sweep), so say "started", not "deleted".
+      toast(
+        t(
+          res.status === 202
+            ? "settings.toast.workspaceDeletionPending"
+            : "settings.toast.workspaceDeleted",
+        ),
+        "info",
+      );
     } catch {
       toast(t("settings.toast.deleteWorkspaceFailed"), "error");
     }
@@ -147,7 +156,6 @@ export function DataSection() {
             {t("settings.about.tagline")}
           </p>
           <p className="text-sm text-ink-dim mt-1">{t("settings.about.desc")}</p>
-          <p className="text-xs text-ink-mid mt-3">{t("settings.about.version")}</p>
           {/* The support address lived only inside the privacy, terms and
                 refund pages — all three on a noindex subdomain a signed-in user
                 has no reason to open. A paying account needs a way to reach a

@@ -13,6 +13,7 @@ import { sendPushNotification } from "../notify/push.js";
 import { recordSchedulerTick, registerScheduler } from "../scheduler-heartbeat.js";
 import { captureError } from "../sentry.js";
 import { pushNotification } from "../websocket.js";
+import { newWork } from "../work-context.js";
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -164,10 +165,10 @@ export function startReminderScheduler() {
   registerScheduler("reminder", CHECK_INTERVAL_MS);
 
   // Run immediately on start
-  checkDueReminders();
+  newWork(checkDueReminders)();
 
   // Then check periodically
-  intervalId = setInterval(checkDueReminders, CHECK_INTERVAL_MS);
+  intervalId = setInterval(newWork(checkDueReminders), CHECK_INTERVAL_MS);
 }
 
 /** Stop the reminder scheduler */

@@ -117,6 +117,8 @@ model User {
   driveFileSummaries        DriveFileSummary[]
   driveSummaryUsage         DriveSummaryUsage[]
   automationConfig          AutomationConfig?
+  dataWipe                  DataWipe?
+  klornAddress              KlornAddress?
   agentLogs                 AgentLog[]
   notifications             Notification[]
   pushSubscriptions         PushSubscription[]
@@ -337,23 +339,34 @@ enum Role {
 }
 
 model UserToken {
-  id                  String    @id @default(uuid())
-  userId              String
-  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  provider            String // "google"
-  accessToken         String
-  refreshToken        String?
-  expiresAt           DateTime?
+  id                   String    @id @default(uuid())
+  userId               String
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider             String // "google"
+  accessToken          String
+  refreshToken         String?
+  expiresAt            DateTime?
   // Gmail push watch (users.watch) expires ~7 days after registration.
   // Null means the user has not enabled real-time push.
-  gmailWatchExpiresAt DateTime?
+  gmailWatchExpiresAt  DateTime?
   // Last-synced Gmail historyId watermark for incremental (History API) sync.
   // Null = never baselined; the next sync snapshots then records the current id.
-  historyId           String?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  historyId            String?
+  // The Google account this grant belongs to, lowercased (Gmail's profile
+  // address). Google revokes a grant for the whole account, so a revoke must
+  // first know whether another Klorn account holds a grant for the same one
+  // (auth/google-grant-revoke.ts). Null until read: set at connect, or the
+  // first time a revoke needs it.
+  googleEmail          String?
+  // When the address was last looked up (the lookup order, least recent
+  // first). An empty googleEmail is a grant Google already refuses.
+  googleEmailCheckedAt DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   @@unique([userId, provider])
+  // The revoke's shared-grant check looks other users' grants up by address.
+  @@index([googleEmail])
   // renewExpiringGmailWatches scans all tokens by expiry (no userId) every tick;
   // without this it seq-scans the whole table as the user base grows.
   @@index([gmailWatchExpiresAt])
@@ -456,13 +469,17 @@ model LinkedCalendarAccount {
 // Which mail service a LinkedInboxAccount row belongs to. GOOGLE/OUTLOOK are
 // OAuth providers (token cipher in accessToken); NAVER/ICLOUD/IMAP are IMAP
 // providers (imapHost + imapPasswordCipher). inbox-credentials.ts is the one
-// place that maps provider → required credential shape.
+// place that maps provider → required credential shape. KLORN is the Klorn
+// address (step E1a): mail Klorn receives itself, so no credentials at all; its
+// row's email is `<KlornAddress.handle>@<domain>`. The list is pinned to the
+// API's InboxProviderName and the contract's InboxProvider by a guard test.
 enum InboxProvider {
   GOOGLE
   NAVER
   ICLOUD
   OUTLOOK
   IMAP
+  KLORN
 }
 
 // A SECONDARY mail account linked for FULL INBOX access so the firewall runs
@@ -951,6 +968,44 @@ model DriveSummaryUsage {
   @@index([dayKey])
 }
 
+// The handle of a Klorn address (step E1a of docs/providers/unified-platform-plan.md):
+// `<handle>@<domain>`, user-chosen, immutable, one per account. A row whose userId
+// is null is a tombstone: its account was deleted (the FK nulls it, never
+// cascades) and the handle is never issued again (L5). A data wipe keeps the row:
+// the address belongs to the account, like its sign-in address. The product rules
+// (length, the reserved list) are mail/klorn-handle.ts. The database adds what no
+// writer can skip (migration 20261021010100_klorn_mailbox_schema): the shape,
+// lowercase only, no two handles differing only in separators, and a trigger that
+// refuses any rename, delete or reassignment.
+model KlornAddress {
+  handle    String   @id
+  userId    String?  @unique
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+}
+
+// The data wipe of an account that keeps the account (DELETE /api/user/me/data;
+// privacy/data-wipe-fence.ts). While `purgedAt` is null the wipe is pending;
+// after it, inserts into the account's data tables stay rejected until
+// `fenceUntil`, and the app rejects writes from any work that began before
+// `fenceUntil`. The row stays with the account (one per user, rewritten by the
+// next wipe) and goes with it when the account is deleted.
+model DataWipe {
+  userId      String    @id
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requestedAt DateTime
+  // Null while the purge has not committed; the sweep finishes such a wipe.
+  purgedAt    DateTime?
+  // Set when the purge commits: purgedAt plus the fence window.
+  fenceUntil  DateTime?
+  attempts    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // The sweep's pending query.
+  @@index([purgedAt])
+}
+
 // The objects of an account still to be deleted from object storage (step D3 of
 // docs/providers/unified-platform-plan.md). Written when a deletion starts and
 // OBJECT_STORAGE_ENABLED is on; the account's rows may then go even if the
@@ -990,6 +1045,10 @@ model AutomationConfig {
   focusWindowEnabled     Boolean  @default(false)
   briefingTime           String   @default("06:00")
   timezone               String   @default("Asia/Seoul")
+  /// null = Automatic (no saved choice): the client follows the device zone and
+  /// keeps `timezone` synced to it. "MANUAL" = the user pinned `timezone` in
+  /// Settings. `timezone` always holds the zone server-side features use.
+  timezoneMode           String?
   downloadAutoOrganize   Boolean  @default(false)
   // OFF by default: a new install is a pure classifying firewall (lanes only),
   // matching the README doctrine ("not a suggestion engine"). The proactive
@@ -1462,6 +1521,10 @@ model EmailMessage {
   // has not summarized the email yet.
   keyPoints               Json?
   actionItems             Json?
+  // The receiving server's SPF, DKIM and DMARC verdicts, `{ spf, dkim, dmarc }`
+  // (step E1a). Set only for mail Klorn receives itself (KLORN); null for every
+  // other provider. Shown and acted on in E4 (L13).
+  authentication          Json?
   needsReply              Boolean           @default(false)
   needsReplyReason        String?
   needsReplyConfidence    Float             @default(0.0)

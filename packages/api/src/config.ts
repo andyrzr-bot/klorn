@@ -14,6 +14,9 @@
  *   - Do NOT add anything secret here; secrets stay in their own modules.
  */
 
+import { isPlainAddress } from "./mail/email-address.js";
+import { asciiLower } from "./mail/text-normalize.js";
+
 function intEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   if (raw === undefined || raw === "") return fallback;
@@ -118,6 +121,62 @@ export const FALLBACK_REJUDGE_LOOKBACK_DAYS =
 // subscriber-only feature. ADMIN role bypasses regardless (see stripe.ts), and
 // admins can comp any account's plan from /admin.
 export const PAYWALL_ENABLED = process.env.PAYWALL_ENABLED === "true";
+
+// ── Rollout cohort ────────────────────────────────────────────────────
+// Rollout cohort (decision L23 of docs/providers/unified-platform-plan.md: flip
+// order founder account, then cohort, then everyone). A feature flag that takes
+// part reads `cohort` as well as on and off: the feature is live, and its routes
+// then let in only the users listed in ROLLOUT_COHORT_USER_IDS (comma or
+// whitespace separated user ids); everyone else gets exactly the answer of the
+// flag off (routes/cohort-gate.ts). An empty cohort lets no one in. Read per
+// call, so a flip needs no redeploy. Infrastructure flags (OBJECT_STORAGE_ENABLED)
+// take no part: they are on or off for everyone.
+export type FlagMode = "off" | "cohort" | "on";
+
+export function flagMode(envName: string): FlagMode {
+  const raw = (process.env[envName] ?? "").trim().toLowerCase();
+  if (["true", "1", "yes", "on"].includes(raw)) return "on";
+  return raw === "cohort" ? "cohort" : "off";
+}
+
+export function rolloutCohortUserIds(): ReadonlySet<string> {
+  return new Set(
+    (process.env.ROLLOUT_COHORT_USER_IDS ?? "").split(/[\s,]+/).filter((id) => id !== ""),
+  );
+}
+
+/**
+ * Whether a feature made of these flags is open to this user: every flag on, or
+ * none off and the user in the cohort when any is `cohort`.
+ */
+export function featureOpenTo(userId: string, envNames: readonly string[]): boolean {
+  const restriction = cohortRestriction(envNames);
+  if (restriction.kind === "all") return true;
+  return restriction.kind === "only" && restriction.userIds.includes(userId);
+}
+
+/** Which users a feature reaches: everyone, no one, or only these (the cohort). */
+export type CohortRestriction =
+  | { kind: "all" }
+  | { kind: "none" }
+  | { kind: "only"; userIds: string[] };
+
+/**
+ * The users a feature made of these flags reaches, for a job that works across
+ * users and must filter its query (a feature made of no flags reaches no one).
+ */
+export function cohortRestriction(envNames: readonly string[]): CohortRestriction {
+  const modes = envNames.map(flagMode);
+  if (modes.length === 0 || modes.includes("off")) return { kind: "none" };
+  if (!modes.includes("cohort")) return { kind: "all" };
+  return { kind: "only", userIds: [...rolloutCohortUserIds()] };
+}
+
+/** The flags of each drive surface, as featureOpenTo takes them. */
+export const DRIVE_LIST_FLAGS = ["DRIVE_ENABLED"] as const;
+export const KLORN_DRIVE_FLAGS = ["DRIVE_ENABLED", "KLORN_DRIVE_ENABLED"] as const;
+export const GOOGLE_DRIVE_FLAGS = ["DRIVE_ENABLED", "GOOGLE_DRIVE_ENABLED"] as const;
+export const DRIVE_SUMMARY_FLAGS = ["DRIVE_ENABLED", "DRIVE_SUMMARIES_ENABLED"] as const;
 
 // Multi-account: fan the classify sync out over a user's LINKED secondary
 // inboxes (Pro), not just the primary Google account. Default OFF — the linked
@@ -245,9 +304,7 @@ export function bulkUnsubscribeEnabled(): boolean {
 // are registered, ONEDRIVE (D6) is not yet. Read at request time
 // with the same lenient truthy parse, so a flip needs no redeploy.
 export function driveEnabled(): boolean {
-  return ["true", "1", "yes", "on"].includes(
-    (process.env.DRIVE_ENABLED ?? "").trim().toLowerCase(),
-  );
+  return flagMode("DRIVE_ENABLED") !== "off";
 }
 // The Klorn drive: files a user uploads, stored in object storage — step D3 of
 // docs/providers/unified-platform-plan.md. OFF by default (repo doctrine). It is
@@ -259,9 +316,88 @@ export function driveEnabled(): boolean {
 // purge does that, flag or not, while OBJECT_STORAGE_ENABLED is on). Read at
 // request time with the same lenient truthy parse, so a flip needs no redeploy.
 export function klornDriveEnabled(): boolean {
-  return ["true", "1", "yes", "on"].includes(
-    (process.env.KLORN_DRIVE_ENABLED ?? "").trim().toLowerCase(),
-  );
+  return flagMode("KLORN_DRIVE_ENABLED") !== "off";
+}
+// The Klorn mailbox's inbound webhook — step E1b of
+// docs/providers/unified-platform-plan.md (L6). OFF by default (repo doctrine).
+// While off, POST /api/mailbox/inbound/resend answers Fastify's default 404
+// (darkRouteGate). The route serves every recipient at once, so it is not per
+// user: `cohort` (L23) counts as live here, and the claim (E3) is what honours
+// the cohort. Read at request time, so a flip needs no redeploy.
+export function klornMailboxEnabled(): boolean {
+  return flagMode("KLORN_MAILBOX_ENABLED") !== "off";
+}
+
+export type KlornInboundConfig =
+  | {
+      ok: true;
+      webhookSecret: string;
+      apiKey: string;
+      /** ASCII lowercase. */
+      domain: string;
+      /** Where postmaster@ and abuse@ go (L18); null drops them. */
+      forwardTo: string | null;
+      /** Set but unusable values the route logs (names only, never values). */
+      warnings: string[];
+    }
+  | { ok: false; missing: string[] };
+
+const MAILBOX_DOMAIN_SHAPE = /^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/;
+const WEBHOOK_SECRET_PREFIX = "whsec_";
+const STRICT_BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+/** The HMAC key under the prefix; Resend's are longer. `whsec_` alone verified forged signatures. */
+const MIN_WEBHOOK_KEY_BYTES = 16;
+
+function isStrongWebhookSecret(secret: string): boolean {
+  if (!secret.startsWith(WEBHOOK_SECRET_PREFIX)) return false;
+  const key = secret.slice(WEBHOOK_SECRET_PREFIX.length);
+  return STRICT_BASE64.test(key) && Buffer.from(key, "base64").length >= MIN_WEBHOOK_KEY_BYTES;
+}
+
+/** One plain address, not at the mailbox domain (mail forwarded there would loop back). */
+function usableForwardTarget(value: string, domain: string): boolean {
+  if (!isPlainAddress(value)) return false;
+  return asciiLower(value.slice(value.lastIndexOf("@") + 1)) !== domain;
+}
+
+// The inbound webhook's settings, read per request (a flip or a rotated secret
+// needs no redeploy):
+// - RESEND_INBOUND_WEBHOOK_SECRET: the receiving webhook's signing secret, `whsec_`
+//   and a base64 key of at least 16 bytes.
+// - RESEND_INBOUND_API_KEY: a full-access key that can read received mail.
+//   Separate from RESEND_API_KEY on purpose, so the transactional key can stay
+//   sending-only (and best in a separate Resend team: .env.example).
+// - KLORN_MAILBOX_DOMAIN: no default (L19: the domain is operational).
+// - KLORN_MAILBOX_FORWARD_TO: optional; the support inbox told of postmaster@ and
+//   abuse@ mail (a notice, never the mail), one plain address outside the domain.
+//   Unset or unusable, system mail is dropped and counted (unusable also warns).
+// Any of the first three unset or unusable is `missing`.
+export function klornInboundConfig(): KlornInboundConfig {
+  const webhookSecret = (process.env.RESEND_INBOUND_WEBHOOK_SECRET ?? "").trim();
+  const apiKey = (process.env.RESEND_INBOUND_API_KEY ?? "").trim();
+  const domain = asciiLower((process.env.KLORN_MAILBOX_DOMAIN ?? "").trim());
+  const missing = [
+    isStrongWebhookSecret(webhookSecret) ? null : "RESEND_INBOUND_WEBHOOK_SECRET",
+    apiKey ? null : "RESEND_INBOUND_API_KEY",
+    MAILBOX_DOMAIN_SHAPE.test(domain) ? null : "KLORN_MAILBOX_DOMAIN",
+  ].filter((name): name is string => name !== null);
+  if (missing.length > 0) return { ok: false, missing };
+  const rawForwardTo = (process.env.KLORN_MAILBOX_FORWARD_TO ?? "").trim();
+  const usable = rawForwardTo !== "" && usableForwardTarget(rawForwardTo, domain);
+  const warnings =
+    rawForwardTo !== "" && !usable
+      ? [
+          "KLORN_MAILBOX_FORWARD_TO is not one plain address outside KLORN_MAILBOX_DOMAIN; system mail is dropped",
+        ]
+      : [];
+  return {
+    ok: true,
+    webhookSecret,
+    apiKey,
+    domain,
+    forwardTo: usable ? rawForwardTo : null,
+    warnings,
+  };
 }
 // The Google Drive connector — step D5 of docs/providers/unified-platform-plan.md
 // (D5b: link and unlink a Google account for its picked files, drive.file only).
@@ -273,9 +409,7 @@ export function klornDriveEnabled(): boolean {
 // stores nothing and exchanges no code. Read at request time with the same
 // lenient truthy parse, so a flip needs no redeploy.
 export function googleDriveEnabled(): boolean {
-  return ["true", "1", "yes", "on"].includes(
-    (process.env.GOOGLE_DRIVE_ENABLED ?? "").trim().toLowerCase(),
-  );
+  return flagMode("GOOGLE_DRIVE_ENABLED") !== "off";
 }
 
 // The Google Picker's two public values (D5c): the browser API key, restricted
@@ -299,9 +433,7 @@ export function googlePickerConfig(): { developerKey: string; appId: string } | 
 // response carries no `summary` and the search matches names only. Read at
 // request and job time with the same lenient truthy parse.
 export function driveSummariesEnabled(): boolean {
-  return ["true", "1", "yes", "on"].includes(
-    (process.env.DRIVE_SUMMARIES_ENABLED ?? "").trim().toLowerCase(),
-  );
+  return flagMode("DRIVE_SUMMARIES_ENABLED") !== "off";
 }
 // IMAP flag actions (read, unread, star) for Naver and iCloud — step B1 of
 // docs/providers/unified-platform-plan.md. OFF by default (repo doctrine). While
@@ -620,6 +752,22 @@ export const DAILY_COST_CAP_CENTS = intEnv("DAILY_COST_CAP_CENTS", 100);
 // classifications, enough to feel Klorn sort + auto-handle your inbox before
 // the wall. Entitled users (paid/trial/admin) keep DAILY_COST_CAP_CENTS.
 export const FREE_DAILY_COST_CAP_CENTS = intEnv("FREE_DAILY_COST_CAP_CENTS", 10);
+
+// Slice of the per-user daily cap that ONLY the firewall judge may spend.
+// Chat, agent, briefing and summarize stop at (cap - reserve); the judge may
+// use the whole cap. 0 disables the reserve.
+//
+// 2026-10-15: chat/agent on claude-sonnet-5 spent 101¢ of a 100¢ cap in 21
+// minutes, the gate blocked every paid call until UTC midnight, and the judge
+// degraded to the keyword fallback — which cannot emit PUSH at all. Mail kept
+// being sorted, so nothing looked broken. Each call pre-bills a nominal
+// 2000+500 tokens (llm-usage.ts) and the floor is never refunded, so at
+// gemini-2.5-flash rates a classification costs ~0.185¢ — 25¢ buys ~135 a day.
+// Size it against the mailbox: 25 suits a light inbox, a heavy one needs more.
+// Default 0 = OFF. Turning it on narrows what chat/agent may spend, so it is
+// a deliberate flip per deploy rather than a behaviour change that arrives
+// with an upgrade. Recommended first value: 25.
+export const JUDGE_BUDGET_RESERVE_CENTS = intEnv("JUDGE_BUDGET_RESERVE_CENTS", 0);
 
 // Global hard cap across ALL users + system-initiated calls per UTC day, in
 // cents (USD). The per-user gate can't see calls made without a userId

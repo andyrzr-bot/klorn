@@ -5,7 +5,7 @@
  * it (packages/api/src/__tests__/web-today-model.test.ts).
  */
 
-import type { InboxProvider } from "@klorn/contract";
+import type { InboxProvider, LiveTier } from "@klorn/contract";
 
 /** Rows shown in an expanded lane (PUSH, MEETING) before "N more in Mail". */
 export const EXPANDED_LANE_ROWS = 8;
@@ -22,6 +22,81 @@ export function laneBlock<Row>(
 ): { shown: Row[]; more: number } {
   const shown = rows.slice(0, limit);
   return { shown, more: Math.max(total, rows.length) - shown.length };
+}
+
+/**
+ * Today's "Needs you now" window (founder decision, LOCKED 2026-10-23): the
+ * PUSH block lists only PUSH mail received recently. The server owns the
+ * window (`window=today`, packages/api/src/judge/today-push-window.ts); older
+ * PUSH stays in Mail's lane view. Only Today's PUSH block sends it.
+ */
+const TODAY_WINDOWED_LANE: LiveTier = "PUSH";
+
+/** The query a Today lane block adds to the lane page: one row per thread, PUSH windowed. */
+export function todayLaneQuery(lane: LiveTier): string {
+  return lane === TODAY_WINDOWED_LANE ? "&threads=1&window=today" : "&threads=1";
+}
+
+/**
+ * The count a Today lane shows — in its block header and in the header strip,
+ * so the two agree. PUSH is the windowed list's own thread total (null until
+ * it lands); every other lane is the lane-counts figure, else the list total.
+ */
+export function todayLaneCount(
+  lane: LiveTier,
+  laneCountThreads: number | null,
+  listTotal: number | null,
+): number | null {
+  if (lane === TODAY_WINDOWED_LANE) return listTotal;
+  return laneCountThreads ?? listTotal;
+}
+
+/** PUSH threads older than Today's window: still in Mail, one link away. */
+export function olderOutsideWindow(laneThreads: number | null, windowed: number | null): number {
+  if (laneThreads === null || windowed === null) return 0;
+  return Math.max(laneThreads - windowed, 0);
+}
+
+/**
+ * Today's header (founder decision 2026-10-24): counts only for the lanes that
+ * need the user — PUSH (Today's windowed figure) and MEETING — and one quiet
+ * "N waiting in Mail" for QUEUE + INFO. SILENT is never counted on Today.
+ * `null` means that figure has not arrived (or its read failed).
+ */
+export interface TodayHeaderCounts {
+  push: number | null;
+  meeting: number | null;
+  queue: number | null;
+  info: number | null;
+}
+
+export interface TodayHeaderSummary {
+  /** PUSH then MEETING, each only when it holds something. */
+  needs: { lane: LiveTier; count: number }[];
+  /** Both PUSH and MEETING are known to be empty: "Nothing needs you right now". */
+  calm: boolean;
+  /** QUEUE + INFO threads; 0 shows nothing. */
+  waiting: number;
+}
+
+export function todayHeaderSummary(counts: TodayHeaderCounts): TodayHeaderSummary {
+  const lanes: [LiveTier, number | null][] = [
+    ["PUSH", counts.push],
+    ["MEETING", counts.meeting],
+  ];
+  const needs = lanes.flatMap(([lane, count]) =>
+    count !== null && count > 0 ? [{ lane, count }] : [],
+  );
+  return {
+    needs,
+    calm: counts.push === 0 && counts.meeting === 0,
+    waiting: (counts.queue ?? 0) + (counts.info ?? 0),
+  };
+}
+
+/** The waiting phrase's key, singular for exactly one (the `.one` / `.many` pattern). */
+export function todayWaitingKey(count: number): string {
+  return count === 1 ? "today.strip.waiting.one" : "today.strip.waiting.many";
 }
 
 // ── Calendar ────────────────────────────────────────────────────────────────

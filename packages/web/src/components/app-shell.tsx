@@ -41,6 +41,30 @@ const APP_SHELL_ROUTES = [
 
 const DOCKLESS_ROUTES = ["/chat", "/assistant"];
 
+/**
+ * Bottom padding for <main>, the one scroll container every app page lives in
+ * (design detail pass W7). With the assistant button showing, the last row
+ * must scroll clear of it: 72px (48px button + its offset + a gap) plus the
+ * home-indicator inset — on a phone on top of the 62px tab bar. The phone
+ * floor of 152px covers the flag-off button, which sits at a fixed 96px
+ * (96 + 48 + 8). Pages that scroll an inner pane (graph, admin, the mail
+ * split) sit inside this padding, so they clear the button too.
+ */
+const DOCK_CLEARANCE =
+  "pb-[max(calc(62px+72px+env(safe-area-inset-bottom)),152px)] md:pb-[calc(72px+env(safe-area-inset-bottom))]";
+const DOCKLESS_CLEARANCE =
+  "pb-[calc(62px+env(safe-area-inset-bottom))] md:pb-[env(safe-area-inset-bottom)]";
+
+/**
+ * The same clearances as scroll padding, so a control scrolled into view on
+ * focus is not left under what covers the end of <main> (WCAG 2.4.11): the
+ * bottom tab bar below 768px, and the assistant button (bottom right, where
+ * a row's "More actions" button sits) wherever it shows.
+ */
+const DOCK_SCROLL_PADDING =
+  "scroll-pb-[max(calc(62px+72px+env(safe-area-inset-bottom)),152px)] md:scroll-pb-[calc(72px+env(safe-area-inset-bottom))]";
+const DOCKLESS_SCROLL_PADDING = "max-md:scroll-pb-[calc(62px+env(safe-area-inset-bottom))]";
+
 function isAppShellRoute(pathname: string): boolean {
   return APP_SHELL_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`));
 }
@@ -85,6 +109,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     if (step === "resolve" && marked && unifiedHome) router.replace(TODAY_HOME);
   }, [userLoaded, unifiedHome, pathname, router]);
 
+  const showDock = !DOCKLESS_ROUTES.some((route) => pathname.startsWith(route));
   const showSidebar = !NO_SIDEBAR_ROUTES.includes(pathname) && isAppShellRoute(pathname);
   const sectionLabel = t(currentSectionLabelKey(pathname, user?.unifiedHome === true));
 
@@ -102,15 +127,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-dvh overflow-hidden bg-surface-panel text-ink">
-      {/* Skip link (WCAG 2.4.1) — the first focusable element, hidden until a
-          keyboard user tabs to it, so they can jump past the whole sidebar to
-          the content on every route. */}
-      <a
-        href="#main"
-        className="sr-only rounded-md bg-accent-solid px-4 py-2 text-sm font-semibold text-accent-solid-ink focus-visible:not-sr-only focus-visible:absolute focus-visible:left-4 focus-visible:top-4 focus-visible:z-50"
-      >
-        {t("appShell.skipToContent")}
-      </a>
+      {/* The skip link is rendered once for every route by the root layout
+          (components/skip-link.tsx); it jumps past the sidebar to #main. */}
       <Sidebar />
       <div className="relative flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Mobile header — pt-safe respects iPhone notch in PWA. The hamburger
@@ -130,10 +148,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <main
           id="main"
           tabIndex={-1}
-          // Phone: clear the 62px tab bar AND the assistant button above it
-          // (W7: 72px + the home-indicator inset), so the last row is never
-          // under the button.
-          className="relative z-10 flex-1 overflow-y-auto pb-[calc(62px+72px+env(safe-area-inset-bottom))] md:pb-[env(safe-area-inset-bottom)] focus:outline-none"
+          className={`scroll-stable relative z-10 flex-1 overflow-y-auto ${showDock ? `${DOCK_CLEARANCE} ${DOCK_SCROLL_PADDING}` : `${DOCKLESS_CLEARANCE} ${DOCKLESS_SCROLL_PADDING}`} focus:outline-none`}
         >
           {/* Inline, so it pushes content down rather than covering it; only on
               the home screen and Settings, where installing is on-topic. */}
@@ -145,9 +160,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       {/* Global assistant — bottom-right on every app surface. The chat page
           and the whole assistant hub (W7) are the assistant already, so the
           dock stays out of the way there. */}
-      {!DOCKLESS_ROUTES.some((route) => pathname.startsWith(route)) && (
-        <AssistantDock unified={unifiedHome} />
-      )}
+      {showDock && <AssistantDock unified={unifiedHome} />}
     </div>
   );
 }

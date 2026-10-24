@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   description: "How Klorn handles Gmail, Calendar, and account data during beta.",
 };
 
-const updatedAt = "October 18, 2026";
+const updatedAt = "October 19, 2026";
 
 /** Stable, URL-safe anchor id so the TOC links line up with each section. */
 function slug(title: string): string {
@@ -339,9 +339,23 @@ export default function PrivacyPage() {
                 operation.
               </li>
               <li>
+                <strong className="text-ink">Access at Google.</strong> Deleting your data or
+                account, or disconnecting a Google account in Klorn, also asks Google to revoke
+                Klorn&apos;s access to that Google account, unless it is still connected elsewhere
+                in Klorn (to your account or another one) or Klorn cannot confirm that it is not.
+                The request is best effort: if it fails, or Google does not answer, access stays
+                until you remove Klorn in your Google account settings.
+              </li>
+              <li>
                 <strong className="text-ink">Export and workspace reset.</strong> Settings also
                 offers a full data export and a workspace reset that deletes all synced and derived
                 data while keeping your account.
+              </li>
+              <li>
+                <strong className="text-ink">Backups.</strong> An encrypted copy of the database is
+                taken every night, only to restore Klorn after a failure, and expires 14 days after
+                it was taken. Data you delete leaves the database at once, and leaves the backups as
+                the copies that hold it expire.
               </li>
               <li>
                 <strong className="text-ink">Operational logs.</strong> Logs are deleted
@@ -368,17 +382,20 @@ export default function PrivacyPage() {
               Klorn uses access controls, authentication, and operational safeguards to protect user
               data. Google OAuth tokens are encrypted at rest using AES-256-GCM. All data access is
               scoped to your account, transport is TLS-encrypted, and your Google user data is
-              stored only in Klorn&apos;s own database — it is not shared with analytics or
-              advertising services. Klorn&apos;s infrastructure sub-processors are Render (API
-              hosting), Vercel (web application hosting), and Supabase (managed Postgres database,
-              hosted in Seoul, ap-northeast-2); they store and transmit data solely to operate
-              Klorn. Paddle acts as merchant of record for paid subscriptions and receives only
-              billing details — never mail content. Resend delivers Klorn&apos;s own transactional
-              email (address verification, password reset, invitations) and therefore receives your
-              address and the contents of those messages — never your mailbox. Apple (APNs) and
-              Google (Firebase Cloud Messaging) deliver push notifications to devices you register.
-              RevenueCat manages subscriptions bought in the mobile app and receives only purchase
-              records and your Klorn account id.
+              stored only in Klorn&apos;s own database and its encrypted backups — it is not shared
+              with analytics or advertising services. Klorn&apos;s infrastructure sub-processors are
+              Render (API hosting), Vercel (web application hosting), Supabase (managed Postgres
+              database, hosted in Seoul, ap-northeast-2), and GitHub (storage of the nightly
+              database backups: the database is copied to a temporary GitHub runner, encrypted
+              there, and only the encrypted file is kept; the key to read it is never stored on
+              GitHub); they store and transmit data solely to operate Klorn. Paddle acts as merchant
+              of record for paid subscriptions and receives only billing details — never mail
+              content. Resend delivers Klorn&apos;s own transactional email (address verification,
+              password reset, invitations) and therefore receives your address and the contents of
+              those messages — never your mailbox. Apple (APNs) and Google (Firebase Cloud
+              Messaging) deliver push notifications to devices you register. RevenueCat manages
+              subscriptions bought in the mobile app and receives only purchase records and your
+              Klorn account id.
             </p>
             <p>
               Because Klorn is a beta product, avoid connecting accounts that contain information
