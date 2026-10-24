@@ -48,9 +48,9 @@ describe("extractAttachmentContentIsolated", () => {
     );
 
     clearInterval(ticker);
-    expect(result.status).toBe("metadata");
-    expect(result.text).toContain("trap.pdf");
-    expect(result.text).toContain("본문 추출 시간 초과");
+    // Left unread, like a throw before: no stub that could overwrite text a
+    // previous sync did read.
+    expect(result).toEqual({ text: null, status: "metadata" });
     expect(Date.now() - started).toBeLessThan(5_000);
     // In-process, a spinning extractor would have frozen this timer completely.
     expect(ticks).toBeGreaterThan(5);
@@ -63,8 +63,7 @@ describe("extractAttachmentContentIsolated", () => {
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       { timeoutMs: 10_000, workerUrl: fixture("crash") },
     );
-    expect(result.status).toBe("metadata");
-    expect(result.text).toContain("본문 추출 실패");
+    expect(result).toEqual({ text: null, status: "metadata" });
   });
 
   it("degrades to metadata when the extractor runs out of its heap", async () => {
@@ -74,8 +73,7 @@ describe("extractAttachmentContentIsolated", () => {
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       { timeoutMs: 20_000, workerUrl: fixture("oom") },
     );
-    expect(result.status).toBe("metadata");
-    expect(result.text).toContain("본문 추출 실패");
+    expect(result).toEqual({ text: null, status: "metadata" });
   }, 30_000);
 
   it("runs one extraction at a time", async () => {
@@ -91,5 +89,31 @@ describe("extractAttachmentContentIsolated", () => {
     expect(results.every((r) => r.status === "readable" && r.text === "done")).toBe(true);
     // Three 200 ms extractions back to back cannot finish sooner than this.
     expect(Date.now() - started).toBeGreaterThanOrEqual(550);
+  });
+
+  it("leaves an attachment unread instead of queueing it behind eight others", async () => {
+    const run = () =>
+      extractAttachmentContentIsolated(Buffer.from("x"), "a.txt", "text/plain", {
+        timeoutMs: 10_000,
+        workerUrl: fixture("slow"),
+      });
+    // One running, eight waiting, and a tenth that must not wait.
+    const results = await Promise.all(Array.from({ length: 10 }, run));
+    expect(results.filter((r) => r.text === "done")).toHaveLength(9);
+    expect(results.filter((r) => r.text === null)).toHaveLength(1);
+  }, 30_000);
+
+  it("reads an image or an unknown type in-process: nothing to parse, no thread", async () => {
+    const started = Date.now();
+    const image = await extractAttachmentContentIsolated(Buffer.alloc(10), "logo.png", "image/png");
+    const blob = await extractAttachmentContentIsolated(
+      Buffer.alloc(10),
+      "data.bin",
+      "application/octet-stream",
+    );
+    expect(image).toEqual(extractAttachmentContent(Buffer.alloc(10), "logo.png", "image/png"));
+    expect(blob.status).toBe("unsupported");
+    // A worker booting TypeScript takes hundreds of ms here; in-process is instant.
+    expect(Date.now() - started).toBeLessThan(100);
   });
 });

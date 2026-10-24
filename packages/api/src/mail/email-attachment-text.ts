@@ -64,6 +64,26 @@ export function isReadableEmailAttachment(
   );
 }
 
+/**
+ * Whether extracting this file means parsing its bytes. Images, unknown types
+ * and oversized files get a metadata answer without reading the content, so
+ * they need no isolation (attachment-extract-isolated.ts).
+ */
+export function needsParsing(filename: string, mimeType: string, byteLength: number): boolean {
+  if (byteLength > MAX_EXTRACTABLE_BYTES) return false;
+  const lower = filename.toLowerCase();
+  return (
+    isDocx(lower, mimeType) ||
+    isXlsx(lower, mimeType) ||
+    isPptx(lower, mimeType) ||
+    isHwpx(lower, mimeType) ||
+    isLegacyHwp(lower, mimeType) ||
+    isPlainTextLike(lower, mimeType) ||
+    mimeType.includes("pdf") ||
+    lower.endsWith(".pdf")
+  );
+}
+
 export function extractAttachmentContent(
   buffer: Buffer,
   filename: string,
@@ -203,12 +223,7 @@ function isLegacyHwp(filename: string, mimeType: string): boolean {
   );
 }
 
-export function metadataText(
-  filename: string,
-  mimeType: string,
-  size: number,
-  reason: string,
-): string {
+function metadataText(filename: string, mimeType: string, size: number, reason: string): string {
   return [
     `파일명: ${filename}`,
     `MIME: ${mimeType || "application/octet-stream"}`,
