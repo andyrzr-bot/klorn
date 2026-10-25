@@ -33,6 +33,7 @@ import { formatImapMessageId } from "./imap-message-id.js";
 import { reconcileInboxValidity, removeRecentlyMovedRows } from "./imap-poll-guards.js";
 import type { ImapProviderConfig } from "./imap-providers.js";
 import { liveUidValidity } from "./imap-uidvalidity.js";
+import { classifyVerifyFailure, type VerifyFailure } from "./imap-verify-failure.js";
 import { sanitizeLogText } from "./log-text.js";
 import { MAX_STORED_BODY_CHARS, snippetFromBody } from "./stored-mail-text.js";
 
@@ -43,10 +44,13 @@ interface VerifyArgs {
   host: string; // "imap.naver.com:993"
 }
 
-interface VerifyResult {
-  ok: boolean;
-  message?: string;
-}
+export {
+  IMAP_UNREACHABLE_MESSAGE,
+  IMAP_VERIFY_FAILED_MESSAGE,
+  type VerifyFailureCode,
+} from "./imap-verify-failure.js";
+
+type VerifyResult = { ok: true } | VerifyFailure;
 
 export async function verifyImapCredentials(args: VerifyArgs): Promise<VerifyResult> {
   try {
@@ -69,15 +73,7 @@ export async function verifyImapCredentials(args: VerifyArgs): Promise<VerifyRes
       await endImapSession(client);
     }
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    // Map common IMAP error shapes to user-readable hints.
-    if (/authentication failed/i.test(msg) || /AUTH=/i.test(msg)) {
-      return { ok: false, message: args.provider.authFailureHint };
-    }
-    if (/timeout|ECONN|ENOTFOUND/i.test(msg)) {
-      return { ok: false, message: `Could not reach ${args.host}: ${msg}` };
-    }
-    return { ok: false, message: msg };
+    return classifyVerifyFailure(err, args);
   }
 }
 
