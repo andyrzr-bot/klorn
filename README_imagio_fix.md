@@ -1,5 +1,1 @@
-### Development commands
-
-To run the evaluation suite against the judge logic:
-```bash
-pnpm --filter @klorn/api eval
+Every answerable email carries an `autoEligible` flag (reversible, high-confidence, trusted, calm),
