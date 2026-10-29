@@ -1,1 +1,0 @@
-Every answerable email carries an `autoEligible` flag (reversible, high-confidence, trusted, calm),
